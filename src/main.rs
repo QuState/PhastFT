@@ -1,20 +1,6 @@
-use std::f64::consts::PI;
-use std::ops::Range;
-
-use rayon::prelude::*;
-use rustfft::num_complex::Complex64;
-use rustfft::FftPlanner;
+// use rayon::prelude::*;
 use spinoza::core::State;
-use spinoza::math::{Float, SQRT_ONE_HALF};
-use spinoza::utils::{assert_float_closeness, pretty_print_int};
-
-fn padded_bin(n: usize, k: usize) -> usize {
-    let reversed_str = format!("{:0width$b}", k, width = n)
-        .chars()
-        .rev()
-        .collect::<String>();
-    usize::from_str_radix(&reversed_str, 2).unwrap()
-}
+use spinoza::math::{Float, PI, SQRT_ONE_HALF};
 
 fn bit_reverse_permutation(state: &mut State) {
     let n = state.len();
@@ -36,52 +22,6 @@ fn bit_reverse_permutation(state: &mut State) {
     }
 }
 
-// fn fft(x_re: &mut [f64], x_im: &mut [f64]) {
-//     assert_eq!(x_re.len(), x_im.len());
-//     let n = x_re.len();
-//     assert!(n.is_power_of_two(), "n must be a power of 2");
-//
-//     // DFT
-//     let N = x_re.len();
-//     let mut k = N;
-//     let mut n;
-//
-//     let theta_t = PI / N as f64;
-//     let mut c = theta_t.cos();
-//     let mut d = -(theta_t.sin());
-//
-//     // (a + ib) * (c + id) = ac + iad + ibc - bd = ac - bd + i(ad + bc)
-//     // Complex phiT = Complex(cos(thetaT), -sin(thetaT)), T;
-//     while k > 1 {
-//         n = k;
-//         k >>= 1;
-//         let phiT_re = c * c - d * d;
-//         let phiT_im = c * d + d * c;
-//         c = phiT_re;
-//         d = phiT_im;
-//         let (mut T_re, mut T_im) = (1.0, 0.0);
-//
-//         for l in 0..k {
-//             let mut a = l;
-//             while a < N {
-//                 let b = a + k;
-//                 let t_re = x_re[a] - x_re[b];
-//                 let t_im = x_im[a] - x_im[b];
-//                 x_re[a] += x_re[b];
-//                 x_im[a] += x_im[b];
-//                 x_re[b] = t_re.mul_add(T_re, -t_im * T_im);
-//                 x_im[b] = t_re.mul_add(T_im, -t_im * T_re);
-//                 a += n;
-//             }
-//
-//             // (a + ib) * (c + id) = ac + iad + ibc - bd = ac - bd + i(ad + bc)
-//             let (w, x, y, z) = (T_re, T_im, phiT_re, phiT_im);
-//             T_re = w.mul_add(y, -x * z);
-//             T_im = w.mul_add(z, x * y);
-//         }
-//     }
-// }
-
 fn fft_chunk_n(state: &mut State, dist: usize) {
     let chunk_size = dist << 1;
     // println!("dist: {} chunk_size: {}", dist, chunk_size);
@@ -93,9 +33,8 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
 
     state
         .reals
-        .par_chunks_exact_mut(chunk_size)
-        .zip(state.imags.par_chunks_exact_mut(chunk_size))
-        .with_max_len(1 << 11)
+        .chunks_exact_mut(chunk_size)
+        .zip(state.imags.chunks_exact_mut(chunk_size))
         .enumerate()
         .for_each(|(c, (reals_chunk, imags_chunk))| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
@@ -136,9 +75,8 @@ fn fft_chunk_4(state: &mut State) {
 
     state
         .reals
-        .par_chunks_exact_mut(4)
-        .zip(state.imags.par_chunks_exact_mut(4))
-        .with_max_len(1 << 15)
+        .chunks_exact_mut(4)
+        .zip(state.imags.chunks_exact_mut(4))
         //.with_max_len(1 << 11)
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
@@ -173,9 +111,8 @@ fn fft_chunk_2(state: &mut State) {
     let dist = 1;
     state
         .reals
-        .par_chunks_exact_mut(2)
-        .zip(state.imags.par_chunks_exact_mut(2))
-        .with_max_len(1 << 16)
+        .chunks_exact_mut(2)
+        .zip(state.imags.chunks_exact_mut(2))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -245,6 +182,10 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustfft::num_complex::Complex64;
+    use rustfft::FftPlanner;
+    use spinoza::utils::assert_float_closeness;
+    use std::ops::Range;
 
     #[test]
     fn bit_reversal() {
