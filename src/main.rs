@@ -1,9 +1,16 @@
 use rayon::prelude::*;
 use spinoza::core::State;
 use spinoza::math::{Float, PI, SQRT_ONE_HALF};
-use spinoza::utils::pretty_print_int;
+use spinoza::utils::{gen_random_state, pretty_print_int};
 
-fn bit_reverse_permutation(state: &mut State) {
+fn bit_reverse_permute_state_par(state: &mut State) {
+    std::thread::scope(|s| {
+        s.spawn(|| bit_reverse_permutation(&mut state.reals));
+        s.spawn(|| bit_reverse_permutation(&mut state.imags));
+    });
+}
+
+fn bit_reverse_permute_state_seq(state: &mut State) {
     let n = state.len();
     let mut j = 0;
 
@@ -19,6 +26,25 @@ fn bit_reverse_permutation(state: &mut State) {
         if i < j {
             state.reals.swap(i, j);
             state.imags.swap(i, j);
+        }
+    }
+}
+
+fn bit_reverse_permutation<T>(buf: &mut [T]) {
+    let n = buf.len();
+    let mut j = 0;
+
+    for i in 1..n {
+        let mut bit = n >> 1;
+
+        while (j & bit) != 0 {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j ^= bit;
+
+        if i < j {
+            buf.swap(i, j);
         }
     }
 }
@@ -165,7 +191,7 @@ pub fn fft_dif(state: &mut State) {
             fft_chunk_n(state, dist);
         }
     }
-    bit_reverse_permutation(state);
+    //bit_reverse_permutation(state);
 }
 
 fn main() {
@@ -191,23 +217,48 @@ fn main() {
     // println!("{state}");
 }
 
+fn bm_brp(num_qubits: usize) {
+    for n in 2..num_qubits {
+        let mut state = State {
+            reals: (0..(1 << n)).map(|i| i as Float).collect(),
+            imags: (0..(1 << n)).map(|i| i as Float).collect(),
+            n: n as u8,
+        };
+
+        let now = std::time::Instant::now();
+        bit_reverse_permute_state_seq(&mut state);
+        let elapsed1 = pretty_print_int(now.elapsed().as_micros());
+
+        state.reals = (0..(1 << n)).map(|i| i as Float).collect();
+        state.imags = (0..(1 << n)).map(|i| i as Float).collect();
+
+        let now = std::time::Instant::now();
+        bit_reverse_permute_state_par(&mut state);
+        let elapsed2 = pretty_print_int(now.elapsed().as_micros());
+
+        println!("# qubits: {n}");
+        println!("impl 1 --> time elapsed: {elapsed1} us");
+        println!("impl 2 --> time elapsed: {elapsed2} us\n----------------------------");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustfft::num_complex::Complex64;
-    use rustfft::FftPlanner;
+    use rustfft::{num_complex::Complex64, FftPlanner};
     use spinoza::utils::assert_float_closeness;
     use std::ops::Range;
 
     #[test]
     fn bit_reversal() {
-        // let N: usize = 1 << 3;
-        // let n = N.ilog2() as usize;
-        //
-        // for k in N..N + 1 {
-        //     bit_reverse_permutation(k);
-        //     println!("---------------------");
-        // }
+        let n = 16;
+        let mut buf = (0..n).collect::<Vec<usize>>();
+        let mut buf1 = buf.clone();
+
+        bit_reverse_permutation(&mut buf);
+        //bit_reverse_permutation2(&mut buf1);
+
+        println!("{:?}\n{:?}", buf, buf1);
     }
 
     #[test]
