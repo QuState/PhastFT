@@ -72,18 +72,24 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
 fn fft_chunk_8(state: &mut State) {
     let dist = 4;
     let chunk_size = dist << 1;
-    let twiddles_re = [1.0, SQRT_ONE_HALF, 0.0, -SQRT_ONE_HALF];
-    let twiddles_re = [0.0, -SQRT_ONE_HALF, -1.0, SQRT_ONE_HALF];
+    //let twiddles_re = [1.0, SQRT_ONE_HALF, 0.0, -SQRT_ONE_HALF];
+    // let twiddles_re = [0.0, -SQRT_ONE_HALF, -1.0, SQRT_ONE_HALF];
+    todo!()
+}
+
+/// chunk_size == 4, so hard code twiddle factors
+fn fft_chunk_4(state: &mut State) {
+    let dist = 2;
+    let chunk_size = dist << 1;
 
     state
         .reals
         .par_chunks_exact_mut(chunk_size)
         .zip(state.imags.par_chunks_exact_mut(chunk_size))
-        .with_max_len(1 << 11)
+        .with_max_len(1 << 15)
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-            //eprintln!("chunk #: {c}");
 
             let real_c0 = reals_s0[0];
             let real_c1 = reals_s1[0];
@@ -91,20 +97,19 @@ fn fft_chunk_8(state: &mut State) {
             let imag_c1 = imags_s1[0];
 
             reals_s0[0] = real_c0 + real_c1;
-            reals_s1[0] = imag_c0 + imag_c1;
-            imags_s0[0] = real_c0 - real_c1;
+            imags_s0[0] = imag_c0 + imag_c1;
+            reals_s1[0] = real_c0 - real_c1;
             imags_s1[0] = imag_c0 - imag_c1;
 
-            // TODO(saveliy): multiply by twiddle factor
             let real_c0 = reals_s0[1];
             let real_c1 = reals_s1[1];
             let imag_c0 = imags_s0[1];
             let imag_c1 = imags_s1[1];
 
             reals_s0[1] = real_c0 + real_c1;
-            reals_s1[1] = imag_c0 + imag_c1;
-            imags_s0[1] = real_c0 - real_c1;
-            imags_s1[1] = imag_c0 - imag_c1;
+            imags_s0[1] = imag_c0 + imag_c1;
+            reals_s1[1] = imag_c0 - imag_c1;
+            imags_s1[1] = -(real_c0 - real_c1);
         });
 }
 
@@ -115,6 +120,7 @@ fn fft_chunk_2(state: &mut State) {
         .reals
         .par_chunks_exact_mut(2)
         .zip_eq(state.imags.par_chunks_exact_mut(2))
+        .with_max_len(1 << 16)
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -151,10 +157,12 @@ pub fn fft_dif(state: &mut State) {
         let dist = 1 << t;
         let chunk_size = dist << 1;
 
-        if chunk_size != 2 {
-            fft_chunk_n(state, dist);
-        } else {
+        if chunk_size == 2 {
             fft_chunk_2(state);
+        } else if chunk_size == 4 {
+            fft_chunk_4(state);
+        } else {
+            fft_chunk_n(state, dist);
         }
     }
     bit_reverse_permutation(state);
