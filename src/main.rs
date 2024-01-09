@@ -84,6 +84,8 @@ fn bit_reverse_permutation(state: &mut State) {
 
 fn fft_chunk_n(state: &mut State, dist: usize) {
     let chunk_size = dist << 1;
+    // println!("dist: {} chunk_size: {}", dist, chunk_size);
+
     let angle = -PI / (dist as Float);
     let (st, ct) = angle.sin_cos();
     let wlen_re = ct;
@@ -95,11 +97,9 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
         .zip(state.imags.par_chunks_exact_mut(chunk_size))
         .with_max_len(1 << 11)
         .enumerate()
-        .for_each(|(_c, (reals_chunk, imags_chunk))| {
+        .for_each(|(c, (reals_chunk, imags_chunk))| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-            // eprintln!("chunk #: {c}");
-
             let mut w_re = 1.0;
             let mut w_im = 0.0;
 
@@ -176,11 +176,9 @@ fn fft_chunk_2(state: &mut State) {
         .par_chunks_exact_mut(2)
         .zip(state.imags.par_chunks_exact_mut(2))
         .with_max_len(1 << 16)
-        //.with_max_len(1 << 11)
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-            //eprintln!("chunk #: {c}");
 
             reals_s0
                 .iter_mut()
@@ -224,47 +222,17 @@ pub fn fft_dif(state: &mut State) {
 }
 
 fn main() {
-    let range = std::ops::Range { start: 5, end: 30 };
+    let n = 30;
+    // println!("run PhastFT with {n} qubits");
 
-    for k in range {
-        let n = 1 << k;
-
-        let now = std::time::Instant::now();
-        let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-        let x_im = (1..n + 1).map(|i| i as Float).collect();
-        let mut state = State {
-            reals: x_re,
-            imags: x_im,
-            n: k as u8,
-        };
-        fft_dif(&mut state);
-        let elapsed = pretty_print_int(now.elapsed().as_micros());
-        eprintln!("# qubits: {k}\nqifft time elapsed {elapsed} us");
-        // state
-        //     .reals
-        //     .iter()
-        //     .zip(state.imags.iter())
-        //     .for_each(|(z_re, z_im)| {
-        //         eprintln!("{z_re} + i{z_im}");
-        //     });
-
-        let mut buffer: Vec<Complex64> = (1..n + 1)
-            .map(|i| Complex64::new(i as f64, i as f64))
-            .collect();
-
-        let now = std::time::Instant::now();
-        let mut planner = FftPlanner::new();
-        let fft = planner.plan_fft_forward(buffer.len());
-        fft.process(&mut buffer);
-        let elapsed = pretty_print_int(now.elapsed().as_micros());
-        eprintln!("RustFFT time elapsed {elapsed} us");
-        // for z in buffer.iter() {
-        //     let z_re = z.re;
-        //     let z_im = z.im;
-        //     eprintln!("{z_re} + i{z_im}");
-        // }
-        eprintln!("--------------");
-    }
+    let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+    let x_im = (1..n + 1).map(|i| i as Float).collect();
+    let mut state = State {
+        reals: x_re,
+        imags: x_im,
+        n,
+    };
+    fft_dif(&mut state);
 }
 
 #[cfg(test)]
