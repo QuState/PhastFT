@@ -162,11 +162,11 @@ pub fn fft_dif(state: &mut State) {
 
 fn main() {
     let N: usize = 30;
-    println!("run PhastFT with {N} qubits");
-    let now = std::time::Instant::now();
 
     for i in 2..N {
-        let n = 1 << N;
+        println!("run PhastFT with {i} qubits");
+        let now = std::time::Instant::now();
+        let n = 1 << i;
         let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
         let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
         let mut state = State {

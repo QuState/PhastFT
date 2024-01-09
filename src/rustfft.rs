@@ -3,9 +3,9 @@ use spinoza::utils::pretty_print_int;
 
 fn main() {
     let N = 30;
-    println!("run RustFFT with {N} qubits");
 
     for i in 2..N {
+        println!("run RustFFT with {i} qubits");
         let n = 1 << i;
         let now = std::time::Instant::now();
         let mut buffer: Vec<Complex64> = (1..n + 1)
