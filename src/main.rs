@@ -153,6 +153,7 @@ fn fft_chunk_4(state: &mut State) {
             imags_s0[0] = real_c0 - real_c1;
             imags_s1[0] = imag_c0 - imag_c1;
 
+            // TODO(saveliy): multiply by twiddle factor
             let real_c0 = reals_s0[1];
             let real_c1 = reals_s1[1];
             let imag_c0 = imags_s0[1];
