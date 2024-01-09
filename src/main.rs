@@ -2,8 +2,8 @@ use std::f64::consts::PI;
 use std::ops::Range;
 
 use rayon::prelude::*;
-use rustfft::FftPlanner;
 use rustfft::num_complex::Complex64;
+use rustfft::FftPlanner;
 use spinoza::core::State;
 use spinoza::math::{Float, SQRT_ONE_HALF};
 use spinoza::utils::{assert_float_closeness, pretty_print_int};
@@ -82,34 +82,33 @@ fn bit_reverse_permutation(state: &mut State) {
 //     }
 // }
 
-fn fft_chunk_n(
-    state: &mut State,
-    twiddles_re: &[Float],
-    twiddles_im: &[Float],
-    dist: usize,
-    chunk_size: usize,
-) {
+fn fft_chunk_n(state: &mut State, dist: usize) {
+    let chunk_size = dist << 1;
+    let angle = -PI / (dist as Float);
+    let (st, ct) = angle.sin_cos();
+    let wlen_re = ct;
+    let wlen_im = st;
+
     state
         .reals
         .par_chunks_exact_mut(chunk_size)
         .zip(state.imags.par_chunks_exact_mut(chunk_size))
         .with_max_len(1 << 11)
         .enumerate()
-        //.with_max_len(1 << 11)
         .for_each(|(_c, (reals_chunk, imags_chunk))| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
             // eprintln!("chunk #: {c}");
 
+            let mut w_re = 1.0;
+            let mut w_im = 0.0;
+
             reals_s0
-                .par_iter_mut()
-                .zip_eq(reals_s1.par_iter_mut())
-                .zip_eq(imags_s0.par_iter_mut())
-                .zip_eq(imags_s1.par_iter_mut())
-                .zip_eq(twiddles_re.par_iter())
-                .zip_eq(twiddles_im.par_iter())
-                .with_min_len(1 << 15)
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
+                .iter_mut()
+                .zip(reals_s1.iter_mut())
+                .zip(imags_s0.iter_mut())
+                .zip(imags_s1.iter_mut())
+                .for_each(|(((re_s0, re_s1), im_s0), im_s1)| {
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -119,9 +118,12 @@ fn fft_chunk_n(
                     *im_s0 = imag_c0 + imag_c1;
                     let v_re = real_c0 - real_c1;
                     let v_im = imag_c0 - imag_c1;
-
                     *re_s1 = v_re * w_re - v_im * w_im;
                     *im_s1 = v_re * w_im + v_im * w_re;
+
+                    let temp = w_re;
+                    w_re = w_re * wlen_re - w_im * wlen_im;
+                    w_im = temp * wlen_im + w_im * wlen_re;
                 });
         });
 }
@@ -199,39 +201,21 @@ fn fft_chunk_2(state: &mut State) {
         });
 }
 
-/// FFT -- Decimation in Time (DIT)
-pub fn fft_dit(state: &mut State) {
+/// FFT -- Decimation in Frequency
+///
+/// This is just the decimation-in-time algorithm, reversed.
+/// The inputs are in normal order, and the outputs are bit reversed.
+///
+/// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
+pub fn fft_dif(state: &mut State) {
     let n: usize = state.n.into();
-    let mut twiddles_re: Vec<_> = Vec::with_capacity(1 << (n - 1));
-    let mut twiddles_im: Vec<_> = Vec::with_capacity(1 << (n - 1));
 
     for t in (0..n).rev() {
-        let chunk_size = 1 << (t + 1);
         let dist = 1 << t;
-
-        let angle = -PI / (dist as Float);
-        let (st, ct) = angle.sin_cos();
-        let wlen_re = ct;
-        let wlen_im = st;
-        //eprintln!("stage: {t} --> chunk size: {chunk_size}");
+        let chunk_size = dist << 1;
 
         if chunk_size != 2 {
-            twiddles_re.push(1.0);
-            twiddles_im.push(0.0);
-
-            (1..dist).for_each(|i| {
-                let mut w_re = twiddles_re[i - 1];
-                let mut w_im = twiddles_im[i - 1];
-                let temp = w_re;
-                w_re = w_re * wlen_re - w_im * wlen_im;
-                w_im = temp * wlen_im + w_im * wlen_re;
-                twiddles_re.push(w_re);
-                twiddles_im.push(w_im);
-                // eprintln!("{w_re} + i{w_im}");
-            });
-            fft_chunk_n(state, &twiddles_re, &twiddles_im, dist, chunk_size);
-            twiddles_re.clear();
-            twiddles_im.clear();
+            fft_chunk_n(state, dist);
         } else {
             fft_chunk_2(state);
         }
@@ -240,7 +224,7 @@ pub fn fft_dit(state: &mut State) {
 }
 
 fn main() {
-    let range = std::ops::Range { start: 5, end: 6 };
+    let range = std::ops::Range { start: 5, end: 30 };
 
     for k in range {
         let n = 1 << k;
@@ -253,8 +237,7 @@ fn main() {
             imags: x_im,
             n: k as u8,
         };
-        fft_dit(&mut state);
-        // fft(&mut state.reals, &mut state.imags);
+        fft_dif(&mut state);
         let elapsed = pretty_print_int(now.elapsed().as_micros());
         eprintln!("# qubits: {k}\nqifft time elapsed {elapsed} us");
         // state
@@ -281,19 +264,6 @@ fn main() {
         //     eprintln!("{z_re} + i{z_im}");
         // }
         eprintln!("--------------");
-
-        // state
-        //     .reals
-        //     .iter()
-        //     .zip(state.imags.iter())
-        //     .enumerate()
-        //     .for_each(|(i, (z_re, z_im))| {
-        //         // let i_r = padded_bin(state.len().ilog2() as usize, i);
-        //         let expect_re = buffer[i].re;
-        //         let expect_im = buffer[i].im;
-        //         assert_float_closeness(*z_re, expect_re, 0.1);
-        //         assert_float_closeness(*z_im, expect_im, 0.1);
-        //     });
     }
 }
 
@@ -326,7 +296,7 @@ mod tests {
                 imags: x_im,
                 n: k as u8,
             };
-            fft_dit(&mut state);
+            fft_dif(&mut state);
 
             let mut buffer: Vec<Complex64> = (1..n + 1)
                 .map(|i| Complex64::new(i as f64, i as f64))
