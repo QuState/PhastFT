@@ -1,6 +1,7 @@
-// use rayon::prelude::*;
+use rayon::prelude::*;
 use spinoza::core::State;
 use spinoza::math::{Float, PI, SQRT_ONE_HALF};
+use spinoza::utils::pretty_print_int;
 
 fn bit_reverse_permutation(state: &mut State) {
     let n = state.len();
@@ -33,8 +34,8 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
 
     state
         .reals
-        .chunks_exact_mut(chunk_size)
-        .zip(state.imags.chunks_exact_mut(chunk_size))
+        .par_chunks_exact_mut(chunk_size)
+        .zip(state.imags.par_chunks_exact_mut(chunk_size))
         .enumerate()
         .for_each(|(c, (reals_chunk, imags_chunk))| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
@@ -68,16 +69,17 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
 }
 
 /// chunk_size == 4, so hard code twiddle factors
-fn fft_chunk_4(state: &mut State) {
-    let dist = 2;
+fn fft_chunk_8(state: &mut State) {
+    let dist = 4;
+    let chunk_size = dist << 1;
     let twiddles_re = [1.0, SQRT_ONE_HALF, 0.0, -SQRT_ONE_HALF];
     let twiddles_re = [0.0, -SQRT_ONE_HALF, -1.0, SQRT_ONE_HALF];
 
     state
         .reals
-        .chunks_exact_mut(4)
-        .zip(state.imags.chunks_exact_mut(4))
-        //.with_max_len(1 << 11)
+        .par_chunks_exact_mut(chunk_size)
+        .zip(state.imags.par_chunks_exact_mut(chunk_size))
+        .with_max_len(1 << 11)
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -111,8 +113,8 @@ fn fft_chunk_2(state: &mut State) {
     let dist = 1;
     state
         .reals
-        .chunks_exact_mut(2)
-        .zip(state.imags.chunks_exact_mut(2))
+        .par_chunks_exact_mut(2)
+        .zip_eq(state.imags.par_chunks_exact_mut(2))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -159,23 +161,25 @@ pub fn fft_dif(state: &mut State) {
 }
 
 fn main() {
-    let N: usize = 25;
-    // println!("run PhastFT with {N} qubits");
-    // let now = std::time::Instant::now();
+    let N: usize = 30;
+    println!("run PhastFT with {N} qubits");
+    let now = std::time::Instant::now();
 
-    let n = 1 << N;
-    let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-    let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-    let mut state = State {
-        reals: x_re,
-        imags: x_im,
-        n: N as u8,
-    };
-    fft_dif(&mut state);
+    for i in 2..N {
+        let n = 1 << N;
+        let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+        let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+        let mut state = State {
+            reals: x_re,
+            imags: x_im,
+            n: i as u8,
+        };
+        fft_dif(&mut state);
 
-    // println!("state len: {}", state.len());
-    // let elapsed = pretty_print_int(now.elapsed().as_micros());
-    // println!("time elapsed: {elapsed} us");
+        // println!("state len: {}", state.len());
+        let elapsed = pretty_print_int(now.elapsed().as_micros());
+        println!("time elapsed: {elapsed} us");
+    }
     // println!("{state}");
 }
 
