@@ -222,17 +222,24 @@ pub fn fft_dif(state: &mut State) {
 }
 
 fn main() {
-    let n = 30;
-    // println!("run PhastFT with {n} qubits");
+    let N: usize = 25;
+    // println!("run PhastFT with {N} qubits");
+    // let now = std::time::Instant::now();
 
+    let n = 1 << N;
     let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-    let x_im = (1..n + 1).map(|i| i as Float).collect();
+    let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
     let mut state = State {
         reals: x_re,
         imags: x_im,
-        n,
+        n: N as u8,
     };
     fft_dif(&mut state);
+
+    // println!("state len: {}", state.len());
+    // let elapsed = pretty_print_int(now.elapsed().as_micros());
+    // println!("time elapsed: {elapsed} us");
+    // println!("{state}");
 }
 
 #[cfg(test)]
