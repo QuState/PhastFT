@@ -1,6 +1,7 @@
+use bit_reverse::ParallelReverse;
 use rayon::prelude::*;
 use spinoza::core::State;
-use spinoza::math::{Float, PI, SQRT_ONE_HALF};
+use spinoza::math::{Float, PI};
 use spinoza::utils::{gen_random_state, pretty_print_int};
 
 fn br_perm<T>(buf: &mut [T]) {
