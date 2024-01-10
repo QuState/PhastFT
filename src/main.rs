@@ -3,14 +3,21 @@ use rayon::prelude::*;
 use spinoza::core::State;
 use spinoza::math::{Float, PI};
 use spinoza::utils::{gen_random_state, pretty_print_int};
+use std::collections::HashSet;
 
 fn br_perm<T>(buf: &mut [T]) {
     let n = buf.len();
     let shift = (n - 1).leading_zeros();
+    let mut j: usize = 0;
+    let mut seen = HashSet::with_capacity(n >> 1);
+
     for i in 1..n {
         let j = i.reverse_bits() >> shift;
 
-        if i < j {
+        if seen.contains(&i) && seen.contains(&j) && i < j {
+            seen.insert(i);
+            seen.insert(j);
+            println!("{i}, {j}");
             buf.swap(i, j);
         }
     }
@@ -19,14 +26,14 @@ fn br_perm<T>(buf: &mut [T]) {
 fn bit_reverse_permute_state_par_opt(state: &mut State) {
     std::thread::scope(|s| {
         s.spawn(|| br_perm(&mut state.reals));
-        s.spawn(|| br_perm(&mut state.imags));
+        //s.spawn(|| br_perm(&mut state.imags));
     });
 }
 
 fn bit_reverse_permute_state_par(state: &mut State) {
     std::thread::scope(|s| {
         s.spawn(|| bit_reverse_permutation(&mut state.reals));
-        s.spawn(|| bit_reverse_permutation(&mut state.imags));
+        // s.spawn(|| bit_reverse_permutation(&mut state.imags));
     });
 }
 
@@ -45,6 +52,7 @@ fn bit_reverse_permutation<T>(buf: &mut [T]) {
 
         if i < j {
             buf.swap(i, j);
+            println!("{i}, {j}");
         }
     }
 }
@@ -215,17 +223,19 @@ fn main() {
     //     println!("time elapsed: {elapsed} us");
     // }
 
-    bm_brp(N);
+    bm_brp(4);
 }
 
 fn bm_brp(num_qubits: usize) {
-    for n in 2..num_qubits {
+    for n in 3..num_qubits {
         let mut state = gen_random_state(n);
+        eprintln!("# qubits: {n}");
 
         let now = std::time::Instant::now();
         bit_reverse_permute_state_par(&mut state);
         let e1 = now.elapsed().as_micros();
         let elapsed1 = pretty_print_int(e1);
+        eprintln!("initial   --> time elapsed: {elapsed1} us");
 
         // reset
         bit_reverse_permute_state_par(&mut state);
@@ -236,9 +246,7 @@ fn bm_brp(num_qubits: usize) {
         let elapsed2 = pretty_print_int(e2);
 
         let pc = percent_change(e2 as Float, e1 as Float);
-        println!("# qubits: {n}");
-        println!("initial   --> time elapsed: {elapsed1} us");
-        println!("optimized --> time elapsed: {elapsed2} us\npercent change: {pc}\n----------------------------");
+        eprintln!("optimized --> time elapsed: {elapsed2} us\npercent change: {pc}\n----------------------------");
     }
 }
 
