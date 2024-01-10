@@ -51,14 +51,9 @@ fn bit_reverse_permutation<T>(buf: &mut [T]) {
     }
 }
 
-fn fft_chunk_n(state: &mut State, dist: usize) {
+fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
     let chunk_size = dist << 1;
     // println!("dist: {} chunk_size: {}", dist, chunk_size);
-
-    let angle = -PI / (dist as Float);
-    let (st, ct) = angle.sin_cos();
-    let wlen_re = ct;
-    let wlen_im = st;
 
     state
         .reals
@@ -68,15 +63,16 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
         .for_each(|(c, (reals_chunk, imags_chunk))| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-            let mut w_re = 1.0;
-            let mut w_im = 0.0;
 
             reals_s0
-                .iter_mut()
-                .zip(reals_s1.iter_mut())
-                .zip(imags_s0.iter_mut())
-                .zip(imags_s1.iter_mut())
-                .for_each(|(((re_s0, re_s1), im_s0), im_s1)| {
+                .par_iter_mut()
+                .zip_eq(reals_s1.par_iter_mut())
+                .zip_eq(imags_s0.par_iter_mut())
+                .zip_eq(imags_s1.par_iter_mut())
+                .zip_eq(twiddles_re.par_iter())
+                .zip_eq(twiddles_im.par_iter())
+                .with_min_len(1 << 15)
+                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -86,12 +82,9 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
                     *im_s0 = imag_c0 + imag_c1;
                     let v_re = real_c0 - real_c1;
                     let v_im = imag_c0 - imag_c1;
+
                     *re_s1 = v_re * w_re - v_im * w_im;
                     *im_s1 = v_re * w_im + v_im * w_re;
-
-                    let temp = w_re;
-                    w_re = w_re * wlen_re - w_im * wlen_im;
-                    w_im = temp * wlen_im + w_im * wlen_re;
                 });
         });
 }
@@ -114,7 +107,7 @@ fn fft_chunk_4(state: &mut State) {
         .reals
         .par_chunks_exact_mut(chunk_size)
         .zip(state.imags.par_chunks_exact_mut(chunk_size))
-        .with_max_len(1 << 15)
+        .with_max_len(1 << 14)
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -148,7 +141,7 @@ fn fft_chunk_2(state: &mut State) {
         .reals
         .par_chunks_exact_mut(2)
         .zip_eq(state.imags.par_chunks_exact_mut(2))
-        .with_max_len(1 << 16)
+        .with_max_len(1 << 14)
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -180,6 +173,8 @@ fn fft_chunk_2(state: &mut State) {
 /// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
 pub fn fft_dif(state: &mut State) {
     let n: usize = state.n.into();
+    let mut twiddles_re: Vec<_> = Vec::with_capacity(1 << (n - 1));
+    let mut twiddles_im: Vec<_> = Vec::with_capacity(1 << (n - 1));
 
     for t in (0..n).rev() {
         let dist = 1 << t;
@@ -190,7 +185,25 @@ pub fn fft_dif(state: &mut State) {
         } else if chunk_size == 4 {
             fft_chunk_4(state);
         } else {
-            fft_chunk_n(state, dist);
+            let angle = -PI / (dist as Float);
+            let (st, ct) = angle.sin_cos();
+            let wlen_re = ct;
+            let wlen_im = st;
+
+            twiddles_re.push(1.0);
+            twiddles_im.push(0.0);
+
+            (1..dist).for_each(|i| {
+                let mut w_re = twiddles_re[i - 1];
+                let mut w_im = twiddles_im[i - 1];
+                let temp = w_re;
+                w_re = w_re * wlen_re - w_im * wlen_im;
+                w_im = temp * wlen_im + w_im * wlen_re;
+                twiddles_re.push(w_re);
+                twiddles_im.push(w_im);
+                // eprintln!("{w_re} + i{w_im}");
+            });
+            fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
         }
     }
     bit_reverse_permute_state_par(state);
