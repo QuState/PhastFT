@@ -1,39 +1,33 @@
-use bit_reverse::ParallelReverse;
 use rayon::prelude::*;
 use spinoza::core::State;
 use spinoza::math::{Float, PI};
 use spinoza::utils::{gen_random_state, pretty_print_int};
-use std::collections::HashSet;
 
+// TODO: look into using reverse bits but skip the extra swaps
 fn br_perm<T>(buf: &mut [T]) {
     let n = buf.len();
     let shift = (n - 1).leading_zeros();
-    let mut j: usize = 0;
-    let mut seen = HashSet::with_capacity(n >> 1);
 
     for i in 1..n {
         let j = i.reverse_bits() >> shift;
 
-        if seen.contains(&i) && seen.contains(&j) && i < j {
-            seen.insert(i);
-            seen.insert(j);
-            println!("{i}, {j}");
+        if i < j {
             buf.swap(i, j);
         }
     }
 }
-
-fn bit_reverse_permute_state_par_opt(state: &mut State) {
-    std::thread::scope(|s| {
-        s.spawn(|| br_perm(&mut state.reals));
-        //s.spawn(|| br_perm(&mut state.imags));
-    });
-}
+//
+// fn bit_reverse_permute_state_par_opt(state: &mut State) {
+//     std::thread::scope(|s| {
+//         s.spawn(|| br_perm(&mut state.reals));
+//         s.spawn(|| br_perm(&mut state.imags));
+//     });
+// }
 
 fn bit_reverse_permute_state_par(state: &mut State) {
     std::thread::scope(|s| {
-        s.spawn(|| bit_reverse_permutation(&mut state.reals));
-        // s.spawn(|| bit_reverse_permutation(&mut state.imags));
+        bit_reverse_permutation(&mut state.reals);
+        bit_reverse_permutation(&mut state.imags);
     });
 }
 
@@ -52,7 +46,7 @@ fn bit_reverse_permutation<T>(buf: &mut [T]) {
 
         if i < j {
             buf.swap(i, j);
-            println!("{i}, {j}");
+            // println!("{i}, {j}");
         }
     }
 }
@@ -204,26 +198,26 @@ pub fn fft_dif(state: &mut State) {
 
 fn main() {
     let N: usize = 30;
-    //
-    // for i in 2..N {
-    //     println!("run PhastFT with {i} qubits");
-    //     let now = std::time::Instant::now();
-    //     let n = 1 << i;
-    //     let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-    //     let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-    //     let mut state = State {
-    //         reals: x_re,
-    //         imags: x_im,
-    //         n: i as u8,
-    //     };
-    //     fft_dif(&mut state);
-    //
-    //     // println!("state len: {}", state.len());
-    //     let elapsed = pretty_print_int(now.elapsed().as_micros());
-    //     println!("time elapsed: {elapsed} us");
-    // }
 
-    bm_brp(4);
+    for i in 2..N {
+        println!("run PhastFT with {i} qubits");
+        let now = std::time::Instant::now();
+        let n = 1 << i;
+        let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+        let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+        let mut state = State {
+            reals: x_re,
+            imags: x_im,
+            n: i as u8,
+        };
+        fft_dif(&mut state);
+
+        // println!("state len: {}", state.len());
+        let elapsed = pretty_print_int(now.elapsed().as_micros());
+        println!("time elapsed: {elapsed} us");
+    }
+
+    bm_brp(30);
 }
 
 fn bm_brp(num_qubits: usize) {
@@ -263,19 +257,21 @@ mod tests {
 
     #[test]
     fn bit_reversal() {
-        let n = 16;
-        let mut buf = (0..n).collect::<Vec<usize>>();
+        for i in 2..24 {
+            let n = 1 << i;
+            let mut buf = (0..n).collect::<Vec<usize>>();
 
-        bit_reverse_permutation(&mut buf);
-        println!("{:?}", buf);
+            bit_reverse_permutation(&mut buf);
+            // println!("{:?}", buf);
 
-        br_perm(&mut buf);
-        println!("{:?}", buf);
+            br_perm(&mut buf);
+            // println!("{:?}", buf);
 
-        let mut b = buf.clone();
-        b.sort();
+            let mut b = buf.clone();
+            b.par_sort();
 
-        assert_eq!(b, buf);
+            assert_eq!(b, buf);
+        }
     }
 
     #[test]
