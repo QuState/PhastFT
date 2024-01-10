@@ -204,6 +204,8 @@ pub fn fft_dif(state: &mut State) {
                 // eprintln!("{w_re} + i{w_im}");
             });
             fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
+            twiddles_re.clear();
+            twiddles_im.clear();
         }
     }
     bit_reverse_permute_state_par(state);
