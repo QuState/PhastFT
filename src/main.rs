@@ -1,5 +1,4 @@
-use rayon::prelude::*;
-use rustfft::num_complex::Complex;
+// use rayon::prelude::*;
 use spinoza::core::State;
 use spinoza::math::{Float, PI};
 use spinoza::utils::{gen_random_state, pretty_print_int};
@@ -57,25 +56,20 @@ fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], 
 
     state
         .reals
-        .par_chunks_exact_mut(chunk_size)
-        .zip(state.imags.par_chunks_exact_mut(chunk_size))
-        .with_max_len(1 << 11)
+        .chunks_exact_mut(chunk_size)
+        .zip(state.imags.chunks_exact_mut(chunk_size))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
-            (
-                reals_s0.par_iter_mut(),
-                reals_s1.par_iter_mut(),
-                imags_s0.par_iter_mut(),
-                imags_s1.par_iter_mut(),
-                twiddles_re.par_iter(),
-                twiddles_im.par_iter(),
-            )
-                .into_par_iter()
-                .with_min_len(1 << 15)
-                .enumerate()
-                .for_each(|(i, (re_s0, re_s1, im_s0, im_s1, w_re, w_im))| {
+            reals_s0
+                .iter_mut()
+                .zip(reals_s1.iter_mut())
+                .zip(imags_s0.iter_mut())
+                .zip(imags_s1.iter_mut())
+                .zip(twiddles_re.iter())
+                .zip(twiddles_im.iter())
+                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -99,9 +93,8 @@ fn fft_chunk_4(state: &mut State) {
 
     state
         .reals
-        .par_chunks_exact_mut(chunk_size)
-        .zip(state.imags.par_chunks_exact_mut(chunk_size))
-        .with_max_len(1 << 15)
+        .chunks_exact_mut(chunk_size)
+        .zip(state.imags.chunks_exact_mut(chunk_size))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -133,9 +126,8 @@ fn fft_chunk_2(state: &mut State) {
     let dist = 1;
     state
         .reals
-        .par_chunks_exact_mut(2)
-        .zip_eq(state.imags.par_chunks_exact_mut(2))
-        .with_max_len(1 << 14)
+        .chunks_exact_mut(2)
+        .zip(state.imags.chunks_exact_mut(2))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
