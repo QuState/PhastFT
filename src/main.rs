@@ -3,31 +3,30 @@ use spinoza::core::State;
 use spinoza::math::{Float, PI, SQRT_ONE_HALF};
 use spinoza::utils::{gen_random_state, pretty_print_int};
 
+fn br_perm<T>(buf: &mut [T]) {
+    let n = buf.len();
+    let shift = (n - 1).leading_zeros();
+    for i in 1..n {
+        let j = i.reverse_bits() >> shift;
+
+        if i < j {
+            buf.swap(i, j);
+        }
+    }
+}
+
+fn bit_reverse_permute_state_par_opt(state: &mut State) {
+    std::thread::scope(|s| {
+        s.spawn(|| br_perm(&mut state.reals));
+        s.spawn(|| br_perm(&mut state.imags));
+    });
+}
+
 fn bit_reverse_permute_state_par(state: &mut State) {
     std::thread::scope(|s| {
         s.spawn(|| bit_reverse_permutation(&mut state.reals));
         s.spawn(|| bit_reverse_permutation(&mut state.imags));
     });
-}
-
-fn bit_reverse_permute_state_seq(state: &mut State) {
-    let n = state.len();
-    let mut j = 0;
-
-    for i in 1..n {
-        let mut bit = n >> 1;
-
-        while (j & bit) != 0 {
-            j ^= bit;
-            bit >>= 1;
-        }
-        j ^= bit;
-
-        if i < j {
-            state.reals.swap(i, j);
-            state.imags.swap(i, j);
-        }
-    }
 }
 
 fn bit_reverse_permutation<T>(buf: &mut [T]) {
@@ -98,7 +97,7 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
 fn fft_chunk_8(state: &mut State) {
     let dist = 4;
     let chunk_size = dist << 1;
-    //let twiddles_re = [1.0, SQRT_ONE_HALF, 0.0, -SQRT_ONE_HALF];
+    // let twiddles_re = [1.0, SQRT_ONE_HALF, 0.0, -SQRT_ONE_HALF];
     // let twiddles_re = [0.0, -SQRT_ONE_HALF, -1.0, SQRT_ONE_HALF];
     todo!()
 }
@@ -196,50 +195,54 @@ pub fn fft_dif(state: &mut State) {
 
 fn main() {
     let N: usize = 30;
+    //
+    // for i in 2..N {
+    //     println!("run PhastFT with {i} qubits");
+    //     let now = std::time::Instant::now();
+    //     let n = 1 << i;
+    //     let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+    //     let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+    //     let mut state = State {
+    //         reals: x_re,
+    //         imags: x_im,
+    //         n: i as u8,
+    //     };
+    //     fft_dif(&mut state);
+    //
+    //     // println!("state len: {}", state.len());
+    //     let elapsed = pretty_print_int(now.elapsed().as_micros());
+    //     println!("time elapsed: {elapsed} us");
+    // }
 
-    for i in 2..N {
-        println!("run PhastFT with {i} qubits");
-        let now = std::time::Instant::now();
-        let n = 1 << i;
-        let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-        let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-        let mut state = State {
-            reals: x_re,
-            imags: x_im,
-            n: i as u8,
-        };
-        fft_dif(&mut state);
-
-        // println!("state len: {}", state.len());
-        let elapsed = pretty_print_int(now.elapsed().as_micros());
-        println!("time elapsed: {elapsed} us");
-    }
-    // println!("{state}");
+    bm_brp(N);
 }
 
 fn bm_brp(num_qubits: usize) {
     for n in 2..num_qubits {
-        let mut state = State {
-            reals: (0..(1 << n)).map(|i| i as Float).collect(),
-            imags: (0..(1 << n)).map(|i| i as Float).collect(),
-            n: n as u8,
-        };
-
-        let now = std::time::Instant::now();
-        bit_reverse_permute_state_seq(&mut state);
-        let elapsed1 = pretty_print_int(now.elapsed().as_micros());
-
-        state.reals = (0..(1 << n)).map(|i| i as Float).collect();
-        state.imags = (0..(1 << n)).map(|i| i as Float).collect();
+        let mut state = gen_random_state(n);
 
         let now = std::time::Instant::now();
         bit_reverse_permute_state_par(&mut state);
-        let elapsed2 = pretty_print_int(now.elapsed().as_micros());
+        let e1 = now.elapsed().as_micros();
+        let elapsed1 = pretty_print_int(e1);
 
+        // reset
+        bit_reverse_permute_state_par(&mut state);
+
+        let now = std::time::Instant::now();
+        bit_reverse_permute_state_par_opt(&mut state);
+        let e2 = now.elapsed().as_micros();
+        let elapsed2 = pretty_print_int(e2);
+
+        let pc = percent_change(e2 as Float, e1 as Float);
         println!("# qubits: {n}");
-        println!("impl 1 --> time elapsed: {elapsed1} us");
-        println!("impl 2 --> time elapsed: {elapsed2} us\n----------------------------");
+        println!("initial   --> time elapsed: {elapsed1} us");
+        println!("optimized --> time elapsed: {elapsed2} us\npercent change: {pc}\n----------------------------");
     }
+}
+
+fn percent_change(v2: Float, v1: Float) -> Float {
+    (v2 - v1) / v1 * 100.0
 }
 
 #[cfg(test)]
@@ -253,12 +256,17 @@ mod tests {
     fn bit_reversal() {
         let n = 16;
         let mut buf = (0..n).collect::<Vec<usize>>();
-        let mut buf1 = buf.clone();
 
         bit_reverse_permutation(&mut buf);
-        //bit_reverse_permutation2(&mut buf1);
+        println!("{:?}", buf);
 
-        println!("{:?}\n{:?}", buf, buf1);
+        br_perm(&mut buf);
+        println!("{:?}", buf);
+
+        let mut b = buf.clone();
+        b.sort();
+
+        assert_eq!(b, buf);
     }
 
     #[test]
