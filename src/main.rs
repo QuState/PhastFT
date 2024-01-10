@@ -4,18 +4,18 @@ use spinoza::math::{Float, PI};
 use spinoza::utils::{gen_random_state, pretty_print_int};
 
 // TODO: look into using reverse bits but skip the extra swaps
-fn br_perm<T>(buf: &mut [T]) {
-    let n = buf.len();
-    let shift = (n - 1).leading_zeros();
-
-    for i in 1..n {
-        let j = i.reverse_bits() >> shift;
-
-        if i < j {
-            buf.swap(i, j);
-        }
-    }
-}
+// fn br_perm<T>(buf: &mut [T]) {
+//     let n = buf.len();
+//     let shift = (n - 1).leading_zeros();
+//
+//     for i in 1..n {
+//         let j = i.reverse_bits() >> shift;
+//
+//         if i < j {
+//             buf.swap(i, j);
+//         }
+//     }
+// }
 //
 // fn bit_reverse_permute_state_par_opt(state: &mut State) {
 //     std::thread::scope(|s| {
@@ -193,13 +193,11 @@ pub fn fft_dif(state: &mut State) {
             fft_chunk_n(state, dist);
         }
     }
-    //bit_reverse_permutation(state);
+    bit_reverse_permute_state_par(state);
 }
 
-fn main() {
-    let N: usize = 30;
-
-    for i in 2..N {
+fn bm_fft(num_qubits: usize) {
+    for i in 2..num_qubits {
         println!("run PhastFT with {i} qubits");
         let now = std::time::Instant::now();
         let n = 1 << i;
@@ -216,8 +214,6 @@ fn main() {
         let elapsed = pretty_print_int(now.elapsed().as_micros());
         println!("time elapsed: {elapsed} us");
     }
-
-    bm_brp(30);
 }
 
 fn bm_brp(num_qubits: usize) {
@@ -234,18 +230,25 @@ fn bm_brp(num_qubits: usize) {
         // reset
         bit_reverse_permute_state_par(&mut state);
 
-        let now = std::time::Instant::now();
-        bit_reverse_permute_state_par_opt(&mut state);
-        let e2 = now.elapsed().as_micros();
-        let elapsed2 = pretty_print_int(e2);
-
-        let pc = percent_change(e2 as Float, e1 as Float);
-        eprintln!("optimized --> time elapsed: {elapsed2} us\npercent change: {pc}\n----------------------------");
+        // let now = std::time::Instant::now();
+        // bit_reverse_permute_state_par_opt(&mut state);
+        // let e2 = now.elapsed().as_micros();
+        // let elapsed2 = pretty_print_int(e2);
+        //
+        // let pc = percent_change(e2 as Float, e1 as Float);
+        // eprintln!("optimized --> time elapsed: {elapsed2} us\npercent change: {pc}\n----------------------------");
     }
 }
 
 fn percent_change(v2: Float, v1: Float) -> Float {
     (v2 - v1) / v1 * 100.0
+}
+
+fn main() {
+    let N: usize = 30;
+
+    bm_fft(N);
+    // bm_brp(30);
 }
 
 #[cfg(test)]
@@ -264,7 +267,7 @@ mod tests {
             bit_reverse_permutation(&mut buf);
             // println!("{:?}", buf);
 
-            br_perm(&mut buf);
+            // br_perm(&mut buf);
             // println!("{:?}", buf);
 
             let mut b = buf.clone();
