@@ -1,78 +1,81 @@
 use rayon::prelude::*;
+use rustfft::num_complex::Complex;
 use spinoza::core::State;
 use spinoza::math::{Float, PI};
 use spinoza::utils::{gen_random_state, pretty_print_int};
 
 // TODO: look into using reverse bits but skip the extra swaps
-// fn br_perm<T>(buf: &mut [T]) {
-//     let n = buf.len();
-//     let shift = (n - 1).leading_zeros();
-//
-//     for i in 1..n {
-//         let j = i.reverse_bits() >> shift;
-//
-//         if i < j {
-//             buf.swap(i, j);
-//         }
-//     }
-// }
-//
-// fn bit_reverse_permute_state_par_opt(state: &mut State) {
-//     std::thread::scope(|s| {
-//         s.spawn(|| br_perm(&mut state.reals));
-//         s.spawn(|| br_perm(&mut state.imags));
-//     });
-// }
-
-fn bit_reverse_permute_state_par(state: &mut State) {
-    std::thread::scope(|s| {
-        bit_reverse_permutation(&mut state.reals);
-        bit_reverse_permutation(&mut state.imags);
-    });
-}
-
-fn bit_reverse_permutation<T>(buf: &mut [T]) {
+fn br_perm<T>(buf: &mut [T]) {
     let n = buf.len();
-    let mut j = 0;
+    let shift = (n - 1).leading_zeros();
 
     for i in 1..n {
-        let mut bit = n >> 1;
-
-        while (j & bit) != 0 {
-            j ^= bit;
-            bit >>= 1;
-        }
-        j ^= bit;
+        let j = i.reverse_bits() >> shift;
 
         if i < j {
             buf.swap(i, j);
-            // println!("{i}, {j}");
         }
     }
 }
 
+fn bit_reverse_permute_state_par(state: &mut State) {
+    std::thread::scope(|s| {
+        s.spawn(|| br_perm(&mut state.reals));
+        s.spawn(|| br_perm(&mut state.imags));
+    });
+}
+
+// fn bit_reverse_permute_state_par(state: &mut State) {
+//     std::thread::scope(|s| {
+//         bit_reverse_permutation(&mut state.reals);
+//         bit_reverse_permutation(&mut state.imags);
+//     });
+// }
+//
+// fn bit_reverse_permutation<T>(buf: &mut [T]) {
+//     let n = buf.len();
+//     let mut j = 0;
+//
+//     for i in 1..n {
+//         let mut bit = n >> 1;
+//
+//         while (j & bit) != 0 {
+//             j ^= bit;
+//             bit >>= 1;
+//         }
+//         j ^= bit;
+//
+//         if i < j {
+//             buf.swap(i, j);
+//             // println!("{i}, {j}");
+//         }
+//     }
+// }
+
 fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
     let chunk_size = dist << 1;
-    // println!("dist: {} chunk_size: {}", dist, chunk_size);
 
     state
         .reals
         .par_chunks_exact_mut(chunk_size)
         .zip(state.imags.par_chunks_exact_mut(chunk_size))
-        .enumerate()
-        .for_each(|(c, (reals_chunk, imags_chunk))| {
+        .with_max_len(1 << 11)
+        .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
-            reals_s0
-                .par_iter_mut()
-                .zip_eq(reals_s1.par_iter_mut())
-                .zip_eq(imags_s0.par_iter_mut())
-                .zip_eq(imags_s1.par_iter_mut())
-                .zip_eq(twiddles_re.par_iter())
-                .zip_eq(twiddles_im.par_iter())
+            (
+                reals_s0.par_iter_mut(),
+                reals_s1.par_iter_mut(),
+                imags_s0.par_iter_mut(),
+                imags_s1.par_iter_mut(),
+                twiddles_re.par_iter(),
+                twiddles_im.par_iter(),
+            )
+                .into_par_iter()
                 .with_min_len(1 << 15)
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
+                .enumerate()
+                .for_each(|(i, (re_s0, re_s1, im_s0, im_s1, w_re, w_im))| {
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -90,15 +93,6 @@ fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], 
 }
 
 /// chunk_size == 4, so hard code twiddle factors
-fn fft_chunk_8(state: &mut State) {
-    let dist = 4;
-    let chunk_size = dist << 1;
-    // let twiddles_re = [1.0, SQRT_ONE_HALF, 0.0, -SQRT_ONE_HALF];
-    // let twiddles_re = [0.0, -SQRT_ONE_HALF, -1.0, SQRT_ONE_HALF];
-    todo!()
-}
-
-/// chunk_size == 4, so hard code twiddle factors
 fn fft_chunk_4(state: &mut State) {
     let dist = 2;
     let chunk_size = dist << 1;
@@ -107,7 +101,7 @@ fn fft_chunk_4(state: &mut State) {
         .reals
         .par_chunks_exact_mut(chunk_size)
         .zip(state.imags.par_chunks_exact_mut(chunk_size))
-        .with_max_len(1 << 14)
+        .with_max_len(1 << 15)
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -173,8 +167,10 @@ fn fft_chunk_2(state: &mut State) {
 /// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
 pub fn fft_dif(state: &mut State) {
     let n: usize = state.n.into();
-    let mut twiddles_re: Vec<_> = Vec::with_capacity(1 << (n - 1));
-    let mut twiddles_im: Vec<_> = Vec::with_capacity(1 << (n - 1));
+    let mut twiddles_re = Vec::with_capacity(1 << (n - 1));
+    let mut twiddles_im = Vec::with_capacity(1 << (n - 1));
+    twiddles_re.push(1.0);
+    twiddles_im.push(0.0);
 
     for t in (0..n).rev() {
         let dist = 1 << t;
@@ -190,9 +186,6 @@ pub fn fft_dif(state: &mut State) {
             let wlen_re = ct;
             let wlen_im = st;
 
-            twiddles_re.push(1.0);
-            twiddles_im.push(0.0);
-
             (1..dist).for_each(|i| {
                 let mut w_re = twiddles_re[i - 1];
                 let mut w_im = twiddles_im[i - 1];
@@ -201,11 +194,12 @@ pub fn fft_dif(state: &mut State) {
                 w_im = temp * wlen_im + w_im * wlen_re;
                 twiddles_re.push(w_re);
                 twiddles_im.push(w_im);
-                // eprintln!("{w_re} + i{w_im}");
             });
             fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
             twiddles_re.clear();
             twiddles_im.clear();
+            twiddles_re.push(1.0);
+            twiddles_im.push(0.0);
         }
     }
     bit_reverse_permute_state_par(state);
@@ -214,7 +208,6 @@ pub fn fft_dif(state: &mut State) {
 fn bm_fft(num_qubits: usize) {
     for i in 2..num_qubits {
         println!("run PhastFT with {i} qubits");
-        let now = std::time::Instant::now();
         let n = 1 << i;
         let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
         let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
@@ -223,9 +216,9 @@ fn bm_fft(num_qubits: usize) {
             imags: x_im,
             n: i as u8,
         };
-        fft_dif(&mut state);
 
-        // println!("state len: {}", state.len());
+        let now = std::time::Instant::now();
+        fft_dif(&mut state);
         let elapsed = pretty_print_int(now.elapsed().as_micros());
         println!("time elapsed: {elapsed} us");
     }
@@ -233,14 +226,14 @@ fn bm_fft(num_qubits: usize) {
 
 fn bm_brp(num_qubits: usize) {
     for n in 3..num_qubits {
+        println!("# qubits: {n}");
         let mut state = gen_random_state(n);
-        eprintln!("# qubits: {n}");
 
         let now = std::time::Instant::now();
         bit_reverse_permute_state_par(&mut state);
         let e1 = now.elapsed().as_micros();
         let elapsed1 = pretty_print_int(e1);
-        eprintln!("initial   --> time elapsed: {elapsed1} us");
+        println!("initial   --> time elapsed: {elapsed1} us");
 
         // reset
         bit_reverse_permute_state_par(&mut state);

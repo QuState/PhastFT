@@ -7,11 +7,11 @@ fn main() {
     for i in 2..N {
         println!("run RustFFT with {i} qubits");
         let n = 1 << i;
-        let now = std::time::Instant::now();
         let mut buffer: Vec<Complex64> = (1..n + 1)
             .map(|i| Complex64::new(i as f64, i as f64))
             .collect();
 
+        let now = std::time::Instant::now();
         let mut planner = FftPlanner::new();
         let fft = planner.plan_fft_forward(buffer.len());
         fft.process(&mut buffer);
