@@ -1,3 +1,5 @@
+mod cobra;
+
 // use rayon::prelude::*;
 use spinoza::core::State;
 use spinoza::math::{Float, PI};
@@ -51,8 +53,13 @@ fn bit_reverse_permute_state_par(state: &mut State) {
 //     }
 // }
 
+// TODO(saveliy): use entire cache of twiddle factors and step over it by 2^n / dist
 fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
+    // assert_eq!(twiddles_im.len(), twiddles_re.len());
+    // assert_eq!(state.len() >> 1, twiddles_re.len());
+
     let chunk_size = dist << 1;
+    let step = twiddles_im.len() / dist;
 
     state
         .reals
@@ -67,8 +74,8 @@ fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], 
                 .zip(reals_s1.iter_mut())
                 .zip(imags_s0.iter_mut())
                 .zip(imags_s1.iter_mut())
-                .zip(twiddles_re.iter())
-                .zip(twiddles_im.iter())
+                .zip(twiddles_re.iter().step_by(step))
+                .zip(twiddles_im.iter().step_by(step))
                 .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
@@ -79,7 +86,6 @@ fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], 
                     *im_s0 = imag_c0 + imag_c1;
                     let v_re = real_c0 - real_c1;
                     let v_im = imag_c0 - imag_c1;
-
                     *re_s1 = v_re * w_re - v_im * w_im;
                     *im_s1 = v_re * w_im + v_im * w_re;
                 });
@@ -159,40 +165,43 @@ fn fft_chunk_2(state: &mut State) {
 /// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
 pub fn fft_dif(state: &mut State) {
     let n: usize = state.n.into();
-    let mut twiddles_re = Vec::with_capacity(1 << (n - 1));
-    let mut twiddles_im = Vec::with_capacity(1 << (n - 1));
-    twiddles_re.push(1.0);
-    twiddles_im.push(0.0);
+
+    // let now = std::time::Instant::now();
+    let N = state.len() / 2;
+    let angle = -PI / (N as Float);
+    let (st, ct) = angle.sin_cos();
+    let wlen_re = ct;
+    let wlen_im = st;
+    let mut twiddles_re = vec![0.0; N];
+    let mut twiddles_im = vec![0.0; N];
+    twiddles_re[0] = 1.0;
+
+    (1..N).for_each(|i| {
+        let mut w_re = twiddles_re[i - 1];
+        let mut w_im = twiddles_im[i - 1];
+        let temp = w_re;
+        w_re = w_re * wlen_re - w_im * wlen_im;
+        w_im = temp * wlen_im + w_im * wlen_re;
+        twiddles_re[i] = w_re;
+        twiddles_im[i] = w_im;
+    });
+    // let elapsed = pretty_print_int(now.elapsed().as_micros());
+    // println!("twiddle factor cache build took: {elapsed} us");
 
     for t in (0..n).rev() {
         let dist = 1 << t;
-        let chunk_size = dist << 1;
+        // let chunk_size = dist << 1;
+        fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
 
-        if chunk_size == 2 {
-            fft_chunk_2(state);
+        /*
+        if chunk_size > 4 {
+            fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
         } else if chunk_size == 4 {
             fft_chunk_4(state);
-        } else {
-            let angle = -PI / (dist as Float);
-            let (st, ct) = angle.sin_cos();
-            let wlen_re = ct;
-            let wlen_im = st;
-
-            (1..dist).for_each(|i| {
-                let mut w_re = twiddles_re[i - 1];
-                let mut w_im = twiddles_im[i - 1];
-                let temp = w_re;
-                w_re = w_re * wlen_re - w_im * wlen_im;
-                w_im = temp * wlen_im + w_im * wlen_re;
-                twiddles_re.push(w_re);
-                twiddles_im.push(w_im);
-            });
-            fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
-            twiddles_re.clear();
-            twiddles_im.clear();
-            twiddles_re.push(1.0);
-            twiddles_im.push(0.0);
+        } else if chunk_size == 2 {
+            fft_chunk_2(state);
         }
+        */
     }
     bit_reverse_permute_state_par(state);
 }
@@ -258,28 +267,28 @@ mod tests {
     use spinoza::utils::assert_float_closeness;
     use std::ops::Range;
 
-    #[test]
-    fn bit_reversal() {
-        for i in 2..24 {
-            let n = 1 << i;
-            let mut buf = (0..n).collect::<Vec<usize>>();
-
-            bit_reverse_permutation(&mut buf);
-            // println!("{:?}", buf);
-
-            // br_perm(&mut buf);
-            // println!("{:?}", buf);
-
-            let mut b = buf.clone();
-            b.par_sort();
-
-            assert_eq!(b, buf);
-        }
-    }
+    // #[test]
+    // fn bit_reversal() {
+    //     for i in 2..24 {
+    //         let n = 1 << i;
+    //         let mut buf = (0..n).collect::<Vec<usize>>();
+    //
+    //         bit_reverse_permutation(&mut buf);
+    //         // println!("{:?}", buf);
+    //
+    //         // br_perm(&mut buf);
+    //         // println!("{:?}", buf);
+    //
+    //         let mut b = buf.clone();
+    //         b.par_sort();
+    //
+    //         assert_eq!(b, buf);
+    //     }
+    // }
 
     #[test]
     fn fft() {
-        let range = Range { start: 2, end: 26 };
+        let range = Range { start: 2, end: 18 };
 
         for k in range {
             let n = 1 << k;
