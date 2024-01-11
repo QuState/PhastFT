@@ -267,24 +267,24 @@ mod tests {
     use spinoza::utils::assert_float_closeness;
     use std::ops::Range;
 
-    // #[test]
-    // fn bit_reversal() {
-    //     for i in 2..24 {
-    //         let n = 1 << i;
-    //         let mut buf = (0..n).collect::<Vec<usize>>();
-    //
-    //         bit_reverse_permutation(&mut buf);
-    //         // println!("{:?}", buf);
-    //
-    //         // br_perm(&mut buf);
-    //         // println!("{:?}", buf);
-    //
-    //         let mut b = buf.clone();
-    //         b.par_sort();
-    //
-    //         assert_eq!(b, buf);
-    //     }
-    // }
+    #[test]
+    fn bit_reversal() {
+        let N = 16;
+        let mut buf = (0..N).collect::<Vec<usize>>();
+
+        br_perm(&mut buf);
+        println!("{:?}", buf);
+        assert_eq!(
+            buf,
+            vec![0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15]
+        );
+
+        let N = 8;
+        let mut buf = (0..N).collect::<Vec<usize>>();
+        br_perm(&mut buf);
+        println!("{:?}", buf);
+        assert_eq!(buf, vec![0, 4, 2, 6, 1, 5, 3, 7]);
+    }
 
     #[test]
     fn fft() {
