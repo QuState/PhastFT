@@ -8,9 +8,7 @@ use spinoza::utils::pretty_print_int;
 
 use crate::bravo::bravo;
 
-mod benchmark;
 mod bravo;
-mod cobra;
 
 // TODO: look into using reverse bits but skip the extra swaps
 fn br_perm<T>(buf: &mut [T]) {
