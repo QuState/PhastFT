@@ -195,6 +195,30 @@ fn fft_chunk_2(state: &mut State) {
         });
 }
 
+fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
+    let mut twiddles_re = vec![0.0; dist];
+    let mut twiddles_im = vec![0.0; dist];
+    twiddles_re[0] = 1.0;
+
+    let angle = -PI / (dist as f64);
+    let (st, ct) = angle.sin_cos();
+    let (mut w_re, mut w_im) = (1.0, 0.0);
+
+    twiddles_re
+        .iter_mut()
+        .skip(1)
+        .zip(twiddles_im.iter_mut().skip(1))
+        .for_each(|(re, im)| {
+            let temp = w_re;
+            w_re = w_re * ct - w_im * st;
+            w_im = temp * st + w_im * ct;
+            *re = w_re;
+            *im = w_im;
+        });
+
+    (twiddles_re, twiddles_im)
+}
+
 /// FFT -- Decimation in Frequency
 ///
 /// This is just the decimation-in-time algorithm, reversed.
@@ -209,24 +233,7 @@ pub fn fft_dif(state: &mut State) {
         let chunk_size = dist << 1;
 
         if chunk_size > 4 {
-            let mut twiddles_re = vec![0.0; dist];
-            let mut twiddles_im = vec![0.0; dist];
-            twiddles_re[0] = 1.0;
-            let angle = -PI / (dist as Float);
-            let (st, ct) = angle.sin_cos();
-            let wlen_re = ct;
-            let wlen_im = st;
-
-            (1..dist).for_each(|i| {
-                let mut w_re = twiddles_re[i - 1];
-                let mut w_im = twiddles_im[i - 1];
-                let temp = w_re;
-                w_re = w_re * wlen_re - w_im * wlen_im;
-                w_im = temp * wlen_im + w_im * wlen_re;
-                twiddles_re[i] = w_re;
-                twiddles_im[i] = w_im;
-            });
-
+            let (twiddles_re, twiddles_im) = generate_twiddles(dist);
             if chunk_size >= 16 {
                 fft_chunk_n_simd(state, &twiddles_re, &twiddles_im, dist);
             } else {
@@ -236,7 +243,7 @@ pub fn fft_dif(state: &mut State) {
             fft_chunk_2(state);
         } else if chunk_size == 4 {
             fft_chunk_4(state);
-        }     
+        }
     }
     bit_reverse_permute_state_par(state);
 }
