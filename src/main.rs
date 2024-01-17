@@ -169,40 +169,39 @@ fn fft_chunk_2(state: &mut State) {
 /// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
 pub fn fft_dif(state: &mut State) {
     let n: usize = state.n.into();
-
-    // let now = std::time::Instant::now();
-    let N = state.len() / 2;
-    let angle = -PI / (N as Float);
-    let (st, ct) = angle.sin_cos();
-    let wlen_re = ct;
-    let wlen_im = st;
-    let mut twiddles_re = vec![0.0; N];
-    let mut twiddles_im = vec![0.0; N];
-    twiddles_re[0] = 1.0;
-
-    (1..N).for_each(|i| {
-        let mut w_re = twiddles_re[i - 1];
-        let mut w_im = twiddles_im[i - 1];
-        let temp = w_re;
-        w_re = w_re * wlen_re - w_im * wlen_im;
-        w_im = temp * wlen_im + w_im * wlen_re;
-        twiddles_re[i] = w_re;
-        twiddles_im[i] = w_im;
-    });
-    // let elapsed = pretty_print_int(now.elapsed().as_micros());
-    // println!("twiddle factor cache build took: {elapsed} us");
+    let mut twiddles_re = Vec::with_capacity(1 << (n - 1));
+    let mut twiddles_im = Vec::with_capacity(1 << (n - 1));
+    twiddles_re.push(1.0);
+    twiddles_im.push(0.0);
 
     for t in (0..n).rev() {
         let dist = 1 << t;
         let chunk_size = dist << 1;
-        // fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
 
-        if chunk_size > 4 {
-            fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
+        if chunk_size == 2 {
+            fft_chunk_2(state);
         } else if chunk_size == 4 {
             fft_chunk_4(state);
-        } else if chunk_size == 2 {
-            fft_chunk_2(state);
+        } else {
+            let angle = -PI / (dist as Float);
+            let (st, ct) = angle.sin_cos();
+            let wlen_re = ct;
+            let wlen_im = st;
+
+            (1..dist).for_each(|i| {
+                let mut w_re = twiddles_re[i - 1];
+                let mut w_im = twiddles_im[i - 1];
+                let temp = w_re;
+                w_re = w_re * wlen_re - w_im * wlen_im;
+                w_im = temp * wlen_im + w_im * wlen_re;
+                twiddles_re.push(w_re);
+                twiddles_im.push(w_im);
+            });
+            fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
+            twiddles_re.clear();
+            twiddles_im.clear();
+            twiddles_re.push(1.0);
+            twiddles_im.push(0.0);
         }
     }
     bit_reverse_permute_state_par(state);
