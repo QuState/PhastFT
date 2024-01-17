@@ -10,7 +10,6 @@ use crate::bravo::bravo;
 
 mod bravo;
 
-// TODO: look into using reverse bits but skip the extra swaps
 fn br_perm<T>(buf: &mut [T]) {
     let n = buf.len();
     let shift = (n - 1).leading_zeros();
@@ -58,7 +57,7 @@ fn bit_reverse_permutation<T>(buf: &mut [T]) {
     }
 }
 
-// TODO(saveliy): use entire cache of twiddle factors and step over it by 2^{n-1} / dist
+// TODO(saveliy): parallelize
 fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
     // assert_eq!(twiddles_im.len(), twiddles_re.len());
     // assert_eq!(state.len() >> 1, twiddles_re.len());
@@ -210,24 +209,26 @@ pub fn fft_dif(state: &mut State) {
 }
 
 fn bm_fft(num_qubits: usize) {
-    // println!("run PhastFT with {i} qubits");
-    let n = 1 << num_qubits;
-    let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-    let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-    let mut state = State {
-        reals: x_re,
-        imags: x_im,
-        n: num_qubits as u8,
-    };
+    for i in 4..num_qubits {
+        println!("run PhastFT with {i} qubits");
+        let n = 1 << i;
+        let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+        let x_im: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
+        let mut state = State {
+            reals: x_re,
+            imags: x_im,
+            n: num_qubits as u8,
+        };
 
-    // let now = std::time::Instant::now();
-    fft_dif(&mut state);
-    // let elapsed = pretty_print_int(now.elapsed().as_micros());
-    // println!("time elapsed: {elapsed} us");
+        let now = std::time::Instant::now();
+        fft_dif(&mut state);
+        let elapsed = pretty_print_int(now.elapsed().as_micros());
+        println!("time elapsed: {elapsed} us");
+    }
 }
 
 fn bm_brp(num_qubits: usize) {
-    for i in (4..7).into_iter().map(|i| 1 << i) {
+    for i in (2..num_qubits).into_iter().map(|i| 1 << i) {
         let mut buf0: Vec<Float> = (0..i).map(|i| i as Float).collect();
         let now = std::time::Instant::now();
         bravo(&mut buf0);
@@ -246,7 +247,7 @@ fn bm_brp(num_qubits: usize) {
 }
 
 fn main() {
-    bm_fft(28);
+    bm_fft(26);
 }
 
 #[cfg(test)]
