@@ -203,23 +203,15 @@ fn fft_chunk_2(state: &mut State) {
 /// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
 pub fn fft_dif(state: &mut State) {
     let n: usize = state.n.into();
-    let mut twiddles_re = Vec::with_capacity(1 << (n - 1));
-    let mut twiddles_im = Vec::with_capacity(1 << (n - 1));
-    twiddles_re.push(1.0);
-    twiddles_im.push(0.0);
 
     for t in (0..n).rev() {
         let dist = 1 << t;
         let chunk_size = dist << 1;
 
-        if chunk_size > 16 {
-            fft_chunk_n_simd(state, &twiddles_re, &twiddles_im, dist);
-        }
-        if chunk_size == 2 {
-            fft_chunk_2(state);
-        } else if chunk_size == 4 {
-            fft_chunk_4(state);
-        } else {
+        if chunk_size > 4 {
+            let mut twiddles_re = vec![0.0; dist];
+            let mut twiddles_im = vec![0.0; dist];
+            twiddles_re[0] = 1.0;
             let angle = -PI / (dist as Float);
             let (st, ct) = angle.sin_cos();
             let wlen_re = ct;
@@ -231,15 +223,20 @@ pub fn fft_dif(state: &mut State) {
                 let temp = w_re;
                 w_re = w_re * wlen_re - w_im * wlen_im;
                 w_im = temp * wlen_im + w_im * wlen_re;
-                twiddles_re.push(w_re);
-                twiddles_im.push(w_im);
+                twiddles_re[i] = w_re;
+                twiddles_im[i] = w_im;
             });
-            fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
-            twiddles_re.clear();
-            twiddles_im.clear();
-            twiddles_re.push(1.0);
-            twiddles_im.push(0.0);
-        }
+
+            if chunk_size >= 16 {
+                fft_chunk_n_simd(state, &twiddles_re, &twiddles_im, dist);
+            } else {
+                fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
+            }
+        } else if chunk_size == 2 {
+            fft_chunk_2(state);
+        } else if chunk_size == 4 {
+            fft_chunk_4(state);
+        }     
     }
     bit_reverse_permute_state_par(state);
 }
@@ -253,7 +250,7 @@ fn bm_fft(num_qubits: usize) {
         let mut state = State {
             reals: x_re,
             imags: x_im,
-            n: num_qubits as u8,
+            n: i as u8,
         };
 
         let now = std::time::Instant::now();
@@ -283,7 +280,8 @@ fn bm_brp(num_qubits: usize) {
 }
 
 fn main() {
-    bm_fft(26);
+    let n = 31;
+    bm_fft(n);
 }
 
 #[cfg(test)]
