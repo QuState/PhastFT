@@ -125,7 +125,7 @@ fn fft_chunk_n_simd(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Flo
 // TODO(saveliy): parallelize
 fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
     assert_eq!(twiddles_re.len(), twiddles_im.len());
-    assert_eq!(twiddles_re.len(), dist);
+    assert_eq!(twiddles_re.len(), dist >> 1);
     let chunk_size = dist << 1;
 
     state
