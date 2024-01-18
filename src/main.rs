@@ -325,7 +325,12 @@ pub fn fft_dif(state: &mut State) {
             fft_chunk_4(state);
         }
     }
-    bit_reverse_permute_state_seq(state);
+
+    if n < 22 {
+        bit_reverse_permute_state_seq(state);
+    } else {
+        bit_reverse_permute_state_par(state);
+    }
 }
 
 fn bm_fft(num_qubits: usize) {
