@@ -10,32 +10,59 @@ use crate::bravo::bravo;
 
 mod bravo;
 
-fn br_perm<T>(buf: &mut [T]) {
-    let n = buf.len();
-    let shift = (n - 1).leading_zeros();
+fn complexbitrev(buf: &mut [Float], logN: usize) {
+    let mut nodd: usize;
+    let mut noddrev; // to hold bitwise negated or odd values
 
-    for i in 1..n {
-        let j = i.reverse_bits() >> shift;
+    let N = 1 << logN;
+    let halfn = N >> 1; // frequently used 'constants'
+    let quartn = N >> 2;
+    let nmin1 = N - 1;
 
-        if i < j {
-            buf.swap(i, j);
+    let mut forward = halfn; // variable initialisations
+    let mut rev = 1;
+
+    let mut i = quartn;
+    while i > 0 {
+        // start of bitreversed permutation loop, N/4 iterations
+
+        // Gray code generator for even values:
+
+        nodd = !i; // counting ones is easier
+
+        let mut zeros = 0;
+        while (nodd & 1) == 1 {
+            nodd >>= 1;
+            zeros += 1
         }
+
+        forward ^= 2 << zeros; // toggle one bit of forward
+        rev ^= quartn >> zeros; // toggle one bit of rev
+
+        // swap even and ~even conditionally
+        if forward < rev {
+            buf.swap(forward, rev);
+            // swap(forward, rev, real, im);
+            nodd = nmin1 ^ forward; // compute the bitwise negations
+            noddrev = nmin1 ^ rev;
+            // swap(nodd, noddrev, real, im);  // swap bitwise-negated pairs
+            buf.swap(nodd, noddrev);
+        }
+
+        nodd = forward ^ 1; // compute the odd values from the even
+        noddrev = rev ^ halfn;
+        // swap(nodd, noddrev, real, im); // swap odd unconditionally
+        buf.swap(nodd, noddrev);
+        i -= 1;
     }
 }
 
 fn bit_reverse_permute_state_par(state: &mut State) {
     std::thread::scope(|s| {
-        s.spawn(|| br_perm(&mut state.reals));
-        s.spawn(|| br_perm(&mut state.imags));
+        s.spawn(|| complexbitrev(&mut state.reals, state.n as usize));
+        s.spawn(|| complexbitrev(&mut state.imags, state.n as usize));
     });
 }
-
-// fn bit_reverse_permute_state_par(state: &mut State) {
-//     std::thread::scope(|s| {
-//         bit_reverse_permutation(&mut state.reals);
-//         bit_reverse_permutation(&mut state.imags);
-//     });
-// }
 
 fn bit_reverse_permutation<T>(buf: &mut [T]) {
     let n = buf.len();
@@ -268,7 +295,7 @@ fn bm_fft(num_qubits: usize) {
 }
 
 fn bm_brp(num_qubits: usize) {
-    for i in (2..num_qubits).into_iter().map(|i| 1 << i) {
+    for i in (2..num_qubits).map(|i| 1 << i) {
         let mut buf0: Vec<Float> = (0..i).map(|i| i as Float).collect();
         let now = std::time::Instant::now();
         bravo(&mut buf0);
@@ -286,9 +313,33 @@ fn bm_brp(num_qubits: usize) {
     }
 }
 
+fn benchmark_bit_reversal_permutation() {
+    for n in 4..25 {
+        let N: usize = 1 << n;
+        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
+        let now = std::time::Instant::now();
+        complexbitrev(&mut buf, n);
+        let elapsed = pretty_print_int(now.elapsed().as_micros());
+        eprintln!("time elapsed: {elapsed} us");
+
+        let mut buf1: Vec<Float> = (0..N).map(|i| i as Float).collect();
+
+        let now = std::time::Instant::now();
+        bit_reverse_permutation(&mut buf1);
+        let elapsed = pretty_print_int(now.elapsed().as_micros());
+        eprintln!("time elapsed: {elapsed} us\n---------------------------");
+
+        // for i in 0..N {
+        //     println!("{} {}", buf[i], buf1[i]);
+        // }
+        assert_eq!(buf, buf1);
+    }
+}
+
 fn main() {
     let n = 31;
     bm_fft(n);
+    // benchmark_bit_reversal_permutation();
 }
 
 #[cfg(test)]
@@ -302,30 +353,25 @@ mod tests {
 
     #[test]
     fn bit_reversal() {
-        let N = 16;
-        let mut buf = (0..N).collect::<Vec<usize>>();
+        let n = 3;
+        let N = 1 << n;
+        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
+        complexbitrev(&mut buf, n);
+        println!("{buf:?}");
+        assert_eq!(buf, vec![0.0, 4.0, 2.0, 6.0, 1.0, 5.0, 3.0, 7.0]);
 
-        br_perm(&mut buf);
-        println!("{:?}", buf);
+        let n = 4;
+        let N = 1 << n;
+        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
+        complexbitrev(&mut buf, n);
+        println!("{buf:?}");
         assert_eq!(
             buf,
-            vec![0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15]
+            vec![
+                0.0, 8.0, 4.0, 12.0, 2.0, 10.0, 6.0, 14.0, 1.0, 9.0, 5.0, 13.0, 3.0, 11.0, 7.0,
+                15.0,
+            ]
         );
-
-        let N = 8;
-        let mut buf = (0..N).collect::<Vec<usize>>();
-        br_perm(&mut buf);
-        println!("{:?}", buf);
-        assert_eq!(buf, vec![0, 4, 2, 6, 1, 5, 3, 7]);
-    }
-
-    #[test]
-    fn bit_reversal_32_points() {
-        let N = 32;
-        let mut buf = (0..N).collect::<Vec<usize>>();
-        br_perm(&mut buf);
-        //bit_reverse_permutation(&mut buf);
-        println!("{:?}", buf);
     }
 
     #[test]
@@ -335,8 +381,8 @@ mod tests {
         for k in range {
             let n = 1 << k;
 
-            let x_re: Vec<Float> = (1..n + 1).map(|i| i as Float).collect();
-            let x_im = (1..n + 1).map(|i| i as Float).collect();
+            let x_re: Vec<Float> = (1..=n).map(|i| i as Float).collect();
+            let x_im = (1..=n).map(|i| i as Float).collect();
             let mut state = State {
                 reals: x_re,
                 imags: x_im,
@@ -344,8 +390,8 @@ mod tests {
             };
             fft_dif(&mut state);
 
-            let mut buffer: Vec<Complex64> = (1..n + 1)
-                .map(|i| Complex64::new(i as f64, i as f64))
+            let mut buffer: Vec<Complex64> = (1..=n)
+                .map(|i| Complex64::new(f64::from(i), f64::from(i)))
                 .collect();
 
             let mut planner = FftPlanner::new();
