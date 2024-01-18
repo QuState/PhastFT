@@ -124,6 +124,8 @@ fn fft_chunk_n_simd(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Flo
 
 // TODO(saveliy): parallelize
 fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
+    assert_eq!(twiddles_re.len(), twiddles_im.len());
+    assert_eq!(twiddles_re.len(), dist);
     let chunk_size = dist << 1;
 
     state
@@ -139,9 +141,16 @@ fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], 
                 .zip(reals_s1.iter_mut())
                 .zip(imags_s0.iter_mut())
                 .zip(imags_s1.iter_mut())
-                .zip(twiddles_re.iter())
-                .zip(twiddles_im.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
+                .enumerate()
+                .for_each(|(i, (((re_s0, re_s1), im_s0), im_s1))| {
+                    let (w_re, w_im) = if i > dist / 2 {
+                        let w_re = twiddles_re[dist - i];
+                        let w_im = twiddles_im[dist - i];
+                        (-w_re, w_im)
+                    } else {
+                        (twiddles_re[i], twiddles_im[i])
+                    };
+
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -223,8 +232,8 @@ fn fft_chunk_2(state: &mut State) {
 }
 
 fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
-    let mut twiddles_re = vec![0.0; dist];
-    let mut twiddles_im = vec![0.0; dist];
+    let mut twiddles_re = vec![0.0; dist >> 1];
+    let mut twiddles_im = vec![0.0; dist >> 1];
     twiddles_re[0] = 1.0;
 
     let angle = -PI / (dist as f64);
