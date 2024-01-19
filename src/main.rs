@@ -9,6 +9,7 @@ use spinoza::utils::pretty_print_int;
 use crate::bravo::bravo;
 
 mod bravo;
+mod twiddles;
 
 // Source: https://www.katjaas.nl/bitreversal/bitreversal.html
 fn bit_rev(buf: &mut [Float], logN: usize) {
