@@ -143,7 +143,7 @@ fn bit_reverse_permutation<T>(buf: &mut [T]) {
 fn fft_chunk_n_simd(state: &mut State, dist: usize) {
     let chunk_size = dist << 1;
     assert!(chunk_size >= 16);
-    let mut scratch = vec![0.0; 16];
+    let mut scratch = [0.0; 16];
 
     state
         .reals
