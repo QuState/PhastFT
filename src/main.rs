@@ -10,6 +10,7 @@ use crate::bravo::bravo;
 
 mod bravo;
 mod twiddles;
+use crate::twiddles::{generate_twiddles, Twiddles};
 
 // Source: https://www.katjaas.nl/bitreversal/bitreversal.html
 fn bit_rev(buf: &mut [Float], logN: usize) {
@@ -139,9 +140,10 @@ fn bit_reverse_permutation<T>(buf: &mut [T]) {
     }
 }
 
-fn fft_chunk_n_simd(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
+fn fft_chunk_n_simd(state: &mut State, dist: usize) {
     let chunk_size = dist << 1;
     assert!(chunk_size >= 16);
+    let mut scratch = vec![0.0; 16];
 
     state
         .reals
@@ -150,22 +152,26 @@ fn fft_chunk_n_simd(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Flo
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+            let mut twiddles_iter = Twiddles::new(dist);
 
             reals_s0
                 .chunks_exact_mut(8)
                 .zip(reals_s1.chunks_exact_mut(8))
                 .zip(imags_s0.chunks_exact_mut(8))
                 .zip(imags_s1.chunks_exact_mut(8))
-                .zip(twiddles_re.chunks_exact(8))
-                .zip(twiddles_im.chunks_exact(8))
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
+                .for_each(|(((re_s0, re_s1), im_s0), im_s1)| {
                     let real_c0 = f64x8::from_slice(re_s0);
                     let real_c1 = f64x8::from_slice(re_s1);
                     let imag_c0 = f64x8::from_slice(im_s0);
                     let imag_c1 = f64x8::from_slice(im_s1);
 
-                    let twiddles_re = f64x8::from_slice(w_re);
-                    let twiddles_im = f64x8::from_slice(w_im);
+                    for i in 0..8 {
+                        let (w_re, w_im) = twiddles_iter.next().unwrap();
+                        scratch[i] = w_re;
+                        scratch[i + 8] = w_im;
+                    }
+                    let twiddles_re = f64x8::from_slice(&scratch[0..8]);
+                    let twiddles_im = f64x8::from_slice(&scratch[8..16]);
 
                     re_s0.copy_from_slice((real_c0 + real_c1).as_array());
                     im_s0.copy_from_slice((imag_c0 + imag_c1).as_array());
@@ -178,7 +184,7 @@ fn fft_chunk_n_simd(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Flo
 }
 
 // TODO(saveliy): parallelize
-fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
+fn fft_chunk_n(state: &mut State, dist: usize) {
     let chunk_size = dist << 1;
 
     state
@@ -188,15 +194,15 @@ fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], 
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+            let twiddles_iter = Twiddles::new(dist);
 
             reals_s0
                 .iter_mut()
                 .zip(reals_s1.iter_mut())
                 .zip(imags_s0.iter_mut())
                 .zip(imags_s1.iter_mut())
-                .zip(twiddles_re.iter())
-                .zip(twiddles_im.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
+                .zip(twiddles_iter.into_iter())
+                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), (w_re, w_im)))| {
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -277,29 +283,6 @@ fn fft_chunk_2(state: &mut State) {
         });
 }
 
-fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
-    let mut twiddles_re = vec![0.0; dist];
-    let mut twiddles_im = vec![0.0; dist];
-    twiddles_re[0] = 1.0;
-
-    let angle = -PI / (dist as f64);
-    let (st, ct) = angle.sin_cos();
-    let (mut w_re, mut w_im) = (1.0, 0.0);
-    twiddles_re
-        .iter_mut()
-        .skip(1)
-        .zip(twiddles_im.iter_mut().skip(1))
-        .for_each(|(re, im)| {
-            let temp = w_re;
-            w_re = w_re * ct - w_im * st;
-            w_im = temp * st + w_im * ct;
-            *re = w_re;
-            *im = w_im;
-        });
-
-    (twiddles_re, twiddles_im)
-}
-
 /// FFT -- Decimation in Frequency
 ///
 /// This is just the decimation-in-time algorithm, reversed.
@@ -314,11 +297,11 @@ pub fn fft_dif(state: &mut State) {
         let chunk_size = dist << 1;
 
         if chunk_size > 4 {
-            let (twiddles_re, twiddles_im) = generate_twiddles(dist);
+            // let (twiddles_re, twiddles_im) = generate_twiddles(dist);
             if chunk_size >= 16 {
-                fft_chunk_n_simd(state, &twiddles_re, &twiddles_im, dist);
+                fft_chunk_n_simd(state, dist);
             } else {
-                fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
+                fft_chunk_n(state, dist);
             }
         } else if chunk_size == 2 {
             fft_chunk_2(state);

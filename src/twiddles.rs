@@ -73,3 +73,26 @@ mod tests {
         assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
     }
 }
+
+pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
+    let mut twiddles_re = vec![0.0; dist];
+    let mut twiddles_im = vec![0.0; dist];
+    twiddles_re[0] = 1.0;
+
+    let angle = -PI / (dist as f64);
+    let (st, ct) = angle.sin_cos();
+    let (mut w_re, mut w_im) = (1.0, 0.0);
+    twiddles_re
+        .iter_mut()
+        .skip(1)
+        .zip(twiddles_im.iter_mut().skip(1))
+        .for_each(|(re, im)| {
+            let temp = w_re;
+            w_re = w_re * ct - w_im * st;
+            w_im = temp * st + w_im * ct;
+            *re = w_re;
+            *im = w_im;
+        });
+
+    (twiddles_re, twiddles_im)
+}
