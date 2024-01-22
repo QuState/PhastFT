@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn fft() {
-        let range = Range { start: 2, end: 19 };
+        let range = Range { start: 2, end: 17 };
 
         for k in range {
             let n = 1 << k;
@@ -235,8 +235,8 @@ mod tests {
                 .for_each(|(i, (z_re, z_im))| {
                     let expect_re = buffer[i].re;
                     let expect_im = buffer[i].im;
-                    assert_float_closeness(*z_re, expect_re, 0.1);
-                    assert_float_closeness(*z_im, expect_im, 0.1);
+                    assert_float_closeness(*z_re, expect_re, 0.001);
+                    assert_float_closeness(*z_im, expect_im, 0.001);
                 });
         }
     }

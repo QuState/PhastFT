@@ -1,14 +1,16 @@
 use spinoza::core::State;
 
 const BLOCK_WIDTH: usize = 64;
-const LOG_BLOCK_WIDTH: usize = 6;
+// size of the cacheline
+const LOG_BLOCK_WIDTH: usize = 6; // log2 of cacheline
 
-// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
-pub(crate) fn bit_rev<T>(buf: &mut [T], logN: usize) {
+/// Run in-place bit reversal on a single buffer
+/// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
+pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
     let mut nodd: usize;
     let mut noddrev; // to hold bitwise negated or odd values
 
-    let N = 1 << logN;
+    let N = 1 << log_n;
     let halfn = N >> 1; // frequently used 'constants'
     let quartn = N >> 2;
     let nmin1 = N - 1;
@@ -50,11 +52,13 @@ pub(crate) fn bit_rev<T>(buf: &mut [T], logN: usize) {
     }
 }
 
-fn complex_bit_rev(state: &mut State, logN: usize) {
+/// Run in-place bit reversal on the entire state (i.e., the reals and imags buffers)
+/// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
+fn complex_bit_rev(state: &mut State, log_n: usize) {
     let mut nodd: usize;
     let mut noddrev; // to hold bitwise negated or odd values
 
-    let N = 1 << logN;
+    let N = 1 << log_n;
     let halfn = N >> 1; // frequently used 'constants'
     let quartn = N >> 2;
     let nmin1 = N - 1;
@@ -101,6 +105,9 @@ fn complex_bit_rev(state: &mut State, logN: usize) {
     }
 }
 
+/// Run in-place bit reversal on the entire state, in parallel.
+/// This function uses 2 threads to run bit reverse on the reals buffer on one thread, and the other thread handles bit
+/// reversing the imaginaries buffer
 pub(crate) fn bit_reverse_permute_state_par(state: &mut State) {
     std::thread::scope(|s| {
         s.spawn(|| bit_rev(&mut state.reals, state.n as usize));
@@ -108,6 +115,7 @@ pub(crate) fn bit_reverse_permute_state_par(state: &mut State) {
     });
 }
 
+/// Run in-place bit reversal on the entire state, serially.
 pub(crate) fn bit_reverse_permute_state_seq(state: &mut State) {
     complex_bit_rev(state, state.n as usize);
 }
@@ -131,6 +139,16 @@ pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
     }
 }
 
+/// Pure Rust implementation of Cache Optimal BitReverse Algorithm (COBRA).
+/// Rewritten from a C++ implementation, which is available here:
+/// https://bitbucket.org/orserang/bit-reversal-methods/src/master/src_and_bin/src/algorithms/COBRAShuffle.hpp
+///
+/// References
+/// [1] L. Carter and K. S. Gatlin, "Towards an optimal bit-reversal permutation program," Proceedings 39th Annual
+/// Symposium on Foundations of Computer Science (Cat. No.98CB36280), Palo Alto, CA, USA, 1998, pp. 544-553, doi:
+/// 10.1109/SFCS.1998.743505.
+/// [2] Christian Knauth, Boran Adas, Daniel Whitfield, Xuesong Wang, Lydia Ickler, Tim Conrad, Oliver Serang:
+/// Practically efficient methods for performing bit-reversed permutation in C++11 on the x86-64 architecture
 pub(crate) fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
     if log_n <= 2 * LOG_BLOCK_WIDTH {
         bit_rev(v, log_n);
@@ -153,10 +171,9 @@ pub(crate) fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) 
                     v[(a << num_b_bits << LOG_BLOCK_WIDTH) | (b << LOG_BLOCK_WIDTH) | c];
             }
         }
-        // Swap v[rev_index] with buffer:
+
         for c in 0..BLOCK_WIDTH {
-            // Note: Typo in original pseudocode by Carter and Gatlin at
-            // the following line:
+            // NOTE: Typo in original pseudocode by Carter and Gatlin at the following line:
             let c_rev = c.reverse_bits() >> ((block_width - 1).leading_zeros());
 
             for a_rev in 0..BLOCK_WIDTH {
@@ -184,15 +201,14 @@ pub(crate) fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) 
 
         // Copy changes that were swapped into buffer above:
         for a in 0..BLOCK_WIDTH {
-            let a_rev = a.reverse_bits() >> ((block_width - 1).leading_zeros()); // BitReversal::reverse_bytewise(a as u64, LOG_BLOCK_WIDTH);
+            let a_rev = a.reverse_bits() >> ((block_width - 1).leading_zeros());
             for c in 0..BLOCK_WIDTH {
-                let c_rev = c.reverse_bits() >> ((block_width - 1).leading_zeros()); // BitReversal::reverse_bytewise(c as u64, LOG_BLOCK_WIDTH);
+                let c_rev = c.reverse_bits() >> ((block_width - 1).leading_zeros());
                 let index_less_than_reverse = a < c_rev
                     || (a == c_rev && b < b_rev)
                     || (a == c_rev && b == b_rev && a_rev < c);
 
                 if index_less_than_reverse {
-                    // std::swap(v[ ], buffer[ ]);
                     let v_idx = (a << num_b_bits << LOG_BLOCK_WIDTH) | (b << LOG_BLOCK_WIDTH) | c;
                     let b_idx = (a_rev << LOG_BLOCK_WIDTH) | c;
                     std::mem::swap(&mut v[v_idx], &mut buffer[b_idx]);
@@ -208,24 +224,23 @@ mod tests {
 
     use super::*;
 
-    fn top_down_bril<T: Clone>(x: &[T]) -> Vec<T> {
+    /// Top down bit reverse interleaving. This is a very simple and well known approach that we only use for testing
+    /// COBRA and any other bit reverse algorithms.
+    fn top_down_bril<T: Copy + Clone>(x: &[T]) -> Vec<T> {
         if x.len() == 1 {
             return x.to_vec();
         }
 
-        let mut y = Vec::new();
-        let evens: Vec<T> = x
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| i & 1 == 0)
-            .map(|(_, val)| val.clone())
-            .collect();
-        let odds: Vec<T> = x
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| i & 1 == 1)
-            .map(|(_, val)| val.clone())
-            .collect();
+        let mut y = Vec::with_capacity(x.len());
+        let mut evens = Vec::with_capacity(x.len() >> 1);
+        let mut odds = Vec::with_capacity(x.len() >> 1);
+
+        let mut i = 1;
+        while i < x.len() {
+            evens.push(x[i - 1]);
+            odds.push(x[i]);
+            i += 2;
+        }
 
         y.extend_from_slice(&top_down_bril(&evens));
         y.extend_from_slice(&top_down_bril(&odds));
@@ -234,17 +249,13 @@ mod tests {
 
     #[test]
     fn cobra() {
-        for n in 13..23 {
+        for n in 4..23 {
             let N = 1 << n;
             let mut v: Vec<_> = (0..N).collect();
             cobra_apply(&mut v, n);
-            //println!("{v:?}");
 
             let x: Vec<_> = (0..N).collect();
-            let y = top_down_bril(&x);
-            // println!("{y:?}");
-
-            assert_eq!(v, y);
+            assert_eq!(v, top_down_bril(&x));
         }
     }
 
