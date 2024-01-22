@@ -4,8 +4,9 @@ use std::simd::prelude::*;
 
 use spinoza::{core::State, math::Float};
 
+use crate::benchmark::bm_fft;
 use crate::cobra::{cobra_apply, LOG_BLOCK_WIDTH};
-use crate::{benchmark::bm_fft, twiddles::Twiddles};
+use crate::twiddles::generate_twiddles;
 
 mod benchmark;
 mod bravo;
@@ -140,7 +141,7 @@ fn bit_reverse_permutation<T>(buf: &mut [T]) {
     }
 }
 
-fn fft_chunk_n_simd(state: &mut State, dist: usize) {
+fn fft_chunk_n_simd(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
     let chunk_size = dist << 1;
     assert!(chunk_size >= 16);
     let mut scratch = [0.0; 16];
@@ -152,39 +153,35 @@ fn fft_chunk_n_simd(state: &mut State, dist: usize) {
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-            let mut twiddles_iter = Twiddles::new(dist);
 
             reals_s0
                 .chunks_exact_mut(8)
                 .zip(reals_s1.chunks_exact_mut(8))
                 .zip(imags_s0.chunks_exact_mut(8))
                 .zip(imags_s1.chunks_exact_mut(8))
-                .for_each(|(((re_s0, re_s1), im_s0), im_s1)| {
+                .zip(twiddles_re.chunks_exact(8))
+                .zip(twiddles_im.chunks_exact(8))
+                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
                     let real_c0 = f64x8::from_slice(re_s0);
                     let real_c1 = f64x8::from_slice(re_s1);
                     let imag_c0 = f64x8::from_slice(im_s0);
                     let imag_c1 = f64x8::from_slice(im_s1);
 
-                    for i in 0..8 {
-                        let (w_re, w_im) = twiddles_iter.next().unwrap();
-                        scratch[i] = w_re;
-                        scratch[i + 8] = w_im;
-                    }
-                    let twiddles_re = f64x8::from_slice(&scratch[0..8]);
-                    let twiddles_im = f64x8::from_slice(&scratch[8..16]);
+                    let tw_re = f64x8::from_slice(w_re);
+                    let tw_im = f64x8::from_slice(w_im);
 
                     re_s0.copy_from_slice((real_c0 + real_c1).as_array());
                     im_s0.copy_from_slice((imag_c0 + imag_c1).as_array());
                     let v_re = real_c0 - real_c1;
                     let v_im = imag_c0 - imag_c1;
-                    re_s1.copy_from_slice((v_re * twiddles_re - v_im * twiddles_im).as_array());
-                    im_s1.copy_from_slice((v_re * twiddles_im + v_im * twiddles_re).as_array());
+                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array());
+                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array());
                 });
         });
 }
 
 // TODO(saveliy): parallelize
-fn fft_chunk_n(state: &mut State, dist: usize) {
+fn fft_chunk_n(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
     let chunk_size = dist << 1;
 
     state
@@ -194,15 +191,15 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-            let twiddles_iter = Twiddles::new(dist);
 
             reals_s0
                 .iter_mut()
                 .zip(reals_s1.iter_mut())
                 .zip(imags_s0.iter_mut())
                 .zip(imags_s1.iter_mut())
-                .zip(twiddles_iter)
-                .for_each(|((((re_s0, re_s1), im_s0), im_s1), (w_re, w_im))| {
+                .zip(twiddles_re.iter())
+                .zip(twiddles_im.iter())
+                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -297,11 +294,11 @@ pub fn fft_dif(state: &mut State) {
         let chunk_size = dist << 1;
 
         if chunk_size > 4 {
-            // let (twiddles_re, twiddles_im) = generate_twiddles(dist);
+            let (twiddles_re, twiddles_im) = generate_twiddles(dist);
             if chunk_size >= 16 {
-                fft_chunk_n_simd(state, dist);
+                fft_chunk_n_simd(state, &twiddles_re, &twiddles_im, dist);
             } else {
-                fft_chunk_n(state, dist);
+                fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
             }
         } else if chunk_size == 2 {
             fft_chunk_2(state);
