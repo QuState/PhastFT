@@ -5,7 +5,7 @@ use std::simd::prelude::*;
 use spinoza::{core::State, math::Float};
 
 use crate::benchmark::bm_fft;
-use crate::cobra::{cobra_apply, LOG_BLOCK_WIDTH};
+use crate::cobra::cobra_apply;
 use crate::twiddles::generate_twiddles;
 
 mod benchmark;
@@ -13,138 +13,9 @@ mod bravo;
 mod cobra;
 mod twiddles;
 
-// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
-fn bit_rev(buf: &mut [Float], logN: usize) {
-    let mut nodd: usize;
-    let mut noddrev; // to hold bitwise negated or odd values
-
-    let N = 1 << logN;
-    let halfn = N >> 1; // frequently used 'constants'
-    let quartn = N >> 2;
-    let nmin1 = N - 1;
-
-    let mut forward = halfn; // variable initialisations
-    let mut rev = 1;
-
-    let mut i = quartn;
-    while i > 0 {
-        // start of bitreversed permutation loop, N/4 iterations
-
-        // Gray code generator for even values:
-
-        nodd = !i; // counting ones is easier
-
-        let mut zeros = 0;
-        while (nodd & 1) == 1 {
-            nodd >>= 1;
-            zeros += 1;
-        }
-
-        forward ^= 2 << zeros; // toggle one bit of forward
-        rev ^= quartn >> zeros; // toggle one bit of rev
-
-        // swap even and ~even conditionally
-        if forward < rev {
-            buf.swap(forward, rev);
-            nodd = nmin1 ^ forward; // compute the bitwise negations
-            noddrev = nmin1 ^ rev;
-            buf.swap(nodd, noddrev); // swap bitwise-negated pairs
-        }
-
-        nodd = forward ^ 1; // compute the odd values from the even
-        noddrev = rev ^ halfn;
-        // swap(nodd, noddrev, real, im); // swap odd unconditionally
-        buf.swap(nodd, noddrev);
-        i -= 1;
-    }
-}
-
-fn complex_bit_rev(state: &mut State, logN: usize) {
-    let mut nodd: usize;
-    let mut noddrev; // to hold bitwise negated or odd values
-
-    let N = 1 << logN;
-    let halfn = N >> 1; // frequently used 'constants'
-    let quartn = N >> 2;
-    let nmin1 = N - 1;
-
-    let mut forward = halfn; // variable initialisations
-    let mut rev = 1;
-
-    let mut i = quartn;
-    while i > 0 {
-        // start of bitreversed permutation loop, N/4 iterations
-
-        // Gray code generator for even values:
-
-        nodd = !i; // counting ones is easier
-
-        let mut zeros = 0;
-        while (nodd & 1) == 1 {
-            nodd >>= 1;
-            zeros += 1;
-        }
-
-        forward ^= 2 << zeros; // toggle one bit of forward
-        rev ^= quartn >> zeros; // toggle one bit of rev
-
-        // swap even and ~even conditionally
-        if forward < rev {
-            state.reals.swap(forward, rev);
-            state.imags.swap(forward, rev);
-            nodd = nmin1 ^ forward; // compute the bitwise negations
-            noddrev = nmin1 ^ rev;
-
-            // swap bitwise-negated pairs
-            state.reals.swap(nodd, noddrev);
-            state.imags.swap(nodd, noddrev);
-        }
-
-        nodd = forward ^ 1; // compute the odd values from the even
-        noddrev = rev ^ halfn;
-
-        // swap odd unconditionally
-        state.reals.swap(nodd, noddrev);
-        state.imags.swap(nodd, noddrev);
-        i -= 1;
-    }
-}
-
-fn bit_reverse_permute_state_par(state: &mut State) {
-    std::thread::scope(|s| {
-        s.spawn(|| bit_rev(&mut state.reals, state.n as usize));
-        s.spawn(|| bit_rev(&mut state.imags, state.n as usize));
-    });
-}
-
-fn bit_reverse_permute_state_seq(state: &mut State) {
-    complex_bit_rev(state, state.n as usize);
-}
-
-fn bit_reverse_permutation<T>(buf: &mut [T]) {
-    let n = buf.len();
-    let mut j = 0;
-
-    for i in 1..n {
-        let mut bit = n >> 1;
-
-        while (j & bit) != 0 {
-            j ^= bit;
-            bit >>= 1;
-        }
-        j ^= bit;
-
-        if i < j {
-            buf.swap(i, j);
-            // println!("{i}, {j}");
-        }
-    }
-}
-
 fn fft_chunk_n_simd(state: &mut State, twiddles_re: &[Float], twiddles_im: &[Float], dist: usize) {
     let chunk_size = dist << 1;
     assert!(chunk_size >= 16);
-    let mut scratch = [0.0; 16];
 
     state
         .reals
@@ -307,8 +178,9 @@ pub fn fft_dif(state: &mut State) {
         }
     }
 
-    if n <= 2 * LOG_BLOCK_WIDTH {
-        bit_reverse_permute_state_seq(state);
+    if n < 22 {
+        cobra_apply(&mut state.reals, n);
+        cobra_apply(&mut state.imags, n);
     } else {
         std::thread::scope(|s| {
             s.spawn(|| cobra_apply(&mut state.reals, n));
@@ -320,7 +192,6 @@ pub fn fft_dif(state: &mut State) {
 fn main() {
     let n = 31;
     bm_fft(n);
-    // benchmark_bit_reversal_permutation();
 }
 
 #[cfg(test)]
@@ -331,29 +202,6 @@ mod tests {
     use spinoza::utils::assert_float_closeness;
 
     use super::*;
-
-    #[test]
-    fn bit_reversal() {
-        let n = 3;
-        let N = 1 << n;
-        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
-        bit_rev(&mut buf, n);
-        println!("{buf:?}");
-        assert_eq!(buf, vec![0.0, 4.0, 2.0, 6.0, 1.0, 5.0, 3.0, 7.0]);
-
-        let n = 4;
-        let N = 1 << n;
-        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
-        bit_rev(&mut buf, n);
-        println!("{buf:?}");
-        assert_eq!(
-            buf,
-            vec![
-                0.0, 8.0, 4.0, 12.0, 2.0, 10.0, 6.0, 14.0, 1.0, 9.0, 5.0, 13.0, 3.0, 11.0, 7.0,
-                15.0,
-            ]
-        );
-    }
 
     #[test]
     fn fft() {

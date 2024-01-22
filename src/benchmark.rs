@@ -2,7 +2,8 @@ use spinoza::utils::pretty_print_int;
 use spinoza::{core::State, math::Float};
 
 use crate::bravo::bravo;
-use crate::{bit_rev, bit_reverse_permutation, fft_dif};
+use crate::cobra::{bit_rev, bit_reverse_permutation};
+use crate::fft_dif;
 
 pub(crate) fn bm_fft(num_qubits: usize) {
     for i in 4..num_qubits {

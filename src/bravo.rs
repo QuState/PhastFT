@@ -1,9 +1,8 @@
 use std::simd::f64x4;
 
+use crate::cobra::bit_reverse_permutation;
 use rayon::prelude::*;
 use spinoza::math::Float;
-
-use crate::bit_reverse_permutation;
 
 pub fn bravo(buf: &mut Vec<Float>) {
     const W: usize = 4;

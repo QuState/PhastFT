@@ -1,8 +1,141 @@
-pub(crate) const BLOCK_WIDTH: usize = 64;
-pub(crate) const LOG_BLOCK_WIDTH: usize = 6;
+use spinoza::core::State;
+
+const BLOCK_WIDTH: usize = 64;
+const LOG_BLOCK_WIDTH: usize = 6;
+
+// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
+pub(crate) fn bit_rev<T>(buf: &mut [T], logN: usize) {
+    let mut nodd: usize;
+    let mut noddrev; // to hold bitwise negated or odd values
+
+    let N = 1 << logN;
+    let halfn = N >> 1; // frequently used 'constants'
+    let quartn = N >> 2;
+    let nmin1 = N - 1;
+
+    let mut forward = halfn; // variable initialisations
+    let mut rev = 1;
+
+    let mut i = quartn;
+    while i > 0 {
+        // start of bit reversed permutation loop, N/4 iterations
+
+        // Gray code generator for even values:
+
+        nodd = !i; // counting ones is easier
+
+        let mut zeros = 0;
+        while (nodd & 1) == 1 {
+            nodd >>= 1;
+            zeros += 1;
+        }
+
+        forward ^= 2 << zeros; // toggle one bit of forward
+        rev ^= quartn >> zeros; // toggle one bit of rev
+
+        // swap even and ~even conditionally
+        if forward < rev {
+            buf.swap(forward, rev);
+            nodd = nmin1 ^ forward; // compute the bitwise negations
+            noddrev = nmin1 ^ rev;
+            buf.swap(nodd, noddrev); // swap bitwise-negated pairs
+        }
+
+        nodd = forward ^ 1; // compute the odd values from the even
+        noddrev = rev ^ halfn;
+
+        // swap odd unconditionally
+        buf.swap(nodd, noddrev);
+        i -= 1;
+    }
+}
+
+fn complex_bit_rev(state: &mut State, logN: usize) {
+    let mut nodd: usize;
+    let mut noddrev; // to hold bitwise negated or odd values
+
+    let N = 1 << logN;
+    let halfn = N >> 1; // frequently used 'constants'
+    let quartn = N >> 2;
+    let nmin1 = N - 1;
+
+    let mut forward = halfn; // variable initialisations
+    let mut rev = 1;
+
+    let mut i = quartn;
+    while i > 0 {
+        // start of bitreversed permutation loop, N/4 iterations
+
+        // Gray code generator for even values:
+
+        nodd = !i; // counting ones is easier
+
+        let mut zeros = 0;
+        while (nodd & 1) == 1 {
+            nodd >>= 1;
+            zeros += 1;
+        }
+
+        forward ^= 2 << zeros; // toggle one bit of forward
+        rev ^= quartn >> zeros; // toggle one bit of rev
+
+        // swap even and ~even conditionally
+        if forward < rev {
+            state.reals.swap(forward, rev);
+            state.imags.swap(forward, rev);
+            nodd = nmin1 ^ forward; // compute the bitwise negations
+            noddrev = nmin1 ^ rev;
+
+            // swap bitwise-negated pairs
+            state.reals.swap(nodd, noddrev);
+            state.imags.swap(nodd, noddrev);
+        }
+
+        nodd = forward ^ 1; // compute the odd values from the even
+        noddrev = rev ^ halfn;
+
+        // swap odd unconditionally
+        state.reals.swap(nodd, noddrev);
+        state.imags.swap(nodd, noddrev);
+        i -= 1;
+    }
+}
+
+pub(crate) fn bit_reverse_permute_state_par(state: &mut State) {
+    std::thread::scope(|s| {
+        s.spawn(|| bit_rev(&mut state.reals, state.n as usize));
+        s.spawn(|| bit_rev(&mut state.imags, state.n as usize));
+    });
+}
+
+pub(crate) fn bit_reverse_permute_state_seq(state: &mut State) {
+    complex_bit_rev(state, state.n as usize);
+}
+
+pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
+    let n = buf.len();
+    let mut j = 0;
+
+    for i in 1..n {
+        let mut bit = n >> 1;
+
+        while (j & bit) != 0 {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j ^= bit;
+
+        if i < j {
+            buf.swap(i, j);
+        }
+    }
+}
 
 pub(crate) fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
-    assert!(log_n > 2 * LOG_BLOCK_WIDTH);
+    if log_n <= 2 * LOG_BLOCK_WIDTH {
+        bit_rev(v, log_n);
+        return;
+    }
     let num_b_bits = log_n - 2 * LOG_BLOCK_WIDTH;
     let b_size: usize = 1 << num_b_bits;
     let block_width: usize = 1 << LOG_BLOCK_WIDTH;
@@ -71,7 +204,9 @@ pub(crate) fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) 
 
 #[cfg(test)]
 mod tests {
-    use crate::cobra::cobra_apply;
+    use spinoza::math::Float;
+
+    use super::*;
 
     fn top_down_bril<T: Clone>(x: &[T]) -> Vec<T> {
         if x.len() == 1 {
@@ -111,5 +246,28 @@ mod tests {
 
             assert_eq!(v, y);
         }
+    }
+
+    #[test]
+    fn bit_reversal() {
+        let n = 3;
+        let N = 1 << n;
+        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
+        bit_rev(&mut buf, n);
+        println!("{buf:?}");
+        assert_eq!(buf, vec![0.0, 4.0, 2.0, 6.0, 1.0, 5.0, 3.0, 7.0]);
+
+        let n = 4;
+        let N = 1 << n;
+        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
+        bit_rev(&mut buf, n);
+        println!("{buf:?}");
+        assert_eq!(
+            buf,
+            vec![
+                0.0, 8.0, 4.0, 12.0, 2.0, 10.0, 6.0, 14.0, 1.0, 9.0, 5.0, 13.0, 3.0, 11.0, 7.0,
+                15.0,
+            ]
+        );
     }
 }
