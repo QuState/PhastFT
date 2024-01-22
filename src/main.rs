@@ -2,15 +2,15 @@
 
 use std::simd::prelude::*;
 
-use spinoza::core::State;
-use spinoza::math::{Float, PI};
-use spinoza::utils::pretty_print_int;
+use spinoza::{core::State, math::Float};
 
-use crate::bravo::bravo;
+use crate::cobra::{cobra_apply, LOG_BLOCK_WIDTH};
+use crate::{benchmark::bm_fft, twiddles::Twiddles};
 
+mod benchmark;
 mod bravo;
+mod cobra;
 mod twiddles;
-use crate::twiddles::{generate_twiddles, Twiddles};
 
 // Source: https://www.katjaas.nl/bitreversal/bitreversal.html
 fn bit_rev(buf: &mut [Float], logN: usize) {
@@ -201,8 +201,8 @@ fn fft_chunk_n(state: &mut State, dist: usize) {
                 .zip(reals_s1.iter_mut())
                 .zip(imags_s0.iter_mut())
                 .zip(imags_s1.iter_mut())
-                .zip(twiddles_iter.into_iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), (w_re, w_im)))| {
+                .zip(twiddles_iter)
+                .for_each(|((((re_s0, re_s1), im_s0), im_s1), (w_re, w_im))| {
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -310,71 +310,13 @@ pub fn fft_dif(state: &mut State) {
         }
     }
 
-    if n < 22 {
+    if n <= 2 * LOG_BLOCK_WIDTH {
         bit_reverse_permute_state_seq(state);
     } else {
-        bit_reverse_permute_state_par(state);
-    }
-}
-
-fn bm_fft(num_qubits: usize) {
-    for i in 4..num_qubits {
-        println!("run PhastFT with {i} qubits");
-        let n = 1 << i;
-        let x_re: Vec<Float> = (1..=n).map(|i| i as Float).collect();
-        let x_im: Vec<Float> = (1..=n).map(|i| i as Float).collect();
-        let mut state = State {
-            reals: x_re,
-            imags: x_im,
-            n: i as u8,
-        };
-
-        let now = std::time::Instant::now();
-        fft_dif(&mut state);
-        let elapsed = pretty_print_int(now.elapsed().as_micros());
-        println!("time elapsed: {elapsed} us\n----------------------------");
-    }
-}
-
-fn bm_brp(num_qubits: usize) {
-    for i in (2..num_qubits).map(|i| 1 << i) {
-        let mut buf0: Vec<Float> = (0..i).map(|i| i as Float).collect();
-        let now = std::time::Instant::now();
-        bravo(&mut buf0);
-        let elapsed = pretty_print_int(now.elapsed().as_micros());
-        println!("BRAVO: {buf0:?}");
-        println!("time elapsed: {elapsed}");
-
-        let mut buf1: Vec<Float> = (0..i).map(|i| i as Float).collect();
-        let now = std::time::Instant::now();
-        bit_reverse_permutation(&mut buf1);
-        let elapsed = pretty_print_int(now.elapsed().as_micros());
-        println!("naive BR: {buf1:?}");
-        println!("time elapsed: {elapsed}\n-----------------------");
-        assert_eq!(buf0, buf1);
-    }
-}
-
-fn benchmark_bit_reversal_permutation() {
-    for n in 4..25 {
-        let N: usize = 1 << n;
-        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
-        let now = std::time::Instant::now();
-        bit_rev(&mut buf, n);
-        let elapsed = pretty_print_int(now.elapsed().as_micros());
-        eprintln!("time elapsed: {elapsed} us");
-
-        let mut buf1: Vec<Float> = (0..N).map(|i| i as Float).collect();
-
-        let now = std::time::Instant::now();
-        bit_reverse_permutation(&mut buf1);
-        let elapsed = pretty_print_int(now.elapsed().as_micros());
-        eprintln!("time elapsed: {elapsed} us\n---------------------------");
-
-        // for i in 0..N {
-        //     println!("{} {}", buf[i], buf1[i]);
-        // }
-        assert_eq!(buf, buf1);
+        std::thread::scope(|s| {
+            s.spawn(|| cobra_apply(&mut state.reals, n));
+            s.spawn(|| cobra_apply(&mut state.imags, n));
+        });
     }
 }
 
@@ -418,7 +360,7 @@ mod tests {
 
     #[test]
     fn fft() {
-        let range = Range { start: 2, end: 18 };
+        let range = Range { start: 2, end: 19 };
 
         for k in range {
             let n = 1 << k;
