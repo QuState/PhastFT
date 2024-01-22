@@ -6,7 +6,7 @@ use crate::{bit_rev, bit_reverse_permutation, fft_dif};
 
 pub(crate) fn bm_fft(num_qubits: usize) {
     for i in 4..num_qubits {
-        println!("run chunk_n with {i} qubits");
+        println!("run PhastFT with {i} qubits");
         let n = 1 << i;
         let x_re: Vec<Float> = (1..=n).map(|i| i as Float).collect();
         let x_im: Vec<Float> = (1..=n).map(|i| i as Float).collect();
