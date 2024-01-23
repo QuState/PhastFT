@@ -1,13 +1,13 @@
 [package]
-name = "PhastFT"
+name = "phastft"
 version = "0.1.0"
 edition = "2021"
 
-authors = ["Saveliy Yusufov"]
-#license = "Apache-2.0"
-description = "A high performance, quantum-inspired implementation of FFT"
-#documentation = "https://qustate.github.io/spinoza/"
-#repository = "A High Performance Quantum State Simulator implemented in Rust "
+authors = ["Saveliy Yusufov", "...", "...", "..."]
+license = "Apache-2.0"
+description = "A high-performance, quantum-inspired, implementation of FFT in pure Rust"
+documentation = ""
+repository = ""
 keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
 categories = ["algorithms", "compression", "science"]
 

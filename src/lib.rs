@@ -1,12 +1,7 @@
 #![feature(portable_simd)]
-
-use std::simd::prelude::*;
-
+use crate::{cobra::cobra_apply, twiddles::generate_twiddles};
 use spinoza::{core::State, math::Float};
-
-use crate::benchmark::bm_fft;
-use crate::cobra::cobra_apply;
-use crate::twiddles::generate_twiddles;
+use std::simd::prelude::*;
 
 mod benchmark;
 mod bravo;
@@ -187,11 +182,6 @@ pub fn fft_dif(state: &mut State) {
             s.spawn(|| cobra_apply(&mut state.imags, n));
         });
     }
-}
-
-fn main() {
-    let n = 31;
-    bm_fft(n);
 }
 
 #[cfg(test)]
