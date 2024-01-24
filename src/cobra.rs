@@ -1,8 +1,8 @@
 use spinoza::core::State;
 
-const BLOCK_WIDTH: usize = 64;
+const BLOCK_WIDTH: usize = 128;
 // size of the cacheline
-const LOG_BLOCK_WIDTH: usize = 6; // log2 of cacheline
+const LOG_BLOCK_WIDTH: usize = 7; // log2 of cacheline
 
 /// Run in-place bit reversal on a single buffer
 /// Source: https://www.katjaas.nl/bitreversal/bitreversal.html

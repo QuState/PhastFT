@@ -2,6 +2,7 @@ import itertools
 import math
 import time
 
+import pyfftw
 import numpy as np
 
 
@@ -293,23 +294,27 @@ if __name__ == "__main__":
     # main()
     from pybindings import fft
 
+
+
     for n in range(4, 31):
         print(f"n = {n}")
         N = 1 << n
         a_re = [float(i) for i in range(N)]
         a_im = [float(i) for i in range(N)]
 
+
         start = time.time()
         a_re, a_im = fft(a_re, a_im)
-        elapsed = (time.time() - start) * 10**6
-        print(f"phastft python binding took: {elapsed} us")
+        elapsed = round((time.time() - start) * 10**6)
+        print("-" * 50)
+        print(f"phastft python binding took: {elapsed} us\n{'*' * 50}")
 
         a = [complex(i, i) for i in range(N)]
 
         start = time.time()
         expected = np.fft.fft(a)
-        elapsed = (time.time() - start) * 10**6
-        print(f"numpy's fft took: {elapsed} us\n--------------------------------")
+        elapsed = round((time.time() - start) * 10**6)
+        print(f"numpy's fft took: {elapsed} us\n{'=' * 50}")
 
         actual = np.asarray(
             [
@@ -322,7 +327,13 @@ if __name__ == "__main__":
         )
         np.testing.assert_allclose(actual, expected)
 
-        a = pyfftw.empty_aligned(128, dtype="complex128", n=16)
+        arr = np.asarray([complex(i, i) for i in range(N)])
+        a = pyfftw.empty_aligned(N, dtype='complex128') 
+        a[:] = arr 
+        start = time.time()
+        b = pyfftw.interfaces.numpy_fft.fft(a)
+        elapsed = round((time.time() - start) * 10**6)
+        print(f"pyfftw's fft took: {elapsed} us\n{'+' * 50}\n")
 
     # limit = 21
     # for n in range(2, limit):

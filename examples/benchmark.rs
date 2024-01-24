@@ -19,10 +19,9 @@ fn bm_fft(num_qubits: usize) {
         fft_dif(&mut state);
         let elapsed = pretty_print_int(now.elapsed().as_micros());
         println!("time elapsed: {elapsed} us\n----------------------------");
-        println!("{state}");
     }
 }
 
 fn main() {
-    bm_fft(20);
+    bm_fft(31);
 }
