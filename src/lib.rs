@@ -3,7 +3,6 @@ use crate::{cobra::cobra_apply, twiddles::generate_twiddles};
 use spinoza::{core::State, math::Float};
 use std::simd::prelude::*;
 
-mod benchmark;
 mod bravo;
 mod cobra;
 mod twiddles;
