@@ -85,7 +85,7 @@ pub(crate) fn fft_chunk_n(
         });
 }
 
-/// chunk_size == 4, so hard code twiddle factors
+/// `chunk_size == 4`, so hard code twiddle factors
 pub(crate) fn fft_chunk_4(state: &mut State) {
     let dist = 2;
     let chunk_size = dist << 1;
@@ -120,32 +120,21 @@ pub(crate) fn fft_chunk_4(state: &mut State) {
         });
 }
 
-/// chunk_size == 2, so skip phase
+/// `chunk_size == 2`, so skip phase
 pub(crate) fn fft_chunk_2(state: &mut State) {
-    let dist = 1;
     state
         .reals
         .chunks_exact_mut(2)
         .zip(state.imags.chunks_exact_mut(2))
         .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+            let z0_re = reals_chunk[0];
+            let z0_im = imags_chunk[0];
+            let z1_re = reals_chunk[1];
+            let z1_im = imags_chunk[1];
 
-            reals_s0
-                .iter_mut()
-                .zip(reals_s1.iter_mut())
-                .zip(imags_s0.iter_mut())
-                .zip(imags_s1.iter_mut())
-                .for_each(|(((re_s0, re_s1), im_s0), im_s1)| {
-                    let real_c0 = *re_s0;
-                    let real_c1 = *re_s1;
-                    let imag_c0 = *im_s0;
-                    let imag_c1 = *im_s1;
-
-                    *re_s0 = real_c0 + real_c1;
-                    *im_s0 = imag_c0 + imag_c1;
-                    *re_s1 = real_c0 - real_c1;
-                    *im_s1 = imag_c0 - imag_c1;
-                });
+            reals_chunk[0] = z0_re + z1_re;
+            imags_chunk[0] = z0_im + z1_im;
+            reals_chunk[1] = z0_re - z1_re;
+            imags_chunk[1] = z0_im - z1_im;
         });
 }
