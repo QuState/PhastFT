@@ -1,11 +1,5 @@
 use spinoza::core::State;
 use spinoza::math::Float;
-use std::simd::f64x8;
-
-fn swap_ri_ni(z_re: &mut Float, z_im: &mut Float) {
-    std::mem::swap(z_re, z_im);
-    *z_re = -(*z_re);
-}
 
 // pub(crate) fn fft_chunk_n_simd(
 //     state: &mut State,
@@ -67,8 +61,9 @@ pub(crate) fn fft_chunk_n(
     twiddles_im: &mut [Float],
     dist: usize,
 ) {
-    assert!(twiddles_re.len() == twiddles_im.len() && twiddles_re.len() == 1 + dist / 4);
+    assert!(twiddles_re.len() == twiddles_im.len() && twiddles_re.len() == 1 + dist / 2);
     let chunk_size = dist << 1;
+    let half_dist = (dist) / 2;
 
     state
         .reals
@@ -77,29 +72,76 @@ pub(crate) fn fft_chunk_n(
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-            let half_dist = (dist) / 2;
-            let quarter_dist = (dist) / 4;
             let mut i = 0;
+            reals_s0
+                .iter_mut()
+                .take(half_dist + 1)
+                .zip(reals_s1.iter_mut().take(half_dist + 1))
+                .zip(imags_s0.iter_mut().take(half_dist + 1))
+                .zip(imags_s1.iter_mut().take(half_dist + 1))
+                .for_each(|(((re_s0, re_s1), im_s0), im_s1)| {
+                    let w_re = twiddles_re[i];
+                    let w_im = twiddles_im[i];
+                    let real_c0 = *re_s0;
+                    let real_c1 = *re_s1;
+                    let imag_c0 = *im_s0;
+                    let imag_c1 = *im_s1;
+                    *re_s0 = real_c0 + real_c1;
+                    *im_s0 = imag_c0 + imag_c1;
+                    let v_re = real_c0 - real_c1;
+                    let v_im = imag_c0 - imag_c1;
+                    *re_s1 = v_re * w_re - v_im * w_im;
+                    *im_s1 = v_re * w_im + v_im * w_re;
+                    i += 1;
+                });
 
+            reals_s0
+                .iter_mut()
+                .skip(half_dist + 1)
+                .zip(reals_s1.iter_mut().skip(half_dist + 1))
+                .zip(imags_s0.iter_mut().skip(half_dist + 1))
+                .zip(imags_s1.iter_mut().skip(half_dist + 1))
+                .for_each(|(((re_s0, re_s1), im_s0), im_s1)| {
+                    let w_re = -twiddles_re[dist - i];
+                    let w_im = twiddles_im[dist - i];
+                    let real_c0 = *re_s0;
+                    let real_c1 = *re_s1;
+                    let imag_c0 = *im_s0;
+                    let imag_c1 = *im_s1;
+                    *re_s0 = real_c0 + real_c1;
+                    *im_s0 = imag_c0 + imag_c1;
+                    let v_re = real_c0 - real_c1;
+                    let v_im = imag_c0 - imag_c1;
+                    *re_s1 = v_re * w_re - v_im * w_im;
+                    *im_s1 = v_re * w_im + v_im * w_re;
+                    i += 1;
+                });
+
+            /*
+            let mut i = 0;
             reals_s0
                 .iter_mut()
                 .zip(reals_s1.iter_mut())
                 .zip(imags_s0.iter_mut())
                 .zip(imags_s1.iter_mut())
                 .for_each(|(((re_s0, re_s1), im_s0), im_s1)| {
-                    let (w_re, w_im) = if i > quarter_dist + half_dist {
+                    let (w_re, w_im) = if i > half_dist {
+                        // println!("dist - i == {dist} - {i} == {}", dist - i);
+                        println!("in second half:");
+                        println!(
+                            "{} w_im: {}\n-------------------------",
+                            -twiddles_re[dist - i],
+                            twiddles_im[dist - i]
+                        );
+                        println!("twiddles at: {}", dist - i);
                         (-twiddles_re[dist - i], twiddles_im[dist - i])
-                    } else if i > half_dist {
-                        (twiddles_im[i - half_dist], -twiddles_re[i - half_dist])
-                    } else if i > quarter_dist {
-                        (-twiddles_im[half_dist - i], -twiddles_re[half_dist - i])
                     } else {
+                        println!("in first half:");
+                        println!("w_re: {} w_im: {}", twiddles_re[i], twiddles_im[i]);
+                        println!("twiddles at: {i}");
                         (twiddles_re[i], twiddles_im[i])
                     };
 
-                    // let w_re = twiddles_re[i];
-                    // let w_im = twiddles_im[i];
-                    // eprintln!("i: {i} w_re: {w_re} w_im: {w_im}");
                     let real_c0 = *re_s0;
                     let real_c1 = *re_s1;
                     let imag_c0 = *im_s0;
@@ -113,7 +155,7 @@ pub(crate) fn fft_chunk_n(
                     *im_s1 = v_re * w_im + v_im * w_re;
                     i += 1;
                 });
-            // eprintln!("chunk done");
+             */
         });
 }
 

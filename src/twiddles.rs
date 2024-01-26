@@ -40,8 +40,8 @@ impl Iterator for Twiddles {
 }
 
 pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
-    let mut twiddles_re = vec![0.0; (dist / 4) + 1];
-    let mut twiddles_im = vec![0.0; (dist / 4) + 1];
+    let mut twiddles_re = vec![0.0; (dist / 2) + 1];
+    let mut twiddles_im = vec![0.0; (dist / 2) + 1];
     twiddles_re[0] = 1.0;
 
     let angle = -PI / (dist as f64);

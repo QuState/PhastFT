@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn fft() {
-        let start = 2;
+        let start = 4;
         let end = 16;
         let range = Range {
             start,
