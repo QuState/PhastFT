@@ -1,11 +1,8 @@
 #![feature(portable_simd)]
-
-use std::simd::prelude::*;
-
-use spinoza::{core::State, math::Float};
-
-use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_8, fft_chunk_n, fft_chunk_n_simd};
+use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd};
 use crate::{cobra::cobra_apply, twiddles::generate_twiddles};
+use spinoza::{core::State, math::Float};
+use std::simd::prelude::*;
 
 mod bravo;
 mod cobra;
@@ -25,19 +22,17 @@ pub fn fft_dif(state: &mut State) {
         let dist = 1 << t;
         let chunk_size = dist << 1;
 
-        if chunk_size > 16 {
+        if chunk_size > 4 {
             let (twiddles_re, twiddles_im) = generate_twiddles(dist);
-            fft_chunk_n_simd(state, &twiddles_re, &twiddles_im, dist);
-        } else if chunk_size == 16 {
-            // fft_chunk_16(state);
-            let (twiddles_re, twiddles_im) = generate_twiddles(dist);
-            fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
-        } else if chunk_size == 8 {
-            fft_chunk_8(state);
-        } else if chunk_size == 4 {
-            fft_chunk_4(state);
+            if chunk_size >= 16 {
+                fft_chunk_n_simd(state, &twiddles_re, &twiddles_im, dist);
+            } else {
+                fft_chunk_n(state, &twiddles_re, &twiddles_im, dist);
+            }
         } else if chunk_size == 2 {
             fft_chunk_2(state);
+        } else if chunk_size == 4 {
+            fft_chunk_4(state);
         }
     }
 
