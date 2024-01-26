@@ -64,11 +64,9 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
 
 #[cfg(test)]
 mod tests {
-    use std::f64::consts::FRAC_1_SQRT_2;
-
-    use spinoza::utils::assert_float_closeness;
-
     use super::*;
+    use spinoza::utils::assert_float_closeness;
+    use std::f64::consts::FRAC_1_SQRT_2;
 
     #[test]
     fn twiddles_4() {
@@ -94,5 +92,16 @@ mod tests {
         println!("{} {}", w_re, w_im);
         assert_float_closeness(w_re, -FRAC_1_SQRT_2, 1e-10);
         assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
+    }
+
+    #[test]
+    fn twiddles_8() {
+        const N: usize = 4;
+        let mut twiddle_iter = Twiddles::new(N);
+
+        for _ in 0..N {
+            let (w_re, w_im) = twiddle_iter.next().unwrap();
+            println!("{w_re}   {w_im}");
+        }
     }
 }
