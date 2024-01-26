@@ -40,8 +40,8 @@ impl Iterator for Twiddles {
 }
 
 pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
-    let mut twiddles_re = vec![0.0; (dist / 2) + 1];
-    let mut twiddles_im = vec![0.0; (dist / 2) + 1];
+    let mut twiddles_re = vec![0.0; dist];
+    let mut twiddles_im = vec![0.0; dist];
     twiddles_re[0] = 1.0;
 
     let angle = -PI / (dist as f64);
@@ -76,22 +76,22 @@ mod tests {
         let mut twiddle_iter = Twiddles::new(N);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
-        println!("{w_re} {w_im}");
+        println!("{} {}", w_re, w_im);
         assert_float_closeness(w_re, 1.0, 1e-10);
         assert_float_closeness(w_im, 0.0, 1e-10);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
-        println!("{w_re} {w_im}");
+        println!("{} {}", w_re, w_im);
         assert_float_closeness(w_re, FRAC_1_SQRT_2, 1e-10);
         assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
-        println!("{w_re} {w_im}");
+        println!("{} {}", w_re, w_im);
         assert_float_closeness(w_re, 0.0, 1e-10);
         assert_float_closeness(w_im, -1.0, 1e-10);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
-        println!("{w_re} {w_im}");
+        println!("{} {}", w_re, w_im);
         assert_float_closeness(w_re, -FRAC_1_SQRT_2, 1e-10);
         assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
     }
