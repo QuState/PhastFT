@@ -1,9 +1,10 @@
-use spinoza::core::State;
-use spinoza::math::Float;
 use std::simd::f64x8;
 
+pub type Float = f64;
+
 pub(crate) fn fft_chunk_n_simd(
-    state: &mut State,
+    reals: &mut [Float],
+    imags: &mut [Float],
     twiddles_re: &[Float],
     twiddles_im: &[Float],
     dist: usize,
@@ -11,10 +12,9 @@ pub(crate) fn fft_chunk_n_simd(
     let chunk_size = dist << 1;
     assert!(chunk_size >= 16);
 
-    state
-        .reals
+    reals
         .chunks_exact_mut(chunk_size)
-        .zip(state.imags.chunks_exact_mut(chunk_size))
+        .zip(imags.chunks_exact_mut(chunk_size))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -47,17 +47,17 @@ pub(crate) fn fft_chunk_n_simd(
 
 // TODO(saveliy): parallelize
 pub(crate) fn fft_chunk_n(
-    state: &mut State,
+    reals: &mut [Float],
+    imags: &mut [Float],
     twiddles_re: &[Float],
     twiddles_im: &[Float],
     dist: usize,
 ) {
     let chunk_size = dist << 1;
 
-    state
-        .reals
+    reals
         .chunks_exact_mut(chunk_size)
-        .zip(state.imags.chunks_exact_mut(chunk_size))
+        .zip(imags.chunks_exact_mut(chunk_size))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -86,14 +86,13 @@ pub(crate) fn fft_chunk_n(
 }
 
 /// `chunk_size == 4`, so hard code twiddle factors
-pub(crate) fn fft_chunk_4(state: &mut State) {
+pub(crate) fn fft_chunk_4(reals: &mut [Float], imags: &mut [Float]) {
     let dist = 2;
     let chunk_size = dist << 1;
 
-    state
-        .reals
+    reals
         .chunks_exact_mut(chunk_size)
-        .zip(state.imags.chunks_exact_mut(chunk_size))
+        .zip(imags.chunks_exact_mut(chunk_size))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -121,11 +120,10 @@ pub(crate) fn fft_chunk_4(state: &mut State) {
 }
 
 /// `chunk_size == 2`, so skip phase
-pub(crate) fn fft_chunk_2(state: &mut State) {
-    state
-        .reals
+pub(crate) fn fft_chunk_2(reals: &mut [Float], imags: &mut [Float]) {
+    reals
         .chunks_exact_mut(2)
-        .zip(state.imags.chunks_exact_mut(2))
+        .zip(imags.chunks_exact_mut(2))
         .for_each(|(reals_chunk, imags_chunk)| {
             let z0_re = reals_chunk[0];
             let z0_im = imags_chunk[0];

@@ -1,4 +1,4 @@
-use spinoza::core::State;
+use crate::kernels::Float;
 
 const BLOCK_WIDTH: usize = 128;
 // size of the cacheline
@@ -10,10 +10,10 @@ pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
     let mut nodd: usize;
     let mut noddrev; // to hold bitwise negated or odd values
 
-    let N = 1 << log_n;
-    let halfn = N >> 1; // frequently used 'constants'
-    let quartn = N >> 2;
-    let nmin1 = N - 1;
+    let big_n = 1 << log_n;
+    let halfn = big_n >> 1; // frequently used 'constants'
+    let quartn = big_n >> 2;
+    let nmin1 = big_n - 1;
 
     let mut forward = halfn; // variable initialisations
     let mut rev = 1;
@@ -54,14 +54,14 @@ pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
 
 /// Run in-place bit reversal on the entire state (i.e., the reals and imags buffers)
 /// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
-fn complex_bit_rev(state: &mut State, log_n: usize) {
+fn complex_bit_rev(reals: &mut [Float], imags: &mut [Float], log_n: usize) {
     let mut nodd: usize;
     let mut noddrev; // to hold bitwise negated or odd values
 
-    let N = 1 << log_n;
-    let halfn = N >> 1; // frequently used 'constants'
-    let quartn = N >> 2;
-    let nmin1 = N - 1;
+    let big_n = 1 << log_n;
+    let halfn = big_n >> 1; // frequently used 'constants'
+    let quartn = big_n >> 2;
+    let nmin1 = big_n - 1;
 
     let mut forward = halfn; // variable initialisations
     let mut rev = 1;
@@ -85,41 +85,52 @@ fn complex_bit_rev(state: &mut State, log_n: usize) {
 
         // swap even and ~even conditionally
         if forward < rev {
-            state.reals.swap(forward, rev);
-            state.imags.swap(forward, rev);
+            reals.swap(forward, rev);
+            imags.swap(forward, rev);
             nodd = nmin1 ^ forward; // compute the bitwise negations
             noddrev = nmin1 ^ rev;
 
             // swap bitwise-negated pairs
-            state.reals.swap(nodd, noddrev);
-            state.imags.swap(nodd, noddrev);
+            reals.swap(nodd, noddrev);
+            imags.swap(nodd, noddrev);
         }
 
         nodd = forward ^ 1; // compute the odd values from the even
         noddrev = rev ^ halfn;
 
         // swap odd unconditionally
-        state.reals.swap(nodd, noddrev);
-        state.imags.swap(nodd, noddrev);
+        reals.swap(nodd, noddrev);
+        imags.swap(nodd, noddrev);
         i -= 1;
     }
 }
 
 /// Run in-place bit reversal on the entire state, in parallel.
-/// This function uses 2 threads to run bit reverse on the reals buffer on one thread, and the other thread handles bit
-/// reversing the imaginaries buffer
-pub(crate) fn bit_reverse_permute_state_par(state: &mut State) {
+/// This function uses 2 threads to run a bit reverse on the reals buffer on one thread, and the other thread handles
+/// the bit reversal of the imaginaries buffer
+#[allow(dead_code)]
+pub(crate) fn bit_reverse_permute_state_par(
+    reals: &mut [Float],
+    imags: &mut [Float],
+    log_n: usize,
+) {
     std::thread::scope(|s| {
-        s.spawn(|| bit_rev(&mut state.reals, state.n as usize));
-        s.spawn(|| bit_rev(&mut state.imags, state.n as usize));
+        s.spawn(|| bit_rev(reals, log_n));
+        s.spawn(|| bit_rev(imags, log_n));
     });
 }
 
 /// Run in-place bit reversal on the entire state, serially.
-pub(crate) fn bit_reverse_permute_state_seq(state: &mut State) {
-    complex_bit_rev(state, state.n as usize);
+#[allow(dead_code)]
+pub(crate) fn bit_reverse_permute_state_seq(
+    reals: &mut [Float],
+    imags: &mut [Float],
+    log_n: usize,
+) {
+    complex_bit_rev(reals, imags, log_n);
 }
 
+#[allow(dead_code)]
 pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
     let n = buf.len();
     let mut j = 0;
@@ -220,8 +231,6 @@ pub(crate) fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) 
 
 #[cfg(test)]
 mod tests {
-    use spinoza::math::Float;
-
     use super::*;
 
     /// Top down bit reverse interleaving. This is a very simple and well known approach that we only use for testing
@@ -250,11 +259,11 @@ mod tests {
     #[test]
     fn cobra() {
         for n in 4..23 {
-            let N = 1 << n;
-            let mut v: Vec<_> = (0..N).collect();
+            let big_n = 1 << n;
+            let mut v: Vec<_> = (0..big_n).collect();
             cobra_apply(&mut v, n);
 
-            let x: Vec<_> = (0..N).collect();
+            let x: Vec<_> = (0..big_n).collect();
             assert_eq!(v, top_down_bril(&x));
         }
     }
@@ -262,15 +271,15 @@ mod tests {
     #[test]
     fn bit_reversal() {
         let n = 3;
-        let N = 1 << n;
-        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
+        let big_n = 1 << n;
+        let mut buf: Vec<f64> = (0..big_n).map(|i| i as f64).collect();
         bit_rev(&mut buf, n);
         println!("{buf:?}");
         assert_eq!(buf, vec![0.0, 4.0, 2.0, 6.0, 1.0, 5.0, 3.0, 7.0]);
 
         let n = 4;
-        let N = 1 << n;
-        let mut buf: Vec<Float> = (0..N).map(|i| i as Float).collect();
+        let big_n = 1 << n;
+        let mut buf: Vec<f64> = (0..big_n).map(|i| i as f64).collect();
         bit_rev(&mut buf, n);
         println!("{buf:?}");
         assert_eq!(

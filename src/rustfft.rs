@@ -1,10 +1,9 @@
 use rustfft::{num_complex::Complex64, FftPlanner};
-use spinoza::utils::pretty_print_int;
 
 fn main() {
-    let N = 31;
-    
-    for i in 4..N {
+    let big_n = 31;
+
+    for i in 4..big_n {
         println!("run RustFFT with {i} qubits");
         let n = 1 << i;
         let mut buffer: Vec<Complex64> = (1..n + 1)
