@@ -122,7 +122,7 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
     .for_each(|(first, second)| {
         *second = -first;
     });
-    second_remainder_im.copy_from_slice(&first_remainder_im[..first_remainder_len]);
+    second_remainder_im.copy_from_slice(&first_remainder_im[..second_remainder_im.len()]);
 
     (twiddles_re, twiddles_im)
 }
