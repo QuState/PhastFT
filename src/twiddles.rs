@@ -48,11 +48,6 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
     let mut twiddles_im = vec![0.0; dist];
     twiddles_re[0] = 1.0;
 
-    if dist == 1 {
-        // To simplify logic later on
-        return (twiddles_re, twiddles_im);
-    }
-
     let angle = -PI / (dist as f64);
     let (st, ct) = angle.sin_cos();
     let (mut w_re, mut w_im) = (1.0, 0.0);
