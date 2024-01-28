@@ -50,7 +50,7 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
 
     if dist == 1 {
         // To simplify logic later on
-        return (twiddles_re, twiddles_im)
+        return (twiddles_re, twiddles_im);
     }
 
     let angle = -PI / (dist as f64);
@@ -62,28 +62,34 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
     let (first_half_im, second_half_im) = twiddles_im[1..].split_at_mut(dist / 2);
     assert!(first_half_im.len() == second_half_im.len() + 1);
 
-    first_half_re.chunks_exact_mut(CHUNK_SIZE)
-    .zip(first_half_im.chunks_exact_mut(CHUNK_SIZE))
-    .zip(second_half_re.chunks_exact_mut(CHUNK_SIZE))
-    .zip(second_half_im.chunks_exact_mut(CHUNK_SIZE))
-    .for_each(|(((first_ch_re, first_ch_im), second_ch_re), second_ch_im)| {
-        // Calculate a chunk of the first half in a plain old scalar way
-        first_ch_re.iter_mut().zip(first_ch_im.iter_mut()).for_each(|(re, im)| {
-            let temp = w_re;
-            w_re = w_re * ct - w_im * st;
-            w_im = temp * st + w_im * ct;
-            *re = w_re;
-            *im = w_im;
-        });
-        // Calculate a chunk of the second half in a clever way by copying the first chunk
-        // This avoids data dependencies of the regular calculation and gets vectorized.
-        // We do it up front while the values we just calculated are still in the cache
-        // so we don't have to re-load them from memory later, which would be slow.
-        let first_re = f64x8::from_slice(first_ch_re);
-        let minus_one = f64x8::splat(-1.0);
-        second_ch_re.copy_from_slice((first_re * minus_one).as_array());
-        second_ch_im.copy_from_slice(&first_ch_im);
-    });
+    first_half_re
+        .chunks_exact_mut(CHUNK_SIZE)
+        .zip(first_half_im.chunks_exact_mut(CHUNK_SIZE))
+        .zip(second_half_re.chunks_exact_mut(CHUNK_SIZE))
+        .zip(second_half_im.chunks_exact_mut(CHUNK_SIZE))
+        .for_each(
+            |(((first_ch_re, first_ch_im), second_ch_re), second_ch_im)| {
+                // Calculate a chunk of the first half in a plain old scalar way
+                first_ch_re
+                    .iter_mut()
+                    .zip(first_ch_im.iter_mut())
+                    .for_each(|(re, im)| {
+                        let temp = w_re;
+                        w_re = w_re * ct - w_im * st;
+                        w_im = temp * st + w_im * ct;
+                        *re = w_re;
+                        *im = w_im;
+                    });
+                // Calculate a chunk of the second half in a clever way by copying the first chunk
+                // This avoids data dependencies of the regular calculation and gets vectorized.
+                // We do it up front while the values we just calculated are still in the cache
+                // so we don't have to re-load them from memory later, which would be slow.
+                let first_re = f64x8::from_slice(first_ch_re);
+                let minus_one = f64x8::splat(-1.0);
+                second_ch_re.copy_from_slice((first_re * minus_one).as_array());
+                second_ch_im.copy_from_slice(&first_ch_im);
+            },
+        );
 
     // Handle remainder that the chunks did not process.
     //
@@ -110,18 +116,23 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
     // We do NOT zip the halves together in this loop because the lengths are different,
     // and a loop that processes both would leave the last element of the first half unprocessed.
     // Also no point in doing that performance-wise.
-    first_remainder_re.iter_mut().zip(first_remainder_im.iter_mut()).for_each(|(re, im)| {
-        let temp = w_re;
-        w_re = w_re * ct - w_im * st;
-        w_im = temp * st + w_im * ct;
-        *re = w_re;
-        *im = w_im;
-    });
+    first_remainder_re
+        .iter_mut()
+        .zip(first_remainder_im.iter_mut())
+        .for_each(|(re, im)| {
+            let temp = w_re;
+            w_re = w_re * ct - w_im * st;
+            w_im = temp * st + w_im * ct;
+            *re = w_re;
+            *im = w_im;
+        });
     // ...and the clever calculation on the remainder of the second half.
-    first_remainder_re.iter().zip(second_remainder_re.iter_mut())
-    .for_each(|(first, second)| {
-        *second = -first;
-    });
+    first_remainder_re
+        .iter()
+        .zip(second_remainder_re.iter_mut())
+        .for_each(|(first, second)| {
+            *second = -first;
+        });
     second_remainder_im.copy_from_slice(&first_remainder_im[..second_remainder_im.len()]);
 
     (twiddles_re, twiddles_im)
@@ -158,5 +169,19 @@ mod tests {
         println!("{w_re} {w_im}");
         assert_f64_closeness(w_re, -FRAC_1_SQRT_2, 1e-10);
         assert_f64_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
+    }
+
+    #[test]
+    fn test_twiddles() {
+        let dist = 8;
+        let (twiddles_im, twiddles_re) = generate_twiddles(dist);
+        let mut tw_iter = Twiddles::new(8);
+
+        for (w_re, w_im) in twiddles_re.iter().zip(twiddles_im.iter()) {
+            let (z_re, z_im) = tw_iter.next().unwrap();
+            eprintln!("actual re: {w_re} im: {w_im} --- expected: re: {z_re} im: {z_im}");
+            assert_f64_closeness(*w_re, z_re, 1e-10);
+            assert_f64_closeness(*w_im, z_im, 1e-10);
+        }
     }
 }
