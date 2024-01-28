@@ -79,7 +79,7 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
         // This avoids data dependencies of the regular calculation and gets vectorized.
         // We do it up front while the values we just calculated are still in the cache
         // so we don't have to re-load them from memory later, which would be slow.
-        let mut first_re = f64x8::from_slice(first_ch_re);
+        let first_re = f64x8::from_slice(first_ch_re);
         let minus_one = f64x8::splat(-1.0);
         second_ch_re.copy_from_slice((first_re * minus_one).as_array());
         second_ch_im.copy_from_slice(&first_ch_im);
@@ -99,11 +99,12 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
     // Therefore we rely on the remainder on the *shorter* chunk.
     let second_remainder_re = second_half_re.chunks_exact_mut(CHUNK_SIZE).into_remainder();
     let first_remainder_len = second_remainder_re.len() + 1;
+    let first_rem_skip = first_half_re.len() - first_remainder_len;
     // get the last `first_remainder_len` elements of first_half_re
-    let first_remainder_re = &mut first_half_re[(first_half_re.len() - first_remainder_len)..];
+    let first_remainder_re = &mut first_half_re[first_rem_skip..];
     // repeat the same for the imaginary part
     let second_remainder_im = second_half_im.chunks_exact_mut(CHUNK_SIZE).into_remainder();
-    let first_remainder_im = &mut first_half_im[(first_half_im.len() - first_remainder_len)..];
+    let first_remainder_im = &mut first_half_im[first_rem_skip..];
 
     // Do the rest of the scalar calculation on the remainder of the first half.
     // We do NOT zip the halves together in this loop because the lengths are different,
