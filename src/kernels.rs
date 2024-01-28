@@ -2,6 +2,8 @@ use std::simd::f64x8;
 
 pub type Float = f64;
 
+use rayon::prelude::*;
+
 pub(crate) fn fft_chunk_n_simd(
     reals: &mut [Float],
     imags: &mut [Float],
@@ -13,8 +15,8 @@ pub(crate) fn fft_chunk_n_simd(
     assert!(chunk_size >= 16);
 
     reals
-        .chunks_exact_mut(chunk_size)
-        .zip(imags.chunks_exact_mut(chunk_size))
+        .par_chunks_exact_mut(chunk_size)
+        .zip(imags.par_chunks_exact_mut(chunk_size))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
@@ -56,8 +58,8 @@ pub(crate) fn fft_chunk_n(
     let chunk_size = dist << 1;
 
     reals
-        .chunks_exact_mut(chunk_size)
-        .zip(imags.chunks_exact_mut(chunk_size))
+        .par_chunks_exact_mut(chunk_size)
+        .zip(imags.par_chunks_exact_mut(chunk_size))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);

@@ -19,6 +19,7 @@ rustfft = "6.1.0"
 codegen-units = 1
 lto = true
 panic = "abort"
+debug = true
 
 [profile.profiling]
 inherits = "release"
