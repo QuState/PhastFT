@@ -42,7 +42,6 @@ impl Iterator for Twiddles {
     }
 }
 
-
 pub fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
     let mut twiddles_re = vec![0.0; dist];
     let mut twiddles_im = vec![0.0; dist];
@@ -70,7 +69,6 @@ pub fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
 
     (twiddles_re, twiddles_im)
 }
-
 
 pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     const CHUNK_SIZE: usize = 8; // TODO: make this a const generic?
@@ -108,9 +106,12 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     // TODO: put this into the main loop somehow instead of special-casing it?
     let first_re = &mut twiddles_re[..CHUNK_SIZE];
     let first_im = &mut twiddles_im[..CHUNK_SIZE];
-    first_re[1..].iter_mut().zip(first_im[1..].iter_mut()).for_each(|(re, im)| {
-        (*re, *im) = next_twiddle();
-    });
+    first_re[1..]
+        .iter_mut()
+        .zip(first_im[1..].iter_mut())
+        .for_each(|(re, im)| {
+            (*re, *im) = next_twiddle();
+        });
 
     let last_re = &mut twiddles_re[dist - CHUNK_SIZE..];
     apply_symmetry_re(&first_re, last_re);
@@ -124,8 +125,8 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     // We've already processed the first and last chunk of each, so discard them
     let first_half_re = &mut first_half_re[CHUNK_SIZE..];
     let first_half_im = &mut first_half_im[CHUNK_SIZE..];
-    let second_half_re = &mut second_half_re[.. (dist / 2) - CHUNK_SIZE];
-    let second_half_im = &mut second_half_im[.. (dist / 2) - CHUNK_SIZE];
+    let second_half_re = &mut second_half_re[..(dist / 2) - CHUNK_SIZE];
+    let second_half_im = &mut second_half_im[..(dist / 2) - CHUNK_SIZE];
 
     assert_eq!(first_half_re.len(), second_half_re.len());
     assert_eq!(first_half_im.len(), second_half_im.len());
