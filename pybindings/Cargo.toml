@@ -10,6 +10,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.20.2", features = ["num-complex"] }
-num-complex = "0.4.4"
-spinoza = { git = "https://github.com/QuState/spinoza.git", tag = "v0.5.1" }
+numpy = "0.20.0"
 phastft = { path = ".." }
