@@ -102,26 +102,29 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
         output.copy_from_slice(&buf);
     };
 
-    // Handle the first chink which is special in that the first number is 0
-    // TODO: put this into the main loop somehow instead of special-casing it?
-    let first_re = &mut twiddles_re[..CHUNK_SIZE];
-    let first_im = &mut twiddles_im[..CHUNK_SIZE];
-    first_re[1..]
-        .iter_mut()
-        .zip(first_im[1..].iter_mut())
-        .for_each(|(re, im)| {
-            (*re, *im) = next_twiddle();
-        });
-
-    let last_re = &mut twiddles_re[dist - CHUNK_SIZE..];
-    apply_symmetry_re(&first_re, last_re);
-
-    let last_im = &mut twiddles_im[dist - CHUNK_SIZE..];
-    apply_symmetry_im(&first_im, last_im);
-
     // Split the twiddles into two halves. There is a cheaper way to calculate the second half
     let (first_half_re, second_half_re) = twiddles_re.split_at_mut(dist / 2);
     let (first_half_im, second_half_im) = twiddles_im.split_at_mut(dist / 2);
+
+    // Handle the first chink which is special in that the first number is 0
+    // TODO: put this into the main loop somehow instead of special-casing it?
+    {
+        let first_re = &mut first_half_re[..CHUNK_SIZE];
+        let first_im = &mut first_half_im[..CHUNK_SIZE];
+        first_re[1..]
+            .iter_mut()
+            .zip(first_im[1..].iter_mut())
+            .for_each(|(re, im)| {
+                (*re, *im) = next_twiddle();
+            });
+
+        let last_re = &mut second_half_re[(dist / 2) - CHUNK_SIZE..];
+        apply_symmetry_re(&first_re, last_re);
+
+        let last_im = &mut second_half_im[(dist / 2) - CHUNK_SIZE..];
+        apply_symmetry_im(&first_im, last_im);
+    }
+
     // We've already processed the first and last chunk of each, so discard them
     let first_half_re = &mut first_half_re[CHUNK_SIZE..];
     let first_half_im = &mut first_half_im[CHUNK_SIZE..];
