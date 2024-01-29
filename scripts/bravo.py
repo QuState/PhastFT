@@ -2,9 +2,6 @@ import itertools
 import math
 import time
 
-import pyfftw
-import numpy as np
-
 
 def reverse_bits(n, no_of_bits):
     result = 0
@@ -291,72 +288,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # main()
-    from pybindings import fft
-
-
-
-    for n in range(4, 31):
-        print(f"n = {n}")
-        N = 1 << n
-        a_re = [float(i) for i in range(N)]
-        a_im = [float(i) for i in range(N)]
-
-
-        start = time.time()
-        a_re, a_im = fft(a_re, a_im)
-        elapsed = round((time.time() - start) * 10**6)
-        print("-" * 50)
-        print(f"phastft python binding took: {elapsed} us\n{'*' * 50}")
-
-        a = [complex(i, i) for i in range(N)]
-
-        start = time.time()
-        expected = np.fft.fft(a)
-        elapsed = round((time.time() - start) * 10**6)
-        print(f"numpy's fft took: {elapsed} us\n{'=' * 50}")
-
-        actual = np.asarray(
-            [
-                complex(z_re, z_im)
-                for (z_re, z_im) in zip(
-                    a_re,
-                    a_im,
-                )
-            ]
-        )
-        np.testing.assert_allclose(actual, expected)
-
-        arr = np.asarray([complex(i, i) for i in range(N)])
-        a = pyfftw.empty_aligned(N, dtype='complex128') 
-        a[:] = arr 
-        start = time.time()
-        b = pyfftw.interfaces.numpy_fft.fft(a)
-        elapsed = round((time.time() - start) * 10**6)
-        print(f"pyfftw's fft took: {elapsed} us\n{'+' * 50}\n")
-
-    # limit = 21
-    # for n in range(2, limit):
-    #     state0 = [complex(0.0, 0.0) for _ in range(2**n)]
-    #     state0[0] = complex(1.0, 0.0)
-    #
-    #     start = time.time()
-    #     state0 = apply_h_all_qubits(state0)
-    #     elapsed = time.time() - start
-    #     print(f"pairs pre-sorted applied H to n qubits in: {elapsed} s")
-    #
-    #     state1 = [complex(0.0, 0.0) for _ in range(2**n)]
-    #     state1[0] = complex(1.0, 0.0)
-    #
-    #     start = time.time()
-    #     for t in range(n):
-    #         apply_hadamard(state1, t)
-    #
-    #     elapsed = time.time() - start
-    #     print(f"insertion strategy applied H to {n} qubits in: {elapsed} s")
-    #
-    #     for a0, a1 in zip(state0, state1):
-    #         assert math.isclose(a0.real, a1.real, rel_tol=1e-9, abs_tol=0.0)
-    #         assert math.isclose(a0.imag, a1.imag, rel_tol=1e-9, abs_tol=0.0)
-    #
-    #     print(f"-----------------------------------------------------------")
+    main()
