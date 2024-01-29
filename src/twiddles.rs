@@ -1,5 +1,6 @@
-use crate::kernels::Float;
 use std::f64::consts::PI;
+
+use crate::kernels::Float;
 
 pub(crate) struct Twiddles {
     st: Float,
@@ -64,10 +65,29 @@ pub(crate) fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
     (twiddles_re, twiddles_im)
 }
 
+pub(crate) fn filter_twiddles(twiddles_re: &mut Vec<f64>, twiddles_im: &mut Vec<f64>) {
+    assert_eq!(twiddles_re.len(), twiddles_im.len());
+    let dist = twiddles_re.len();
+
+    let filtered_twiddles_re: Vec<f64> =
+        twiddles_re.chunks_exact(2).map(|chunk| chunk[0]).collect();
+    let filtered_twiddles_im: Vec<f64> =
+        twiddles_im.chunks_exact(2).map(|chunk| chunk[0]).collect();
+
+    assert!(
+        filtered_twiddles_re.len() == filtered_twiddles_im.len()
+            && filtered_twiddles_re.len() == dist / 2
+    );
+
+    let _ = std::mem::replace(twiddles_re, filtered_twiddles_re);
+    let _ = std::mem::replace(twiddles_im, filtered_twiddles_im);
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::utils::assert_f64_closeness;
     use std::f64::consts::FRAC_1_SQRT_2;
+
+    use crate::utils::assert_f64_closeness;
 
     use super::*;
 
@@ -95,5 +115,39 @@ mod tests {
         println!("{w_re} {w_im}");
         assert_f64_closeness(w_re, -FRAC_1_SQRT_2, 1e-10);
         assert_f64_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
+    }
+
+    #[test]
+    fn twiddles_filter() {
+        let n = 30;
+
+        let dist = 1 << (n - 1);
+        let mut twiddles_iter = Twiddles::new(dist);
+
+        let (mut twiddles_re, mut twiddles_im) = generate_twiddles(dist);
+
+        for i in 0..dist {
+            let (tw_re, tw_im) = twiddles_iter.next().unwrap();
+            assert_f64_closeness(twiddles_re[i], tw_re, 1e-10);
+            assert_f64_closeness(twiddles_im[i], tw_im, 1e-10);
+        }
+
+        for t in (0..n - 1).rev() {
+            let dist = 1 << t;
+            let mut twiddles_iter = Twiddles::new(dist);
+
+            // Don't re-compute all the twiddles.
+            // Just filter them out by taking every other twiddle factor
+            filter_twiddles(&mut twiddles_re, &mut twiddles_im);
+
+            assert!(twiddles_re.len() == dist && twiddles_im.len() == dist);
+
+            for i in 0..dist {
+                let (tw_re, tw_im) = twiddles_iter.next().unwrap();
+                // eprintln!("actual: {} expected: {}", tw_re, twiddles_re[i]);
+                assert_f64_closeness(twiddles_re[i], tw_re, 1e-6);
+                assert_f64_closeness(twiddles_im[i], tw_im, 1e-6);
+            }
+        }
     }
 }
