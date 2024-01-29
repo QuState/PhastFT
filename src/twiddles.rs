@@ -1,4 +1,4 @@
-use std::f64::consts::PI;
+use std::{f64::consts::PI, simd::f64x8};
 
 use crate::kernels::Float;
 
@@ -71,6 +71,90 @@ pub fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
     (twiddles_re, twiddles_im)
 }
 
+
+pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
+    const CHUNK_SIZE: usize = 8; // TODO: make this a const generic?
+    assert!(dist >= CHUNK_SIZE * 2);
+    assert_eq!(dist % CHUNK_SIZE, 0);
+    let mut twiddles_re = vec![0.0; dist];
+    let mut twiddles_im = vec![0.0; dist];
+    twiddles_re[0] = 1.0;
+
+    let angle = -PI / (dist as f64);
+    let (st, ct) = angle.sin_cos();
+    let (mut w_re, mut w_im) = (1.0, 0.0);
+
+    let mut next_twiddle = || {
+        let temp = w_re;
+        w_re = w_re * ct - w_im * st;
+        w_im = temp * st + w_im * ct;
+        (w_re, w_im)
+    };
+
+    let apply_symmetry_re = |input: &[Float], output: &mut [Float]| {
+        let first_re = f64x8::from_slice(input);
+        let minus_one = f64x8::splat(-1.0);
+        output.copy_from_slice((first_re * minus_one).as_array());
+    };
+
+    let apply_symmetry_im = |input: &[Float], output: &mut [Float]| {
+        let mut buf: [Float; CHUNK_SIZE] = [Float::default(); 8];
+        buf.copy_from_slice(input);
+        buf.reverse();
+        output.copy_from_slice(&buf);
+    };
+
+    // Handle the first chink which is special in that the first number is 0
+    // TODO: put this into the main loop somehow instead of special-casing it?
+    let first_re = &mut twiddles_re[..CHUNK_SIZE];
+    let first_im = &mut twiddles_im[..CHUNK_SIZE];
+    first_re[1..].iter_mut().zip(first_im[1..].iter_mut()).for_each(|(re, im)| {
+        (*re, *im) = next_twiddle();
+    });
+
+    let last_re = &mut twiddles_re[dist - CHUNK_SIZE..];
+    apply_symmetry_re(&first_re, last_re);
+
+    let last_im = &mut twiddles_im[dist - CHUNK_SIZE..];
+    apply_symmetry_im(&first_im, last_im);
+
+    // Split the twiddles into two halves. There is a cheaper way to calculate the second half
+    let (first_half_re, second_half_re) = twiddles_re.split_at_mut(dist / 2);
+    let (first_half_im, second_half_im) = twiddles_im.split_at_mut(dist / 2);
+    // We've already processed the first and last chunk of each, so discard them
+    let first_half_re = &mut first_half_re[CHUNK_SIZE..];
+    let first_half_im = &mut first_half_im[CHUNK_SIZE..];
+    let second_half_re = &mut second_half_re[.. (dist / 2) - CHUNK_SIZE];
+    let second_half_im = &mut second_half_im[.. (dist / 2) - CHUNK_SIZE];
+
+    assert_eq!(first_half_re.len(), second_half_re.len());
+    assert_eq!(first_half_im.len(), second_half_im.len());
+
+    first_half_re
+        .chunks_exact_mut(CHUNK_SIZE)
+        .zip(first_half_im.chunks_exact_mut(CHUNK_SIZE))
+        .zip(second_half_re.chunks_exact_mut(CHUNK_SIZE).rev())
+        .zip(second_half_im.chunks_exact_mut(CHUNK_SIZE).rev())
+        .for_each(
+            |(((first_ch_re, first_ch_im), second_ch_re), second_ch_im)| {
+                // Calculate a chunk of the first half in a plain old scalar way
+                first_ch_re
+                    .iter_mut()
+                    .zip(first_ch_im.iter_mut())
+                    .for_each(|(re, im)| {
+                        (*re, *im) = next_twiddle();
+                    });
+                // Calculate a chunk of the second half in a clever way by copying the first chunk
+                // This avoids data dependencies of the regular calculation and gets vectorized.
+                // We do it up front while the values we just calculated are still in the cache
+                // so we don't have to re-load them from memory later, which would be slow.
+                apply_symmetry_re(&first_ch_re, second_ch_re);
+                apply_symmetry_im(&first_ch_im, second_ch_im);
+            },
+        );
+
+    (twiddles_re, twiddles_im)
+}
 
 pub(crate) fn filter_twiddles(twiddles_re: &mut Vec<f64>, twiddles_im: &mut Vec<f64>) {
     assert_eq!(twiddles_re.len(), twiddles_im.len());
