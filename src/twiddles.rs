@@ -213,6 +213,30 @@ mod tests {
     }
 
     #[test]
+    fn twiddles_simd() {
+        for n in 4..28 {
+            let dist = 1 << n;
+
+            let (mut twiddles_re_ref, mut twiddles_im_ref) = generate_twiddles(dist);
+            let (mut twiddles_re, mut twiddles_im) = generate_twiddles_simd(dist);
+
+            twiddles_re
+                .iter()
+                .zip(twiddles_re_ref.iter())
+                .for_each(|(simd, reference)| {
+                    assert_f64_closeness(*simd, *reference, 1e-10);
+                });
+
+            twiddles_im
+                .iter()
+                .zip(twiddles_re_ref.iter())
+                .for_each(|(simd, reference)| {
+                    assert_f64_closeness(*simd, *reference, 1e-10);
+                });
+        }
+    }
+
+    #[test]
     fn twiddles_filter() {
         let n = 30;
 
