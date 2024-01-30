@@ -43,7 +43,8 @@ impl Iterator for Twiddles {
 }
 
 pub fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
-    if dist <= 32 { // TODO: tune
+    if dist <= 32 {
+        // TODO: tune
         generate_twiddles_scalar(dist)
     } else {
         generate_twiddles_simd(dist)
@@ -105,7 +106,7 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     };
 
     let apply_symmetry_im = |input: &[Float], output: &mut [Float]| {
-        let mut buf: [Float; CHUNK_SIZE] = [Float::default(); 8];
+        let mut buf: [Float; CHUNK_SIZE] = [Float::default(); CHUNK_SIZE];
         buf.copy_from_slice(input);
         buf.reverse();
         output.copy_from_slice(&buf);
