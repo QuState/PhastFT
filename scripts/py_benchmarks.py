@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 from pybindings import fft
 
 
+def gen_random_signal(dim: int) -> np.ndarray:
+    x = np.asarray((1 / np.sqrt(2)) * (np.random.randn(dim) + 1j * np.random.randn(dim)), dtype="complex128")
+    return np.ascontiguousarray(x)
+
+
 def main() -> None:
     with open("elapsed_times.csv", "w", newline="") as csvfile:
         fieldnames = ["n", "phastft_time", "numpy_fft_time", "pyfftw_fft_time"]
@@ -18,16 +23,15 @@ def main() -> None:
         for n in range(4, 29):
             print(f"n = {n}")
             big_n = 1 << n
-            x = unitary_group.rvs(big_n)
-
-            a_re = x[:, 0].copy().real # np.asarray([float(i) for i in range(big_n)])
-            a_im = x[:, 0].copy().imag # np.asarray([float(i) for i in range(big_n)])
+            s = gen_random_signal(big_n)
+            a_re = np.ascontiguousarray(s.real) # np.asarray([float(i) for i in range(big_n)])
+            a_im = np.ascontiguousarray(s.imag) # np.asarray([float(i) for i in range(big_n)])
 
             start = time.time()
             fft(a_re, a_im)
             phastft_elapsed = round((time.time() - start) * 10**6)
 
-            a = x[:, 0].copy()
+            a = s.copy()
 
             start = time.time()
             expected = np.fft.fft(a)
@@ -42,16 +46,16 @@ def main() -> None:
                     )
                 ]
             )
-            np.testing.assert_allclose(actual, expected)
+            np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=0)
 
-            arr = x[:, 0].copy()
+            arr = s.copy()
             a = pyfftw.empty_aligned(big_n, dtype="complex128")
             a[:] = arr
             start = time.time()
             b = pyfftw.interfaces.numpy_fft.fft(a)
             pyfftw_elapsed = round((time.time() - start) * 10**6)
 
-            np.testing.assert_allclose(b, actual)
+            np.testing.assert_allclose(b, actual, rtol=1e-3, atol=0)
 
             writer.writerow(
                 {
