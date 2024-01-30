@@ -43,6 +43,14 @@ impl Iterator for Twiddles {
 }
 
 pub fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
+    if dist <= 5 { // TODO: tune
+        generate_twiddles_scalar(dist)
+    } else {
+        generate_twiddles_simd(dist)
+    }
+}
+
+pub fn generate_twiddles_scalar(dist: usize) -> (Vec<f64>, Vec<f64>) {
     let mut twiddles_re = vec![0.0; dist];
     let mut twiddles_im = vec![0.0; dist];
     twiddles_re[0] = 1.0;
@@ -208,7 +216,7 @@ mod tests {
         for n in 4..28 {
             let dist = 1 << n;
 
-            let (mut twiddles_re_ref, mut twiddles_im_ref) = generate_twiddles(dist);
+            let (mut twiddles_re_ref, mut twiddles_im_ref) = generate_twiddles_scalar(dist);
             let (mut twiddles_re, mut twiddles_im) = generate_twiddles_simd(dist);
 
             twiddles_re
