@@ -1,8 +1,8 @@
 use crate::kernels::Float;
 
-const BLOCK_WIDTH: usize = 128;
+const BLOCK_WIDTH: usize = 256;
 // size of the cacheline
-const LOG_BLOCK_WIDTH: usize = 7; // log2 of cacheline
+const LOG_BLOCK_WIDTH: usize = 8; // log2 of cacheline
 
 /// Run in-place bit reversal on a single buffer
 /// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
