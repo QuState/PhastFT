@@ -100,7 +100,7 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     let apply_symmetry_re = |input: &[Float], output: &mut [Float]| {
         let first_re = f64x8::from_slice(input);
         let minus_one = f64x8::splat(-1.0);
-        let mut negated = (first_re * minus_one).reverse();
+        let negated = (first_re * minus_one).reverse();
         output.copy_from_slice(negated.as_array());
     };
 
