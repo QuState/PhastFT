@@ -43,7 +43,7 @@ impl Iterator for Twiddles {
 }
 
 pub fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
-    if dist <= 5 { // TODO: tune
+    if dist <= 32 { // TODO: tune
         generate_twiddles_scalar(dist)
     } else {
         generate_twiddles_simd(dist)
