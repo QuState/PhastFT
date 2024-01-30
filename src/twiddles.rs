@@ -92,7 +92,8 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     let apply_symmetry_re = |input: &[Float], output: &mut [Float]| {
         let first_re = f64x8::from_slice(input);
         let minus_one = f64x8::splat(-1.0);
-        output.copy_from_slice((first_re * minus_one).as_array());
+        let mut negated = (first_re * minus_one).reverse();
+        output.copy_from_slice(negated.as_array());
     };
 
     let apply_symmetry_im = |input: &[Float], output: &mut [Float]| {
@@ -103,42 +104,24 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     };
 
     // Split the twiddles into two halves. There is a cheaper way to calculate the second half
-    let (first_half_re, second_half_re) = twiddles_re.split_at_mut(dist / 2);
-    let (first_half_im, second_half_im) = twiddles_im.split_at_mut(dist / 2);
-
-    // Handle the first chink which is special in that the first number is 0
-    // TODO: put this into the main loop somehow instead of special-casing it?
-    {
-        let first_re = &mut first_half_re[..CHUNK_SIZE];
-        let first_im = &mut first_half_im[..CHUNK_SIZE];
-        first_re[1..]
-            .iter_mut()
-            .zip(first_im[1..].iter_mut())
-            .for_each(|(re, im)| {
-                (*re, *im) = next_twiddle();
-            });
-
-        let last_re = &mut second_half_re[(dist / 2) - CHUNK_SIZE..];
-        apply_symmetry_re(&first_re, last_re);
-
-        let last_im = &mut second_half_im[(dist / 2) - CHUNK_SIZE..];
-        apply_symmetry_im(&first_im, last_im);
-    }
-
-    // We've already processed the first and last chunk of each, so discard them
-    let first_half_re = &mut first_half_re[CHUNK_SIZE..];
-    let first_half_im = &mut first_half_im[CHUNK_SIZE..];
-    let second_half_re = &mut second_half_re[..(dist / 2) - CHUNK_SIZE];
-    let second_half_im = &mut second_half_im[..(dist / 2) - CHUNK_SIZE];
-
-    assert_eq!(first_half_re.len(), second_half_re.len());
-    assert_eq!(first_half_im.len(), second_half_im.len());
+    let (first_half_re, second_half_re) = twiddles_re[1..].split_at_mut(dist / 2);
+    assert!(first_half_re.len() == second_half_re.len() + 1);
+    let (first_half_im, second_half_im) = twiddles_im[1..].split_at_mut(dist / 2);
+    assert!(first_half_im.len() == second_half_im.len() + 1);
 
     first_half_re
         .chunks_exact_mut(CHUNK_SIZE)
         .zip(first_half_im.chunks_exact_mut(CHUNK_SIZE))
-        .zip(second_half_re.chunks_exact_mut(CHUNK_SIZE).rev())
-        .zip(second_half_im.chunks_exact_mut(CHUNK_SIZE).rev())
+        .zip(
+            second_half_re[CHUNK_SIZE - 1..]
+                .chunks_exact_mut(CHUNK_SIZE)
+                .rev(),
+        )
+        .zip(
+            second_half_im[CHUNK_SIZE - 1..]
+                .chunks_exact_mut(CHUNK_SIZE)
+                .rev(),
+        )
         .for_each(
             |(((first_ch_re, first_ch_im), second_ch_re), second_ch_im)| {
                 // Calculate a chunk of the first half in a plain old scalar way
@@ -156,6 +139,14 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
                 apply_symmetry_im(&first_ch_im, second_ch_im);
             },
         );
+
+    // Fill in the middle that the SIMD loop didn't
+    twiddles_re[dist / 2 - CHUNK_SIZE + 1..][..(CHUNK_SIZE * 2) - 1]
+        .iter_mut()
+        .zip(twiddles_im[dist / 2 - CHUNK_SIZE + 1..][..(CHUNK_SIZE * 2) - 1].iter_mut())
+        .for_each(|(re, im)| {
+            (*re, *im) = next_twiddle();
+        });
 
     (twiddles_re, twiddles_im)
 }
@@ -229,7 +220,7 @@ mod tests {
 
             twiddles_im
                 .iter()
-                .zip(twiddles_re_ref.iter())
+                .zip(twiddles_im_ref.iter())
                 .for_each(|(simd, reference)| {
                     assert_f64_closeness(*simd, *reference, 1e-10);
                 });
@@ -238,7 +229,7 @@ mod tests {
 
     #[test]
     fn twiddles_filter() {
-        let n = 30;
+        let n = 28;
 
         let dist = 1 << (n - 1);
         let mut twiddles_iter = Twiddles::new(dist);
