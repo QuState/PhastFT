@@ -25,7 +25,11 @@ pub fn fft_dif(reals: &mut [Float], imags: &mut [Float]) {
 
     let dist = 1 << (n - 1);
     let chunk_size = dist << 1;
-    let (mut twiddles_re, mut twiddles_im) = if dist >= 8 * 2 { generate_twiddles_simd(dist) } else { generate_twiddles(dist) };
+    let (mut twiddles_re, mut twiddles_im) = if dist >= 8 * 2 {
+        generate_twiddles_simd(dist)
+    } else {
+        generate_twiddles(dist)
+    };
 
     assert_eq!(twiddles_re.len(), twiddles_im.len());
 
