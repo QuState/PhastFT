@@ -2,7 +2,7 @@
 
 use crate::cobra::cobra_apply;
 use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd, Float};
-use crate::twiddles::{filter_twiddles, generate_twiddles};
+use crate::twiddles::{filter_twiddles, generate_twiddles, generate_twiddles_simd};
 
 mod cobra;
 mod kernels;
@@ -25,7 +25,7 @@ pub fn fft_dif(reals: &mut [Float], imags: &mut [Float]) {
 
     let dist = 1 << (n - 1);
     let chunk_size = dist << 1;
-    let (mut twiddles_re, mut twiddles_im) = generate_twiddles(dist);
+    let (mut twiddles_re, mut twiddles_im) = if dist >= 8 * 2 { generate_twiddles_simd(dist) } else { generate_twiddles(dist) };
 
     assert_eq!(twiddles_re.len(), twiddles_im.len());
 
