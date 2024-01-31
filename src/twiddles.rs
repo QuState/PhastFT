@@ -135,8 +135,8 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
                 // This avoids data dependencies of the regular calculation and gets vectorized.
                 // We do it up front while the values we just calculated are still in the cache
                 // so we don't have to re-load them from memory later, which would be slow.
-                apply_symmetry_re(&first_ch_re, second_ch_re);
-                apply_symmetry_im(&first_ch_im, second_ch_im);
+                apply_symmetry_re(first_ch_re, second_ch_re);
+                apply_symmetry_im(first_ch_im, second_ch_im);
             },
         );
 

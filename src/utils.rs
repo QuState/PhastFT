@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 #[allow(dead_code)]
 #[track_caller]
 pub(crate) fn assert_f64_closeness(actual: f64, expected: f64, epsilon: f64) {
-    if !((actual - expected).abs() < epsilon) {
+    if (actual - expected).abs() >= epsilon {
         panic!(
             "Assertion failed: {} too far from expected value {} (with epsilon {})",
             actual, expected, epsilon
@@ -18,7 +18,7 @@ pub(crate) fn assert_f64_closeness(actual: f64, expected: f64, epsilon: f64) {
 #[allow(dead_code)]
 #[track_caller]
 pub(crate) fn assert_f32_closeness(actual: f32, expected: f32, epsilon: f32) {
-    if !((actual - expected).abs() < epsilon) {
+    if (actual - expected).abs() >= epsilon {
         panic!(
             "Assertion failed: {} too far from expected value {} (with epsilon {})",
             actual, expected, epsilon
@@ -27,7 +27,7 @@ pub(crate) fn assert_f32_closeness(actual: f32, expected: f32, epsilon: f32) {
 }
 
 pub fn gen_random_signal(reals: &mut [f64], imags: &mut [f64]) {
-    assert!(reals.len() == imags.len() && reals.len() > 0);
+    assert!(reals.len() == imags.len() && !reals.is_empty());
     let mut rng = thread_rng();
     let between = Uniform::from(0.0..1.0);
     let angle_dist = Uniform::from(0.0..2.0 * PI);

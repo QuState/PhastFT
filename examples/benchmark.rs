@@ -1,11 +1,15 @@
 use phastft::fft_dif;
+use phastft::utils::gen_random_signal;
 
 fn bm_fft(num_qubits: usize) {
     for i in 4..num_qubits {
         println!("run PhastFT with {i} qubits");
         let n = 1 << i;
-        let mut reals: Vec<f64> = (1..=n).map(f64::from).collect();
-        let mut imags: Vec<f64> = (1..=n).map(f64::from).collect();
+
+        let mut reals = vec![0.0; n];
+        let mut imags = vec![0.0; n];
+
+        gen_random_signal(&mut reals, &mut imags);
 
         let now = std::time::Instant::now();
         fft_dif(&mut reals, &mut imags);
