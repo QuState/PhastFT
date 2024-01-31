@@ -71,9 +71,9 @@ pub fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
 }
 
 pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
-    const CHUNK_SIZE: usize = 8; // TODO: make this a const generic?
-    assert!(dist >= CHUNK_SIZE * 2);
-    assert_eq!(dist % CHUNK_SIZE, 0);
+    const SIMD_WIDTH: usize = 8; // TODO: make this a const generic?
+    assert!(dist >= SIMD_WIDTH * 2);
+    assert_eq!(dist % SIMD_WIDTH, 0);
     let mut twiddles_re = vec![0.0; dist];
     let mut twiddles_im = vec![0.0; dist];
     twiddles_re[0] = 1.0;
@@ -97,7 +97,7 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     };
 
     let apply_symmetry_im = |input: &[Float], output: &mut [Float]| {
-        let mut buf: [Float; CHUNK_SIZE] = [Float::default(); 8];
+        let mut buf: [Float; SIMD_WIDTH] = [Float::default(); SIMD_WIDTH];
         buf.copy_from_slice(input);
         buf.reverse();
         output.copy_from_slice(&buf);
@@ -110,16 +110,16 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     assert!(first_half_im.len() == second_half_im.len() + 1);
 
     first_half_re
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(first_half_im.chunks_exact_mut(CHUNK_SIZE))
+        .chunks_exact_mut(SIMD_WIDTH)
+        .zip(first_half_im.chunks_exact_mut(SIMD_WIDTH))
         .zip(
-            second_half_re[CHUNK_SIZE - 1..]
-                .chunks_exact_mut(CHUNK_SIZE)
+            second_half_re[SIMD_WIDTH - 1..]
+                .chunks_exact_mut(SIMD_WIDTH)
                 .rev(),
         )
         .zip(
-            second_half_im[CHUNK_SIZE - 1..]
-                .chunks_exact_mut(CHUNK_SIZE)
+            second_half_im[SIMD_WIDTH - 1..]
+                .chunks_exact_mut(SIMD_WIDTH)
                 .rev(),
         )
         .for_each(
@@ -141,9 +141,9 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
         );
 
     // Fill in the middle that the SIMD loop didn't
-    twiddles_re[dist / 2 - CHUNK_SIZE + 1..][..(CHUNK_SIZE * 2) - 1]
+    twiddles_re[dist / 2 - SIMD_WIDTH + 1..][..(SIMD_WIDTH * 2) - 1]
         .iter_mut()
-        .zip(twiddles_im[dist / 2 - CHUNK_SIZE + 1..][..(CHUNK_SIZE * 2) - 1].iter_mut())
+        .zip(twiddles_im[dist / 2 - SIMD_WIDTH + 1..][..(SIMD_WIDTH * 2) - 1].iter_mut())
         .for_each(|(re, im)| {
             (*re, *im) = next_twiddle();
         });
