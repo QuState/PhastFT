@@ -9,8 +9,8 @@ pure-Rust FFT library according to our benchmarks.
 - Takes advantage of latest CPU features up to and including AVX-512, but performs well even without them.
 - Zero `unsafe` code
 - Python bindings (via [PyO3](https://github.com/PyO3/pyo3)).
-- Optional parallelization of some steps to 2 threads (with even more parallelization planned).
-- Did we mention it is really fast?!
+- Simple implementation using a single, general-purpose FFT algorithm and no costly "planning" step
+- Optional parallelization of some steps to 2 threads (with even more planned).
 
 ## Limitations
 
