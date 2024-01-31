@@ -1,4 +1,4 @@
-use std::{f64::consts::PI, simd::f64x8};
+use std::{f64::consts::PI, simd::Simd};
 
 use crate::kernels::Float;
 
@@ -71,7 +71,7 @@ pub fn generate_twiddles(dist: usize) -> (Vec<f64>, Vec<f64>) {
 }
 
 pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
-    const SIMD_WIDTH: usize = 8; // TODO: make this a const generic?
+    const SIMD_WIDTH: usize = 8; // TODO: make this a const generic and multiversion this function
     assert!(dist >= SIMD_WIDTH * 2);
     assert_eq!(dist % SIMD_WIDTH, 0);
     let mut twiddles_re = vec![0.0; dist];
@@ -90,8 +90,8 @@ pub(crate) fn generate_twiddles_simd(dist: usize) -> (Vec<f64>, Vec<f64>) {
     };
 
     let apply_symmetry_re = |input: &[Float], output: &mut [Float]| {
-        let first_re = f64x8::from_slice(input);
-        let minus_one = f64x8::splat(-1.0);
+        let first_re: Simd<f64, SIMD_WIDTH> = Simd::from_slice(input);
+        let minus_one: Simd<f64, SIMD_WIDTH> = Simd::splat(-1.0);
         let negated = (first_re * minus_one).reverse();
         output.copy_from_slice(negated.as_array());
     };
