@@ -12,6 +12,7 @@ keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
 categories = ["algorithms", "compression", "science"]
 
 [dependencies]
+rand = "0.8.5"
 rustfft = "6.1.0"
 
 [profile.release]
