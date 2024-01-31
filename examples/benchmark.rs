@@ -1,5 +1,5 @@
 use phastft::fft_dif;
-use phastft::utils::gen_random_signal;
+use utilities::gen_random_signal;
 
 fn bm_fft(num_qubits: usize) {
     for i in 4..num_qubits {

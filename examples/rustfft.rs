@@ -1,5 +1,7 @@
-use phastft::utils::gen_random_signal;
-use rustfft::{num_complex::Complex64, FftPlanner};
+use utilities::{
+    gen_random_signal,
+    rustfft::{num_complex::Complex64, FftPlanner},
+};
 
 fn main() {
     let big_n = 31;

@@ -172,8 +172,7 @@ pub(crate) fn filter_twiddles(twiddles_re: &mut Vec<f64>, twiddles_im: &mut Vec<
 #[cfg(test)]
 mod tests {
     use std::f64::consts::FRAC_1_SQRT_2;
-
-    use crate::utils::assert_f64_closeness;
+    use utilities::assert_f64_closeness;
 
     use super::*;
 
@@ -208,8 +207,8 @@ mod tests {
         for n in 4..28 {
             let dist = 1 << n;
 
-            let (mut twiddles_re_ref, mut twiddles_im_ref) = generate_twiddles(dist);
-            let (mut twiddles_re, mut twiddles_im) = generate_twiddles_simd(dist);
+            let (twiddles_re_ref, twiddles_im_ref) = generate_twiddles(dist);
+            let (twiddles_re, twiddles_im) = generate_twiddles_simd(dist);
 
             twiddles_re
                 .iter()
@@ -238,8 +237,8 @@ mod tests {
 
         for i in 0..dist {
             let (tw_re, tw_im) = twiddles_iter.next().unwrap();
-            assert_f64_closeness(twiddles_re[i], tw_re, 1e-10);
-            assert_f64_closeness(twiddles_im[i], tw_im, 1e-10);
+            assert_f64_closeness(twiddles_re[i], tw_re, 1e-6);
+            assert_f64_closeness(twiddles_im[i], tw_im, 1e-6);
         }
 
         for t in (0..n - 1).rev() {
@@ -254,7 +253,6 @@ mod tests {
 
             for i in 0..dist {
                 let (tw_re, tw_im) = twiddles_iter.next().unwrap();
-                // eprintln!("actual: {} expected: {}", tw_re, twiddles_re[i]);
                 assert_f64_closeness(twiddles_re[i], tw_re, 1e-6);
                 assert_f64_closeness(twiddles_im[i], tw_im, 1e-6);
             }

@@ -1,9 +1,11 @@
+workspace = { members = ["utilities"] }
+
 [package]
 name = "phastft"
 version = "0.1.0"
 edition = "2021"
 
-authors = ["Saveliy Yusufov", "...", "...", "..."]
+authors = ["Saveliy Yusufov", "Shnatsel", "...", "..."]
 license = "Apache-2.0"
 description = "A high-performance, quantum-inspired, implementation of FFT in pure Rust"
 documentation = ""
@@ -11,9 +13,8 @@ repository = ""
 keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
 categories = ["algorithms", "compression", "science"]
 
-[dependencies]
-rand = "0.8.5"
-rustfft = "6.1.0"
+[dev-dependencies]
+utilities = { path = "utilities" }
 
 [profile.release]
 codegen-units = 1

@@ -7,7 +7,6 @@ use crate::twiddles::{filter_twiddles, generate_twiddles, generate_twiddles_simd
 mod cobra;
 mod kernels;
 mod twiddles;
-pub mod utils;
 
 /// FFT -- Decimation in Frequency
 ///
@@ -78,9 +77,10 @@ pub fn fft_dif(reals: &mut [Float], imags: &mut [Float]) {
 mod tests {
     use std::ops::Range;
 
-    use rustfft::{num_complex::Complex64, FftPlanner};
-
-    use crate::utils::assert_f64_closeness;
+    use utilities::{
+        assert_f64_closeness,
+        rustfft::{num_complex::Complex64, FftPlanner},
+    };
 
     use super::*;
 
