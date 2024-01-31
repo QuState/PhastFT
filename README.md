@@ -1,7 +1,8 @@
-# PHFT
+# PhastFT
 
-**PH**ast**FT** (PHFT) is a high-performance, "quantum-inspired" Fast Fourier Transform (FFT) library written in pure
-and safe Rust. It is the fastest pure-Rust FFT library according to our benchmarks.
+PhastFT is a high-performance, "quantum-inspired" Fast Fourier
+Transform (FFT) library written in pure and safe Rust. It is the fastest
+pure-Rust FFT library according to our benchmarks.
 
 ## Features
 
@@ -18,7 +19,7 @@ and safe Rust. It is the fastest pure-Rust FFT library according to our benchmar
 
 ## How is it so fast?
 
-PHFT is designed around the capabilities and limitations of modern hardware (that is, anything made in the last 10 years or so).
+PhastFT is designed around the capabilities and limitations of modern hardware (that is, anything made in the last 10 years or so).
 
 The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses.**
 
@@ -35,11 +36,11 @@ including [RustFFT](https://crates.io/crates/rustfft/), on both large and small 
 
 ## Getting Started
 
-To integrate PHFT into your Rust project:
+To integrate PhastFT into your Rust project:
 
 ...
 
-To use PHFT with Python:
+To use PhastFT with Python:
 
 ```bash
 pip install ...
@@ -51,7 +52,7 @@ pip install ...
 
 ### Rust
 
-PHFT provides a straightforward API for performing FFT computations. Here's an example of using PHFT for a basic FFT
+PhastFT provides a straightforward API for performing FFT computations. Here's an example of using PhastFT for a basic FFT
 operation:
 
 ...
@@ -62,12 +63,12 @@ operation:
 
 ## Benchmarks
 
-PHFT is benchmarked against other FFT libraries. Detailed benchmarking results and instructions are available in the
+PhastFT is benchmarked against other FFT libraries. Detailed benchmarking results and instructions are available in the
 benchmarks directory.
 
 ## Contributing
 
-Contributions to PHFT are welcome! If you find any issues or have improvements to suggest, please open an issue or
+Contributions to PhastFT are welcome! If you find any issues or have improvements to suggest, please open an issue or
 submit a pull request. Follow the contribution guidelines outlined in the CONTRIBUTING.md file.
 
 ## License
@@ -103,7 +104,7 @@ Finally, run:
 
 ## What's with the name?
 
-The name, **PHFT**, is derived from the implementation of the
+The name, **PhastFT**, is derived from the implementation of the
 [Quantum Fourier Transform](https://en.wikipedia.org/wiki/Quantum_Fourier_transform) (QFT). Namely, the
 [quantum circuit implementation of QFT](https://en.wikipedia.org/wiki/Quantum_Fourier_transform#Circuit_implementation)
-consists of the **P**hase gates and **H**adamard gates. Hence, **PH**ast**FT**.
+consists of the **P**hase gates and **H**adamard gates. Hence, **Ph**astFT.

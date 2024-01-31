@@ -1,16 +1,20 @@
 import numpy as np
+import pandas as pd
 import pyfftw
 import time
 import csv
-from scipy.stats import unitary_group
 import matplotlib.pyplot as plt
 
 from pybindings import fft
 
+plt.style.use('seaborn-v0_8-poster')
+
 
 def gen_random_signal(dim: int) -> np.ndarray:
-    x = np.asarray((1 / np.sqrt(2)) * (np.random.randn(dim) + 1j * np.random.randn(dim)), dtype="complex128")
-    return np.ascontiguousarray(x)
+    return np.asarray(
+        np.random.randn(dim) + 1j * np.random.randn(dim),
+        dtype="complex128",
+    )
 
 
 def main() -> None:
@@ -24,18 +28,28 @@ def main() -> None:
             print(f"n = {n}")
             big_n = 1 << n
             s = gen_random_signal(big_n)
-            a_re = np.ascontiguousarray(s.real) # np.asarray([float(i) for i in range(big_n)])
-            a_im = np.ascontiguousarray(s.imag) # np.asarray([float(i) for i in range(big_n)])
+
+            a_re = [None] * len(s)
+            a_im = [None] * len(s)
+
+            for i, val in enumerate(s):
+                a_re[i] = val.real
+                a_im[i] = val.imag
+
+            a_re = np.asarray(a_re, dtype=np.float64)
+            a_im = np.asarray(a_im, dtype=np.float64)
 
             start = time.time()
             fft(a_re, a_im)
             phastft_elapsed = round((time.time() - start) * 10**6)
+            print(f"PhastFT completed in {phastft_elapsed} us")
 
             a = s.copy()
 
             start = time.time()
             expected = np.fft.fft(a)
             numpy_elapsed = round((time.time() - start) * 10**6)
+            print(f"NumPy fft completed in {numpy_elapsed} us")
 
             actual = np.asarray(
                 [
@@ -54,6 +68,7 @@ def main() -> None:
             start = time.time()
             b = pyfftw.interfaces.numpy_fft.fft(a)
             pyfftw_elapsed = round((time.time() - start) * 10**6)
+            print(f"pyFFTW completed in {pyfftw_elapsed} us")
 
             np.testing.assert_allclose(b, actual, rtol=1e-3, atol=0)
 
@@ -68,7 +83,6 @@ def main() -> None:
 
     file_path = "elapsed_times.csv"
     loaded_data = read_csv_to_dict(file_path)
-    print(loaded_data)
     plot_elapsed_times(loaded_data)
 
 
@@ -104,5 +118,43 @@ def plot_elapsed_times(data: dict) -> None:
     plt.savefig("py_benchmarks.png", dpi=600)
 
 
+def grouped_bar_plot(data: dict):
+    index = data["n"]
+    np_fft_timings = data["numpy_fft_time"]
+    pyfftw_timings = data["pyfftw_fft_time"] # / np_fft_timings
+    phastft_timings = data["phastft_time"] # / np_fft_timings
+
+    ratio_np_to_pyfftw = []
+    ratio_np_to_phastft = []
+    ratio_np_to_np = []
+    for (s1, s2, s3) in zip(np_fft_timings, pyfftw_timings, phastft_timings):
+        if s1 == 0 or s2 == 0 or s3 == 0:
+            continue
+
+        ratio_np_to_pyfftw.append(s2 / s1)
+        ratio_np_to_phastft.append(s3 / s1)
+        ratio_np_to_np.append(s1 / s1)
+
+    plt.figure()
+    df = pd.DataFrame(
+        {
+            "NumPy fft": ratio_np_to_np,
+            "pyFFTW": ratio_np_to_pyfftw,
+            "PhastFT": ratio_np_to_phastft,
+        },
+        index=index,
+    )
+
+    ax = df.plot(kind='bar', linewidth=3, rot=0)
+    plt.xticks(fontsize=8)
+    plt.xlabel("# of bits in index")
+    plt.ylabel("Time (relative to NumPy FFT)")
+    # plt.tight_layout(pad=0.0)
+    plt.savefig("py_benchmarks_bar_plot.png", dpi=600)
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+    file_path = "elapsed_times.csv"
+    loaded_data = read_csv_to_dict(file_path)
+    grouped_bar_plot(loaded_data)
