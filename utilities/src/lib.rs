@@ -1,32 +1,45 @@
-use rand::distributions::Uniform;
-use rand::prelude::*;
-use std::f64::consts::PI;
 pub extern crate rustfft;
 
+use std::f64::consts::PI;
+
+use rand::distributions::Uniform;
+use rand::prelude::*;
+
 /// Asserts that two f64 numbers are approximately equal.
+///
+/// # Panics
+///
+/// Panics if `actual` and `expected` are too far from each other
 #[allow(dead_code)]
 #[track_caller]
 pub fn assert_f64_closeness(actual: f64, expected: f64, epsilon: f64) {
     if (actual - expected).abs() >= epsilon {
         panic!(
-            "Assertion failed: {} too far from expected value {} (with epsilon {})",
-            actual, expected, epsilon
+            "Assertion failed: {actual} too far from expected value {expected} (with epsilon {epsilon})",
         );
     }
 }
 
 /// Asserts that two f32 numbers are approximately equal.
+///
+/// # Panics
+///
+/// Panics if `actual` and `expected` are too far from each other
 #[allow(dead_code)]
 #[track_caller]
 pub fn assert_f32_closeness(actual: f32, expected: f32, epsilon: f32) {
     if (actual - expected).abs() >= epsilon {
         panic!(
-            "Assertion failed: {} too far from expected value {} (with epsilon {})",
-            actual, expected, epsilon
+            "Assertion failed: {actual} too far from expected value {expected} (with epsilon {epsilon})",
         );
     }
 }
 
+/// Generate a random, complex, signal in the provided buffers
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()`
 pub fn gen_random_signal(reals: &mut [f64], imags: &mut [f64]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
     let mut rng = thread_rng();
@@ -55,4 +68,26 @@ pub fn gen_random_signal(reals: &mut [f64], imags: &mut [f64]) {
             reals[i] = re;
             imags[i] = im;
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_random_signal() {
+        let big_n = 1 << 25;
+        let mut reals = vec![0.0; big_n];
+        let mut imags = vec![0.0; big_n];
+
+        gen_random_signal(&mut reals, &mut imags);
+
+        let sum: f64 = reals
+            .iter()
+            .zip(imags.iter())
+            .map(|(re, im)| re.powi(2) + im.powi(2))
+            .sum();
+
+        assert_f64_closeness(sum, 1.0, 1e-6);
+    }
 }
