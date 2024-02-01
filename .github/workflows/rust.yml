@@ -1,4 +1,4 @@
-on: [push, pull_request]
+on: [ push, pull_request ]
 
 name: Build
 
@@ -63,3 +63,27 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+
+  coverage:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install nightly toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate code coverage
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
