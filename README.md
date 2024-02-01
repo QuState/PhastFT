@@ -1,3 +1,5 @@
+[![Build](https://github.com/QuState/PhastFT/actions/workflows/rust.yml/badge.svg)](https://github.com/QuState/PhastFT/actions/workflows/rust.yml)
+
 # PhastFT
 
 PhastFT is a high-performance, "quantum-inspired" Fast Fourier
@@ -14,25 +16,32 @@ pure-Rust FFT library according to our benchmarks.
 
 ## Limitations
 
- - No runtime CPU feature detection (yet). Right now achieving the highest performance requires compiling with `-C target-cpu=native` or [`cargo multivers`](https://github.com/ronnychevalier/cargo-multivers).
- - Requires nightly Rust compiler due to use of portable SIMD
+- No runtime CPU feature detection (yet). Right now achieving the highest performance requires compiling
+  with `-C target-cpu=native` or [`cargo multivers`](https://github.com/ronnychevalier/cargo-multivers).
+- Requires nightly Rust compiler due to use of portable SIMD
 
 ## How is it so fast?
 
-PhastFT is designed around the capabilities and limitations of modern hardware (that is, anything made in the last 10 years or so).
+PhastFT is designed around the capabilities and limitations of modern hardware (that is, anything made in the last 10
+years or so).
 
 The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses.**
 
-We picked an FFT algorithm that maps well to modern CPUs. The implementation can make use of latest CPU features such as AVX-512, but performs well even without them.
+We picked an FFT algorithm that maps well to modern CPUs. The implementation can make use of latest CPU features such as
+AVX-512, but performs well even without them.
 
 Our key insight for speeding up memory accesses is that FFT is equivalent to applying gates to all qubits in `[0, n)`.
-This creates to oppurtunity to leverage the same memory access patterns as a [high-performance quantum state simulator](https://github.com/QuState/spinoza).
+This creates to oppurtunity to leverage the same memory access patterns as
+a [high-performance quantum state simulator](https://github.com/QuState/spinoza).
 
-We also use the Cache-Optimal Bit Reveral Algorithm ([COBRA](https://csaws.cs.technion.ac.il/~itai/Courses/Cache/bit.pdf))
+We also use the Cache-Optimal Bit Reveral
+Algorithm ([COBRA](https://csaws.cs.technion.ac.il/~itai/Courses/Cache/bit.pdf))
 on large datasets and optionally run it on 2 parallel threads, accelerating it even further.
 
-All of this combined results in a fast and efficient FFT implementation that surpasses the performance of existing Rust FFT crates,
-including [RustFFT](https://crates.io/crates/rustfft/), on both large and small inputs and while using significantly less memory.
+All of this combined results in a fast and efficient FFT implementation that surpasses the performance of existing Rust
+FFT crates,
+including [RustFFT](https://crates.io/crates/rustfft/), on both large and small inputs and while using significantly
+less memory.
 
 ## Getting Started
 
@@ -52,7 +61,8 @@ pip install ...
 
 ### Rust
 
-PhastFT provides a straightforward API for performing FFT computations. Here's an example of using PhastFT for a basic FFT
+PhastFT provides a straightforward API for performing FFT computations. Here's an example of using PhastFT for a basic
+FFT
 operation:
 
 ...
