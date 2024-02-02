@@ -2,10 +2,12 @@
 
 use crate::cobra::cobra_apply;
 use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd, Float};
+use crate::options::Options;
 use crate::twiddles::{filter_twiddles, generate_twiddles, generate_twiddles_simd};
 
 mod cobra;
 mod kernels;
+pub mod options;
 mod twiddles;
 
 /// FFT -- Decimation in Frequency
@@ -19,6 +21,15 @@ mod twiddles;
 ///
 /// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
 pub fn fft_dif(reals: &mut [Float], imags: &mut [Float]) {
+    let opts = Options::guess_options(reals.len());
+    fft_dif_with_opts(reals, imags, &opts)
+}
+
+/// Same as [fft_dif], but also accepts [`Options`] that control optimization strategies.
+///
+/// `fft_dif` automatically guesses the best strategy for a given input,
+/// so you only need to call this if you are tuning performance for a specific hardware platform.
+pub fn fft_dif_with_opts(reals: &mut [Float], imags: &mut [Float], opts: &Options) {
     assert_eq!(reals.len(), imags.len());
     let n: usize = reals.len().ilog2() as usize;
 
@@ -62,14 +73,14 @@ pub fn fft_dif(reals: &mut [Float], imags: &mut [Float]) {
         }
     }
 
-    if n < 22 {
-        cobra_apply(reals, n);
-        cobra_apply(imags, n);
-    } else {
+    if opts.multithreaded_bit_reversal {
         std::thread::scope(|s| {
             s.spawn(|| cobra_apply(reals, n));
             s.spawn(|| cobra_apply(imags, n));
         });
+    } else {
+        cobra_apply(reals, n);
+        cobra_apply(imags, n);
     }
 }
 
