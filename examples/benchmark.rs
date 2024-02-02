@@ -10,10 +10,10 @@ fn benchmark_fft(n: usize) {
     let mut imags = vec![0.0; big_n];
     gen_random_signal(&mut reals, &mut imags);
 
-    let now = std::time::Instant::now();
+    // let now = std::time::Instant::now();
     fft_dif(&mut reals, &mut imags);
-    let elapsed = now.elapsed().as_micros();
-    println!("{elapsed}");
+    // let elapsed = now.elapsed().as_micros();
+    // println!("{elapsed}");
 }
 
 fn main() {

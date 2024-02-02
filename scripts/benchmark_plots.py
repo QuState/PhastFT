@@ -9,6 +9,17 @@ import pandas as pd
 
 plt.style.use("fivethirtyeight")
 
+
+SYMBOLS = {
+    'customary'     : ('B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'),
+    'customary_ext' : ('byte', 'kilo', 'mega', 'giga', 'tera', 'peta', 'exa',
+                       'zetta', 'iotta'),
+    'iec'           : ('Bi', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi', 'Yi'),
+    'iec_ext'       : ('byte', 'kibi', 'mebi', 'gibi', 'tebi', 'pebi', 'exbi',
+                       'zebi', 'yobi'),
+}
+
+
 def read_file(filepath: str) -> list[int]:
     y = []
 
@@ -21,12 +32,12 @@ def read_file(filepath: str) -> list[int]:
 
 
 def get_figure_of_interest(vals: list[int]) -> float:
-    return np.mean(vals)
+    return np.median(vals)
 
 
 def build_and_clean_data(root_benchmark_dir: str, *names) -> defaultdict[str, list]:
     libs = ("rustfft", "phastft")
-    n_range = range(4, 27)
+    n_range = range(12, 30)
 
     data = defaultdict(list)
 
@@ -39,31 +50,56 @@ def build_and_clean_data(root_benchmark_dir: str, *names) -> defaultdict[str, li
     return data
 
 def plot_lines(data: defaultdict[str, list]) -> None:
-    index = list(range(4, 27))
+    index = [bytes2human(2**n * (128 / 8)) for n in range(12, 30)]
     plt.figure()
 
-    print(len(data["phastft"]))
+    y0 = np.asarray(data["phastft"])
+    y1 = np.asarray(data["rustfft"])
+    y0 = y1/y0
 
     df = pd.DataFrame(
         {
-            "PhastFT": data["phastft"],
-            "RustFFT": data["rustfft"],
+            "PhastFT": y0,
+            "RustFFT": np.ones(len(index)),
         },
         index=index,
     )
 
     df.plot(kind='bar', linewidth=3, rot=0)
-    plt.xticks(fontsize=8)
-    plt.xlabel("size")
-    plt.ylabel("time (us)")
-    plt.yscale("log")
-    plt.show()
-    # plt.tight_layout(pad=0.0)
-    # plt.savefig("benchmarks_bar_plot.png", dpi=600)
+
+    plt.xticks(fontsize=9, rotation=-45)
+    plt.yticks(fontsize=9)
+    plt.xlabel("size of input")
+    plt.ylabel("speedup (relative to RustFFT)")
+    plt.legend(loc='best')
+    plt.tight_layout()
+    plt.savefig("benchmarks_bar_plot.png", dpi=600)
+
+
+# Source: https://stackoverflow.com/a/1094933
+def bytes2human(n, format='%(value).1f %(symbol)s', symbols='customary'):
+    """
+    Convert n bytes into a human-readable string based on format.
+    symbols can be either "customary", "customary_ext", "iec" or "iec_ext",
+    see: https://goo.gl/kTQMs
+    """
+    n = int(n)
+    if n < 0:
+        raise ValueError("n < 0")
+    symbols = SYMBOLS[symbols]
+    prefix = {}
+    for i, s in enumerate(symbols[1:]):
+        prefix[s] = 1 << (i+1)*10
+    for symbol in reversed(symbols[1:]):
+        if n >= prefix[symbol]:
+            value = float(n) / prefix[symbol]
+            return format % locals()
+    return format % dict(symbol=symbols[0], value=n)
+
 
 
 if __name__ == "__main__":
     # y = read_file("benchmark-data.2024.02.02.11-02-07/phastft/size_16")
-    data = build_and_clean_data("benchmark-data.2024.02.02.11-27-33")
-    print(data)
-    # plot_lines(data)
+    data = build_and_clean_data("benchmark-data.2024.02.02.11-43-10")
+    # print(data)
+    plot_lines(data)
