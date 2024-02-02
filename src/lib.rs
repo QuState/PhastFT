@@ -2,6 +2,7 @@
 
 use crate::cobra::cobra_apply;
 use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd, Float};
+use crate::options::Options;
 use crate::twiddles::{filter_twiddles, generate_twiddles, generate_twiddles_simd};
 
 mod cobra;
@@ -22,6 +23,7 @@ mod twiddles;
 pub fn fft_dif(reals: &mut [Float], imags: &mut [Float]) {
     assert_eq!(reals.len(), imags.len());
     let n: usize = reals.len().ilog2() as usize;
+    let opts = Options::guess_options(reals.len());
 
     let dist = 1 << (n - 1);
     let chunk_size = dist << 1;
@@ -63,14 +65,14 @@ pub fn fft_dif(reals: &mut [Float], imags: &mut [Float]) {
         }
     }
 
-    if n < 22 {
-        cobra_apply(reals, n);
-        cobra_apply(imags, n);
-    } else {
+    if opts.multithreaded_bit_reversal {
         std::thread::scope(|s| {
             s.spawn(|| cobra_apply(reals, n));
             s.spawn(|| cobra_apply(imags, n));
         });
+    } else {
+        cobra_apply(reals, n);
+        cobra_apply(imags, n);
     }
 }
 
