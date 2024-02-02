@@ -1,23 +1,26 @@
+use std::env;
+use std::str::FromStr;
+
 use phastft::fft_dif;
 use utilities::gen_random_signal;
 
-fn bm_fft(num_qubits: usize) {
-    for i in 4..num_qubits {
-        println!("run PhastFT with {i} qubits");
-        let n = 1 << i;
+fn benchmark_fft(n: usize) {
+    let big_n = 1 << n;
+    let mut reals = vec![0.0; big_n];
+    let mut imags = vec![0.0; big_n];
+    gen_random_signal(&mut reals, &mut imags);
 
-        let mut reals = vec![0.0; n];
-        let mut imags = vec![0.0; n];
-
-        gen_random_signal(&mut reals, &mut imags);
-
-        let now = std::time::Instant::now();
-        fft_dif(&mut reals, &mut imags);
-        let elapsed = now.elapsed().as_micros();
-        println!("time elapsed: {elapsed} us\n----------------------------");
-    }
+    let now = std::time::Instant::now();
+    fft_dif(&mut reals, &mut imags);
+    let elapsed = now.elapsed().as_micros();
+    println!("{elapsed}");
 }
 
 fn main() {
-    bm_fft(31);
+    let args: Vec<String> = env::args().collect();
+    assert_eq!(args.len(), 2, "Usage {} <n>", args[0]);
+
+    let n = usize::from_str(&args[1]).unwrap();
+
+    benchmark_fft(n);
 }
