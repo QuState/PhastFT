@@ -24,8 +24,8 @@ int main(int argc, char** argv) {
     fftw_plan p = fftw_plan_dft_1d(N, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
     fftw_execute(p);
     double toc = clock();
-
     double elapsed = ((double)(toc - tic) / CLOCKS_PER_SEC) * 1000000;
+
     printf("%f\n", elapsed);
     fftw_free(in);
     fftw_destroy_plan(p);
