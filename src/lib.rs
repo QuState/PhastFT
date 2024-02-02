@@ -7,6 +7,7 @@ use crate::twiddles::{filter_twiddles, generate_twiddles, generate_twiddles_simd
 mod cobra;
 mod kernels;
 mod twiddles;
+pub mod options;
 
 /// FFT -- Decimation in Frequency
 ///
