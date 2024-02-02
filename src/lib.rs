@@ -21,9 +21,17 @@ mod twiddles;
 ///
 /// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
 pub fn fft_dif(reals: &mut [Float], imags: &mut [Float]) {
+    let opts = Options::guess_options(reals.len());
+    fft_dif_with_opts(reals, imags, &opts)
+}
+
+/// Same as [fft_dif], but also accepts [`Options`] that control optimization strategies.
+///
+/// `fft_dif` automatically guesses the best strategy for a given input,
+/// so you only need to call this if you are tuning performance for a specific hardware platform.
+pub fn fft_dif_with_opts(reals: &mut [Float], imags: &mut [Float], opts: &Options) {
     assert_eq!(reals.len(), imags.len());
     let n: usize = reals.len().ilog2() as usize;
-    let opts = Options::guess_options(reals.len());
 
     let dist = 1 << (n - 1);
     let chunk_size = dist << 1;
