@@ -4,22 +4,30 @@
 # PhastFT
 
 PhastFT is a high-performance, "quantum-inspired" Fast Fourier
-Transform (FFT) library written in pure and safe Rust. It is the fastest
-pure-Rust FFT library according to our benchmarks.
+Transform (FFT) library written in pure Rust.
+Despite its simplicity, it is competitive with and often outperforms
+the fastest Rust FFT libraries, including [RustFFT](https://crates.io/crates/rustfft/).
 
 ## Features
 
-- Takes advantage of latest CPU features up to and including AVX-512, but performs well even without them.
+- Simple implementation using a single, general-purpose FFT algorithm.
 - Zero `unsafe` code
-- Python bindings (via [PyO3](https://github.com/PyO3/pyo3)).
-- Simple implementation using a single, general-purpose FFT algorithm and no costly "planning" step
-- Optional parallelization of some steps to 2 threads (with even more planned).
+- Takes advantage of latest CPU features up to and including AVX-512, but performs well even without them.
+- Optional parallelization of some steps to 2 threads (with even more planned)
+- 2x lower memory usage than [RustFFT](https://crates.io/crates/rustfft/)
+- Python bindings (via [PyO3](https://github.com/PyO3/pyo3))
 
 ## Limitations
 
 - No runtime CPU feature detection (yet). Right now achieving the highest performance requires compiling
   with `-C target-cpu=native` or [`cargo multivers`](https://github.com/ronnychevalier/cargo-multivers).
 - Requires nightly Rust compiler due to use of portable SIMD
+
+## Planned features
+
+ - Runtime CPU feature detection
+ - More multi-threading
+ - More work on cache-optimal FFT
 
 ## How is it so fast?
 
@@ -28,7 +36,7 @@ years or so).
 
 The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses.**
 
-We picked an FFT algorithm that maps well to modern CPUs. The implementation can make use of latest CPU features such as
+We picked an efficient, general-purpose FFT algorithm. Our implementation can make use of latest CPU features such as
 AVX-512, but performs well even without them.
 
 Our key insight for speeding up memory accesses is that FFT is equivalent to applying gates to all qubits in `[0, n)`.
@@ -41,7 +49,7 @@ on large datasets and optionally run it on 2 parallel threads, accelerating it e
 
 All of this combined results in a fast and efficient FFT implementation that surpasses the performance of existing Rust
 FFT crates,
-including [RustFFT](https://crates.io/crates/rustfft/), on both large and small inputs and while using significantly
+including [RustFFT](https://crates.io/crates/rustfft/) on large inputs and while using significantly
 less memory.
 
 ## Quickstart
