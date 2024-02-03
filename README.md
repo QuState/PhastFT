@@ -44,33 +44,37 @@ FFT crates,
 including [RustFFT](https://crates.io/crates/rustfft/), on both large and small inputs and while using significantly
 less memory.
 
-## Getting Started
-
-To integrate PhastFT into your Rust project:
-
-...
-
-To use PhastFT with Python:
-
-```bash
-pip install ...
-```
-
-...
-
-## Examples
+## Quickstart
 
 ### Rust
 
-PhastFT provides a straightforward API for performing FFT computations. Here's an example of using PhastFT for a basic
-FFT
-operation:
+```rust
+fn main() {
+    let N = 1 << 10;
+    let mut reals = vec![0.0; N];
+    let mut imags = vec![0.0; N];
+    gen_random_signal(&mut reals, &mut imags);
 
-...
+    fft_dif(&mut reals, &mut imags);
+}
+```
 
 ### Python
 
-...
+```bash
+pip install numpy
+pip install git+https://github.com/QuState/PhastFT#subdirectory=pybindings
+```
+
+```python
+import numpy as np
+from pybindings import fft
+
+sig_re = np.asarray(sig_re, dtype=np.float64)
+sig_im = np.asarray(sig_im, dtype=np.float64)
+
+fft(a_re, a_im)
+```
 
 ## Benchmarks
 
