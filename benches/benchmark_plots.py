@@ -64,7 +64,7 @@ def plot_lines(data: dict[str, list], n_range: range) -> None:
         index=index,
     )
 
-    df.plot(kind='bar', linewidth=3, rot=0)
+    df.plot(linewidth=3, rot=0)
 
     plt.xticks(fontsize=9, rotation=-45)
     plt.yticks(fontsize=9)
@@ -73,7 +73,7 @@ def plot_lines(data: dict[str, list], n_range: range) -> None:
     plt.legend(loc='best')
     plt.tight_layout()
     plt.savefig("benchmarks_bar_plot.png", dpi=600)
-    # plt.show()
+    plt.show()
 
 
 # Source: https://stackoverflow.com/a/1094933
@@ -104,7 +104,7 @@ def main():
     all_data = {}
 
     for lib in lib_names:
-        data = build_and_clean_data("benchmark-data.2024.02.02.16-45-50", n_range, lib)
+        data = build_and_clean_data("benchmark-data.2024.02.02.19-10-51", n_range, lib)
         all_data[lib] = data
 
     assert len(all_data["rustfft"]) == len(all_data["fftw3"]) == len(all_data["phastft"])
