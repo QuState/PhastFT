@@ -78,8 +78,13 @@ fft(a_re, a_im)
 
 ## Benchmarks
 
-PhastFT is benchmarked against other FFT libraries. Detailed benchmarking results and instructions are available in the
-benchmarks directory.
+PhastFT is benchmarked against several other FFT libraries. Scripts to reproduce benchmark results and plots are
+available [here](benches).
+
+<p align="center">
+  <img src="assets/py_benchmarks_bar_plot.png" width="500" title="PhastFT vs. NumPy FFT vs. pyFFTW" alt="PhastFT vs. NumPy FFT vs. pyFFTW">
+  <img src="assets/benchmarks_bar_plot.png" width="500" title="PhastFT vs. RustFFT vs. FFTW3" alt="PhastFT vs. RustFFT vs. FFTW3">
+</p>
 
 ## Contributing
 
