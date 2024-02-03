@@ -20,7 +20,7 @@ SYMBOLS = {
 }
 
 
-def bytes2human(n, format="%(value).1f %(symbol)s", symbols="customary"):
+def bytes2human(n, format="%(value).0f %(symbol)s", symbols="customary"):
     """
     Convert n bytes into a human-readable string based on format.
     symbols can be either "customary", "customary_ext", "iec" or "iec_ext",
