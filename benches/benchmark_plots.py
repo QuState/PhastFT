@@ -39,7 +39,7 @@ def build_and_clean_data(
     return data
 
 
-def plot_lines(data: dict[str, list], n_range: range) -> None:
+def plot(data: dict[str, list], n_range: range) -> None:
     index = [bytes2human(2**n * (128 / 8)) for n in n_range]
     plt.figure()
 
@@ -52,9 +52,9 @@ def plot_lines(data: dict[str, list], n_range: range) -> None:
 
     df = pd.DataFrame(
         {
+            "RustFFT": np.ones(len(index)),
             "FFTW3": y0,
             "PhastFT": y1,
-            "RustFFT": np.ones(len(index)),
         },
         index=index,
     )
@@ -83,7 +83,7 @@ def main():
     assert (
         len(all_data["rustfft"]) == len(all_data["fftw3"]) == len(all_data["phastft"])
     )
-    plot_lines(all_data, n_range)
+    plot(all_data, n_range)
 
 
 if __name__ == "__main__":
