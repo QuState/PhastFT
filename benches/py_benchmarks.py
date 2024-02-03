@@ -5,9 +5,10 @@ import time
 import csv
 import matplotlib.pyplot as plt
 
+from utils import bytes2human
 from pybindings import fft
 
-plt.style.use('seaborn-v0_8-poster')
+plt.style.use("fivethirtyeight")
 
 
 def gen_random_signal(dim: int) -> np.ndarray:
@@ -24,7 +25,7 @@ def main() -> None:
 
         writer.writeheader()
 
-        for n in range(4, 29):
+        for n in range(12, 29):
             print(f"n = {n}")
             big_n = 1 << n
             s = gen_random_signal(big_n)
@@ -84,6 +85,7 @@ def main() -> None:
     file_path = "elapsed_times.csv"
     loaded_data = read_csv_to_dict(file_path)
     plot_elapsed_times(loaded_data)
+    grouped_bar_plot(loaded_data)
 
 
 def read_csv_to_dict(file_path: str) -> dict:
@@ -105,56 +107,53 @@ def read_csv_to_dict(file_path: str) -> dict:
 
 
 def plot_elapsed_times(data: dict) -> None:
-    plt.figure(figsize=(10, 6))
-    plt.plot(data["n"], data["phastft_time"], label="PhastFT")
-    plt.plot(data["n"], data["numpy_fft_time"], label="NumPy FFT")
-    plt.plot(data["n"], data["pyfftw_fft_time"], label="PyFFTW FFT")
+    index = [bytes2human(2**n * (128 / 8)) for n in data["n"]]
+    np_fft_timings = np.asarray(data["numpy_fft_time"])
+    pyfftw_timings = np.asarray(data["pyfftw_fft_time"])
+    phastft_timings = np.asarray(data["phastft_time"])
+
+    plt.plot(index, np_fft_timings, label="NumPy FFT", lw=0.8)
+    plt.plot(index, pyfftw_timings,  label="PyFFTW FFT", lw=0.8)
+    plt.plot(index, phastft_timings, label="PhastFT", lw=0.98)
 
     plt.title("FFT Elapsed Times Comparison")
-    plt.xlabel("n")
-    plt.ylabel("Elapsed Time (microseconds)")
+    plt.xticks(fontsize=9, rotation=-45)
+    plt.yticks(fontsize=9)
+    plt.xlabel("size of input")
+    plt.ylabel("time (us)")
     plt.yscale("log")
-    plt.legend()
+    plt.legend(loc="best")
+    plt.tight_layout()
     plt.savefig("py_benchmarks.png", dpi=600)
 
 
 def grouped_bar_plot(data: dict):
     index = data["n"]
-    np_fft_timings = data["numpy_fft_time"]
-    pyfftw_timings = data["pyfftw_fft_time"] # / np_fft_timings
-    phastft_timings = data["phastft_time"] # / np_fft_timings
-
-    ratio_np_to_pyfftw = []
-    ratio_np_to_phastft = []
-    ratio_np_to_np = []
-    for (s1, s2, s3) in zip(np_fft_timings, pyfftw_timings, phastft_timings):
-        if s1 == 0 or s2 == 0 or s3 == 0:
-            continue
-
-        ratio_np_to_pyfftw.append(s2 / s1)
-        ratio_np_to_phastft.append(s3 / s1)
-        ratio_np_to_np.append(s1 / s1)
+    index = [bytes2human(2**n * (128 / 8)) for n in index]
+    np_fft_timings = np.asarray(data["numpy_fft_time"])
+    pyfftw_timings = np.asarray(data["pyfftw_fft_time"])  # / np_fft_timings
+    phastft_timings = np.asarray(data["phastft_time"])  # / np_fft_timings
 
     plt.figure()
     df = pd.DataFrame(
         {
-            "NumPy fft": ratio_np_to_np,
-            "pyFFTW": ratio_np_to_pyfftw,
-            "PhastFT": ratio_np_to_phastft,
+            "NumPy fft": np.ones(len(index)),
+            "pyFFTW": pyfftw_timings / np_fft_timings,
+            "PhastFT": phastft_timings / np_fft_timings,
         },
         index=index,
     )
 
-    ax = df.plot(kind='bar', linewidth=3, rot=0)
-    plt.xticks(fontsize=8)
-    plt.xlabel("# of bits in index")
-    plt.ylabel("Time (relative to NumPy FFT)")
-    # plt.tight_layout(pad=0.0)
+    ax = df.plot(kind="bar", linewidth=3, rot=0)
+    plt.title("FFT Elapsed Times Comparison")
+    plt.xticks(fontsize=9, rotation=-45)
+    plt.yticks(fontsize=9)
+    plt.xlabel("size of input")
+    plt.ylabel("time taken (relative to NumPy FFT)")
+    plt.legend(loc="best")
+    plt.tight_layout()
     plt.savefig("py_benchmarks_bar_plot.png", dpi=600)
 
 
 if __name__ == "__main__":
-    # main()
-    file_path = "elapsed_times.csv"
-    loaded_data = read_csv_to_dict(file_path)
-    grouped_bar_plot(loaded_data)
+    main()
