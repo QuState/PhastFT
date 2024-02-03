@@ -1,5 +1,3 @@
-workspace = { members = ["utilities"] }
-
 [package]
 name = "phastft"
 version = "0.1.0"

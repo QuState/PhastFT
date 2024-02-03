@@ -60,7 +60,6 @@ def plot_lines(data: dict[str, list], n_range: range) -> None:
     )
 
     df.plot(kind="bar", linewidth=3, rot=0)
-
     plt.xticks(fontsize=9, rotation=-45)
     plt.yticks(fontsize=9)
     plt.xlabel("size of input")
@@ -68,7 +67,7 @@ def plot_lines(data: dict[str, list], n_range: range) -> None:
     plt.legend(loc="best")
     plt.tight_layout()
     plt.savefig("benchmarks_bar_plot.png", dpi=600)
-    # plt.show()
+    plt.show()
 
 
 def main():
@@ -78,7 +77,7 @@ def main():
     all_data = {}
 
     for lib in lib_names:
-        data = build_and_clean_data("benchmark-data.2024.02.02.16-45-50", n_range, lib)
+        data = build_and_clean_data("benchmark-data.2024.02.02.19-10-51", n_range, lib)
         all_data[lib] = data
 
     assert (
