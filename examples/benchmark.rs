@@ -1,7 +1,8 @@
 use std::env;
 use std::str::FromStr;
 
-use phastft::fft_dif;
+use phastft::fft;
+use phastft::planner::Planner;
 use utilities::gen_random_signal;
 
 fn benchmark_fft(n: usize) {
@@ -11,7 +12,8 @@ fn benchmark_fft(n: usize) {
     gen_random_signal(&mut reals, &mut imags);
 
     let now = std::time::Instant::now();
-    fft_dif(&mut reals, &mut imags);
+    let mut planner = Planner::new(n);
+    fft(&mut reals, &mut imags, &mut planner);
     let elapsed = now.elapsed().as_micros();
     println!("{elapsed}");
 }
