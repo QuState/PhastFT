@@ -70,9 +70,17 @@ fn main() {
 
 ### Python
 
+Follow the instructions at https://rustup.rs/ to install Rust, then switch to the nightly channel with
+
+```bash
+rustup default nightly
+```
+
+Then you can install PhastFT itself:
+
 ```bash
 pip install numpy
-pip install git+https://github.com/QuState/PhastFT#subdirectory=pybindings
+RUSTFLAGS='-Ctarget-cpu=native' pip install git+https://github.com/QuState/PhastFT#subdirectory=pybindings
 ```
 
 ```python
