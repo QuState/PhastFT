@@ -5,14 +5,15 @@
 
 PhastFT is a high-performance, "quantum-inspired" Fast Fourier
 Transform (FFT) library written in pure Rust.
-Despite its simplicity, it is competitive with and often outperforms
-the fastest Rust FFT libraries, including [RustFFT](https://crates.io/crates/rustfft/).
+Despite its simplicity, its performance is competitive with FFTW.
+On large inputs it outperforms even the fastest Rust FFT libraries, including [RustFFT](https://crates.io/crates/rustfft/).
 
 ## Features
 
-- Simple implementation using a single, general-purpose FFT algorithm.
+- Performance on par with FFTW and far exceeding other Rust implementations
+- Simple implementation using a single, general-purpose FFT algorithm
 - Zero `unsafe` code
-- Takes advantage of latest CPU features up to and including AVX-512, but performs well even without them.
+- Takes advantage of latest CPU features up to and including AVX-512, but performs well even without them
 - Optional parallelization of some steps to 2 threads (with even more planned)
 - 2x lower memory usage than [RustFFT](https://crates.io/crates/rustfft/)
 - Python bindings (via [PyO3](https://github.com/PyO3/pyo3))
@@ -102,6 +103,18 @@ submit a pull request. Follow the contribution guidelines outlined in the CONTRI
 ## License
 
 ...
+
+## PhastFT vs RustFFT
+
+[RustFFT](https://crates.io/crates/rustfft/) is another excellent FFT implementation in pure Rust.
+RustFFT and PhastFT are optimized for different workloads.
+
+RustFFT performs best on small inputs that fit entirely into the L2 cache,
+while PhastFT is optimized for large input sizes common in scientific computing.
+
+RustFFT made the choice to work on stable Rust compiler at the cost of `unsafe` code,
+while PhastFT contains no `unsafe` blocks but requires a nightly build of Rust compiler
+to access the Portable SIMD API.
 
 ## What's with the name?
 
