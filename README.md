@@ -136,7 +136,7 @@ submit a pull request. Follow the contribution guidelines outlined in the CONTRI
 
 ## License
 
-...
+PhastFT is licensed under MIT or Apache 2.0 license, at your option.
 
 ## PhastFT vs RustFFT
 
