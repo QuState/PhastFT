@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 authors = ["Saveliy Yusufov", "Shnatsel", "...", "..."]
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 description = "A high-performance, quantum-inspired, implementation of FFT in pure Rust"
 documentation = ""
 repository = ""
