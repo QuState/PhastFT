@@ -41,7 +41,7 @@ pub fn fft_with_opts(
     opts: &Options,
     planner: &mut Planner,
 ) {
-    assert_eq!(reals.len(), imags.len());
+    assert!(reals.len() == imags.len() && reals.len().is_power_of_two());
     let n: usize = reals.len().ilog2() as usize;
 
     let twiddles_re = &mut planner.twiddles_re;
@@ -88,6 +88,19 @@ mod tests {
     };
 
     use super::*;
+
+    #[should_panic]
+    #[test]
+    fn non_power_of_two_fft() {
+        let num_points = 5;
+
+        // this test will actually always fail at this stage
+        let mut planner = Planner::new(num_points);
+
+        let mut reals = vec![0.0; num_points];
+        let mut imags = vec![0.0; num_points];
+        fft(&mut reals, &mut imags, &mut planner);
+    }
 
     #[test]
     fn fft_correctness() {

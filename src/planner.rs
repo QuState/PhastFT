@@ -5,6 +5,13 @@ pub struct Planner {
     pub twiddles_im: Vec<f64>,
 }
 
+// TODO(saveliy yusufov): Add a parameter to `new` that will take into consideration whether we do inverse FFT (IFFT)
+// In this case, the twiddle factors should be pre-computed as follows:
+//
+//                  FFT Twiddle Factor: e^{i2π*k/N}
+//                  IFFT Twiddle Factor: e^{-i2π*k/N}
+//
+// source: https://dsp.stackexchange.com/q/73367
 impl Planner {
     /// Create a `Planner` for an FFT of size `num_points`
     ///
