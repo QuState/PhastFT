@@ -20,9 +20,8 @@ benchmark_fftw3() {
     make clean && make
 
     for n in $(seq "$start" "$end"); do
-        # clamp to `max_iters`
         iters=$((2**($end - $n)))
-        iters=$((iters > max_iters ? max_iters : iters))
+        iters=$((iters > max_iters ? max_iters : iters)) # clamp to `max_iters`
         echo "Running FFTW3 benchmark for N = 2^${n} for ${iters} iterations..."
 
         for _ in $(seq 1 "$iters"); do

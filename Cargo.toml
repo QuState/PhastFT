@@ -6,7 +6,7 @@ edition = "2021"
 authors = ["Saveliy Yusufov", "Shnatsel"]
 license = "MIT OR Apache-2.0"
 description = "A high-performance, quantum-inspired, implementation of FFT in pure Rust"
-repository = "https://github.com/QuState/PHastFT"
+repository = "https://github.com/QuState/PhastFT"
 keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
 categories = ["algorithms", "compression", "science"]
 

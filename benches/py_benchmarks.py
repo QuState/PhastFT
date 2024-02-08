@@ -1,12 +1,13 @@
+import csv
+import time
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyfftw
-import time
-import csv
-import matplotlib.pyplot as plt
+from pybindings import fft
 
 from utils import bytes2human
-from pybindings import fft
 
 plt.style.use("fivethirtyeight")
 
@@ -119,7 +120,7 @@ def plot_elapsed_times(data: dict) -> None:
 
     plt.plot(index, np_fft_timings, label="NumPy FFT", lw=0.8)
     plt.plot(index, pyfftw_timings, label="PyFFTW FFT", lw=0.8)
-    plt.plot(index, phastft_timings, label="PhastFT", lw=0.98)
+    plt.plot(index, phastft_timings, label="PhastFT", lw=0.8)
 
     plt.title("FFT Elapsed Times Comparison")
     plt.xticks(fontsize=9, rotation=-45)
@@ -149,7 +150,7 @@ def grouped_bar_plot(data: dict):
         index=index,
     )
 
-    ax = df.plot(kind="bar", linewidth=3, rot=0)
+    _ax = df.plot(kind="bar", linewidth=3, rot=0)
     plt.title("FFT Elapsed Times Comparison")
     plt.xticks(fontsize=9, rotation=-45)
     plt.yticks(fontsize=9)
