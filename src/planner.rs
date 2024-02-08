@@ -1,5 +1,10 @@
 use crate::twiddles::{generate_twiddles, generate_twiddles_simd};
 
+pub enum Direction {
+    Forward = 1,
+    Reverse = -1,
+}
+
 pub struct Planner {
     pub twiddles_re: Vec<f64>,
     pub twiddles_im: Vec<f64>,
@@ -18,7 +23,7 @@ impl Planner {
     /// # Panics
     ///
     /// Panics if `num_points` is less than 1
-    pub fn new(num_points: usize) -> Self {
+    pub fn new(num_points: usize, direction: Direction) -> Self {
         assert!(num_points > 0);
         if num_points <= 4 {
             return Self {
@@ -29,9 +34,9 @@ impl Planner {
 
         let dist = num_points >> 1;
         let (twiddles_re, twiddles_im) = if dist >= 8 * 2 {
-            generate_twiddles_simd(dist)
+            generate_twiddles_simd(dist, direction)
         } else {
-            generate_twiddles(dist)
+            generate_twiddles(dist, direction)
         };
 
         assert_eq!(twiddles_re.len(), twiddles_im.len());
@@ -45,12 +50,12 @@ impl Planner {
 
 #[cfg(test)]
 mod tests {
-    use crate::planner::Planner;
+    use crate::planner::{Direction, Planner};
 
     #[test]
     fn no_twiddles() {
         for num_points in 2..=4 {
-            let planner = Planner::new(num_points);
+            let planner = Planner::new(num_points, Direction::Forward);
             assert!(planner.twiddles_im.is_empty() && planner.twiddles_re.is_empty());
         }
     }
