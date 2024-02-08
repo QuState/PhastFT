@@ -96,38 +96,13 @@ fft(a_re, a_im)
 
 ## Benchmarks
 
-PhastFT is benchmarked against several other FFT libraries. Scripts to reproduce benchmark results and plots are
-available [here](benches).
+PhastFT is benchmarked against several other FFT libraries. Scripts and instructions to reproduce benchmark results and
+plots are available [here](benches).
 
 <p align="center">
   <img src="assets/py_benchmarks_bar_plot.png" width="400" title="PhastFT vs. NumPy FFT vs. pyFFTW" alt="PhastFT vs. NumPy FFT vs. pyFFTW">
   <img src="assets/benchmarks_bar_plot.png" width="400" title="PhastFT vs. RustFFT vs. FFTW3" alt="PhastFT vs. RustFFT vs. FFTW3">
 </p>
-
-*All benchmark results were produced on the following system configuration*
-
-|                      |                                                                                                 |
-|----------------------|-------------------------------------------------------------------------------------------------|
-| **CPU**              | AMD Ryzen 9 7950X (SMT enabled)                                                                 |
-|                      |                                                                                                 |
-| **CPU Features**     |                                                                                                 |
-| L1d Cache            | 512 KiB (16 instances)                                                                          |
-| L1i Cache            | 512 KiB (16 instances)                                                                          |
-| L2 Cache             | 16 MiB (16 instances)                                                                           |
-| L3 Cache             | 64 MiB (2 instances)                                                                            |
-|                      |                                                                                                 |
-| **Memory**           |                                                                                                 |
-| /0/f/0               | memory          64GiB System Memory                                                             |
-| /0/f/1               | memory          32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)              |
-| /0/f/3               | memory          32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)              |
-|                      |                                                                                                 |
-| **OS**               | Linux 7950x 6.1.0-17-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.69-1 (2023-12-30) x86_64 GNU/Linux |
-|                      |
-| **Rust**             |                                                                                                 |
-| Installed Toolchains | stable-x86_64-unknown-linux-gnu                                                                 |
-|                      | nightly-x86_64-unknown-linux-gnu (default)                                                      |
-| Active Toolchain     | nightly-x86_64-unknown-linux-gnu (default)                                                      |
-| Rustc Version        | 1.77.0-nightly (5bd5d214e 2024-01-25)                                                           |
 
 ## Contributing
 
