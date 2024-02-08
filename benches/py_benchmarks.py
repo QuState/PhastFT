@@ -89,7 +89,12 @@ def main() -> None:
 
 
 def read_csv_to_dict(file_path: str) -> dict:
-    data = {"n": [], "phastft_time": [], "numpy_fft_time": [], "pyfftw_fft_time": []}
+    data: dict[str, list] = {
+        "n": [],
+        "phastft_time": [],
+        "numpy_fft_time": [],
+        "pyfftw_fft_time": [],
+    }
     with open(file_path, newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
@@ -113,7 +118,7 @@ def plot_elapsed_times(data: dict) -> None:
     phastft_timings = np.asarray(data["phastft_time"])
 
     plt.plot(index, np_fft_timings, label="NumPy FFT", lw=0.8)
-    plt.plot(index, pyfftw_timings,  label="PyFFTW FFT", lw=0.8)
+    plt.plot(index, pyfftw_timings, label="PyFFTW FFT", lw=0.8)
     plt.plot(index, phastft_timings, label="PhastFT", lw=0.98)
 
     plt.title("FFT Elapsed Times Comparison")
