@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from utils import bytes2human
+from utils import bytes2human, find_directory
 
 plt.style.use("fivethirtyeight")
 
@@ -73,11 +73,14 @@ def plot(data: dict[str, list], n_range: range) -> None:
 def main():
     lib_names = ("rustfft", "phastft", "fftw3")
     n_range = range(12, 30)
-
     all_data = {}
 
     for lib in lib_names:
-        data = build_and_clean_data("benchmark-data.2024.02.02.19-10-51", n_range, lib)
+        root_folder = find_directory()
+        if root_folder is None:
+            raise FileNotFoundError("unable to find the benchmark data directory")
+
+        data = build_and_clean_data(root_folder, n_range, lib)
         all_data[lib] = data
 
     assert (
