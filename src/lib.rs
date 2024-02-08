@@ -3,7 +3,7 @@
 use crate::cobra::cobra_apply;
 use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd, Float};
 use crate::options::Options;
-use crate::planner::Planner;
+use crate::planner::{Direction, Planner};
 use crate::twiddles::filter_twiddles;
 
 mod cobra;
@@ -22,20 +22,36 @@ mod twiddles;
 /// Panics if `reals.len() != imags.len()`
 ///
 /// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
-pub fn fft(reals: &mut [Float], imags: &mut [Float], planner: &mut Planner) {
+pub fn fft(reals: &mut [Float], imags: &mut [Float], direction: Direction) {
+    assert_eq!(
+        reals.len(),
+        imags.len(),
+        "real and imaginary inputs must be of equal size, but got: {} {}",
+        reals.len(),
+        imags.len()
+    );
+
+    let mut planner = Planner::new(reals.len(), direction);
+    assert!(planner.num_twiddles().is_power_of_two() && planner.num_twiddles() == reals.len() / 2);
+
     let opts = Options::guess_options(reals.len());
-    fft_with_opts(reals, imags, &opts, planner);
+    fft_with_opts_and_plan(reals, imags, &opts, &mut planner);
 }
 
-/// Same as [fft], but also accepts [`Options`] that control optimization strategies.
+/// Same as [fft], but also accepts [`Options`] that control optimization strategies, as well as
+/// a [`Planner`] in the case that this FFT will need to be run multiple times.
 ///
-/// `fft_dif` automatically guesses the best strategy for a given input,
+/// `fft` automatically guesses the best strategy for a given input,
 /// so you only need to call this if you are tuning performance for a specific hardware platform.
+///
+/// In addition, `fft` automatically creates a planner to be used. In the case that you plan
+/// on running an FFT many times on inputs of the same size, use this function with the pre-built
+/// [`Planner`].
 ///
 /// # Panics
 ///
-/// Panics if `reals.len() != imags.len()`
-pub fn fft_with_opts(
+/// Panics if `reals.len() != imags.len()`, or if the input length is *not* a power of two.
+pub fn fft_with_opts_and_plan(
     reals: &mut [Float],
     imags: &mut [Float],
     opts: &Options,
@@ -87,6 +103,8 @@ mod tests {
         rustfft::{num_complex::Complex64, FftPlanner},
     };
 
+    use crate::planner::Direction;
+
     use super::*;
 
     #[should_panic]
@@ -95,11 +113,14 @@ mod tests {
         let num_points = 5;
 
         // this test will actually always fail at this stage
-        let mut planner = Planner::new(num_points);
+        let mut planner = Planner::new(num_points, Direction::Forward);
 
         let mut reals = vec![0.0; num_points];
         let mut imags = vec![0.0; num_points];
-        fft(&mut reals, &mut imags, &mut planner);
+        let opts = Options::guess_options(reals.len());
+
+        // but this call should panic as well
+        fft_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
     }
 
     #[test]
@@ -111,8 +132,7 @@ mod tests {
 
             let mut reals: Vec<Float> = (1..=n).map(|i| i as f64).collect();
             let mut imags: Vec<Float> = (1..=n).map(|i| i as f64).collect();
-            let mut planner = Planner::new(n);
-            fft(&mut reals, &mut imags, &mut planner);
+            fft(&mut reals, &mut imags, Direction::Forward);
 
             let mut buffer: Vec<Complex64> = (1..=n)
                 .map(|i| Complex64::new(i as f64, i as f64))

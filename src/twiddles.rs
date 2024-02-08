@@ -219,8 +219,8 @@ mod tests {
         for n in 4..28 {
             let dist = 1 << n;
 
-            let (twiddles_re_ref, twiddles_im_ref) = generate_twiddles(dist);
-            let (twiddles_re, twiddles_im) = generate_twiddles_simd(dist);
+            let (twiddles_re_ref, twiddles_im_ref) = generate_twiddles(dist, Direction::Forward);
+            let (twiddles_re, twiddles_im) = generate_twiddles_simd(dist, Direction::Forward);
 
             twiddles_re
                 .iter()
@@ -245,7 +245,7 @@ mod tests {
         let dist = 1 << (n - 1);
         let mut twiddles_iter = Twiddles::new(dist);
 
-        let (mut twiddles_re, mut twiddles_im) = generate_twiddles(dist);
+        let (mut twiddles_re, mut twiddles_im) = generate_twiddles(dist, Direction::Forward);
 
         for i in 0..dist {
             let (tw_re, tw_im) = twiddles_iter.next().unwrap();
