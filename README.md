@@ -121,6 +121,8 @@ RustFFT and PhastFT are optimized for different workloads.
 RustFFT performs best on small inputs that fit entirely into the L2 cache,
 while PhastFT is optimized for large input sizes common in scientific computing.
 
+PhastFT also uses 2x less memory, which is important for processing large datasets.
+
 RustFFT made the choice to work on stable Rust compiler at the cost of `unsafe` code,
 while PhastFT contains no `unsafe` blocks but requires a nightly build of Rust compiler
 to access the Portable SIMD API.
