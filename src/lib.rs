@@ -63,6 +63,9 @@ pub fn fft_with_opts_and_plan(
     let twiddles_re = &mut planner.twiddles_re;
     let twiddles_im = &mut planner.twiddles_im;
 
+    // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance between pairs
+    assert!(twiddles_re.len() / 2 == reals.len() && twiddles_im.len() / 2 == imags.len());
+
     for t in (0..n).rev() {
         let dist = 1 << t;
         let chunk_size = dist << 1;
@@ -115,6 +118,24 @@ mod tests {
         // this test will actually always fail at this stage
         let mut planner = Planner::new(num_points, Direction::Forward);
 
+        let mut reals = vec![0.0; num_points];
+        let mut imags = vec![0.0; num_points];
+        let opts = Options::guess_options(reals.len());
+
+        // but this call should panic as well
+        fft_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+    }
+
+    // a regression test to make sure planner is always compatible with fft execution
+    #[should_panic]
+    #[test]
+    fn wrong_num_points_in_planner() {
+        let n = 16;
+        let num_points = 1 << n;
+
+        // this test will actually always fail at this stage
+
+        let mut planner = Planner::new(n, Direction::Forward);
         let mut reals = vec![0.0; num_points];
         let mut imags = vec![0.0; num_points];
         let opts = Options::guess_options(reals.len());
