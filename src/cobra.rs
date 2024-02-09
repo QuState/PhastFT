@@ -1,8 +1,8 @@
 use crate::kernels::Float;
 
-const BLOCK_WIDTH: usize = 256;
+const BLOCK_WIDTH: usize = 128;
 // size of the cacheline
-const LOG_BLOCK_WIDTH: usize = 8; // log2 of cacheline
+const LOG_BLOCK_WIDTH: usize = 7; // log2 of cacheline
 
 /// In-place bit reversal on a single buffer. Referred to as "Jennifer's method"
 /// in the link below.

@@ -72,7 +72,7 @@ def plot(data: dict[str, list], n_range: range) -> None:
 
 def main():
     lib_names = ("rustfft", "phastft", "fftw3")
-    n_range = range(12, 30)
+    n_range = range(4, 30)
     all_data = {}
 
     for lib in lib_names:
