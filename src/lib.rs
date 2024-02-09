@@ -65,7 +65,7 @@ pub fn fft_with_opts_and_plan(
 
     // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance
     // between pairs
-    assert!(twiddles_re.len() / 2 == reals.len() && twiddles_im.len() / 2 == imags.len());
+    assert!(twiddles_re.len() == reals.len() / 2 && twiddles_im.len() == imags.len() / 2);
 
     for t in (0..n).rev() {
         let dist = 1 << t;
