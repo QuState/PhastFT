@@ -63,7 +63,8 @@ pub fn fft_with_opts_and_plan(
     let twiddles_re = &mut planner.twiddles_re;
     let twiddles_im = &mut planner.twiddles_im;
 
-    // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance between pairs
+    // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance
+    // between pairs
     assert!(twiddles_re.len() / 2 == reals.len() && twiddles_im.len() / 2 == imags.len());
 
     for t in (0..n).rev() {
@@ -99,16 +100,13 @@ pub fn fft_with_opts_and_plan(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::planner::Direction;
     use std::ops::Range;
-
     use utilities::{
         assert_f64_closeness,
         rustfft::{num_complex::Complex64, FftPlanner},
     };
-
-    use crate::planner::Direction;
-
-    use super::*;
 
     #[should_panic]
     #[test]
@@ -122,20 +120,25 @@ mod tests {
         let mut imags = vec![0.0; num_points];
         let opts = Options::guess_options(reals.len());
 
-        // but this call should panic as well
+        // but this call should, in principle, panic as well
         fft_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
     }
 
-    // a regression test to make sure planner is always compatible with fft execution
+    // A regression test to make sure the `Planner` is compatible with fft execution.
     #[should_panic]
     #[test]
     fn wrong_num_points_in_planner() {
         let n = 16;
         let num_points = 1 << n;
 
-        // this test will actually always fail at this stage
-
+        // We purposely set n = 16 and pass it to the planner.
+        // n = 16 == 2^{4} is clearly a power of two, so the planner won't throw it out.
+        // However, the call to `fft_with_opts_and_plan` should panic since it tests that the
+        // size of the generated twiddle factors is half the size of the input.
+        // In this case, we have an input of size 1024 (used for mp3), but we tell the planner the
+        // input size is 16.
         let mut planner = Planner::new(n, Direction::Forward);
+
         let mut reals = vec![0.0; num_points];
         let mut imags = vec![0.0; num_points];
         let opts = Options::guess_options(reals.len());
