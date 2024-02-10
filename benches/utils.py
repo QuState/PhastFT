@@ -6,7 +6,6 @@ import os
 import re
 from datetime import datetime
 
-
 SYMBOLS = {
     "customary": ("B", "K", "M", "G", "T", "P", "E", "Z", "Y"),
     "customary_ext": (

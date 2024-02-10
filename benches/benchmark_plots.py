@@ -41,7 +41,6 @@ def build_and_clean_data(
 
 def plot(data: dict[str, list], n_range: range) -> None:
     index = [bytes2human(2**n * (128 / 8)) for n in n_range]
-    plt.figure()
 
     y0 = np.asarray(data["fftw3"])
     y1 = np.asarray(data["phastft"])
@@ -59,34 +58,39 @@ def plot(data: dict[str, list], n_range: range) -> None:
         index=index,
     )
 
-    df.plot(kind="bar", linewidth=3, rot=0)
-    plt.xticks(fontsize=9, rotation=-45)
-    plt.yticks(fontsize=9)
+    title = "PhastFT vs. FFTW3 vs. RustFFT"
+    df.plot(kind="bar", linewidth=2, rot=0, title=title)
+    plt.xticks(fontsize=8, rotation=-45)
     plt.xlabel("size of input")
-    plt.ylabel("time taken (relative to RustFFT)")
+    plt.ylabel("Execution Time Ratio\n(relative to RustFFT)")
     plt.legend(loc="best")
     plt.tight_layout()
-    plt.savefig("benchmarks_bar_plot.png", dpi=600)
+    plt.savefig(f"benchmarks_bar_plot_{n_range.start}_{n_range.stop -1}.png", dpi=600)
     plt.show()
 
 
 def main():
+    """Entry point... yay"""
     lib_names = ("rustfft", "phastft", "fftw3")
-    n_range = range(4, 30)
-    all_data = {}
+    ranges = (range(4, 13), range(13, 30))
 
-    for lib in lib_names:
-        root_folder = find_directory()
-        if root_folder is None:
-            raise FileNotFoundError("unable to find the benchmark data directory")
+    for n_range in ranges:
+        all_data = {}
 
-        data = build_and_clean_data(root_folder, n_range, lib)
-        all_data[lib] = data
+        for lib in lib_names:
+            root_folder = find_directory()
+            if root_folder is None:
+                raise FileNotFoundError("unable to find the benchmark data directory")
 
-    assert (
-        len(all_data["rustfft"]) == len(all_data["fftw3"]) == len(all_data["phastft"])
-    )
-    plot(all_data, n_range)
+            data = build_and_clean_data(root_folder, n_range, lib)
+            all_data[lib] = data
+
+        assert (
+            len(all_data["rustfft"])
+            == len(all_data["fftw3"])
+            == len(all_data["phastft"])
+        )
+        plot(all_data, n_range)
 
 
 if __name__ == "__main__":

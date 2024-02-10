@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyfftw
+
+pyfftw.interfaces.cache.enable()
+
 from pybindings import fft
 
 from utils import bytes2human
@@ -13,36 +16,30 @@ plt.style.use("fivethirtyeight")
 
 
 def gen_random_signal(dim: int) -> np.ndarray:
-    return np.asarray(
+    """Generate a random, complex 1D signal"""
+    return np.ascontiguousarray(
         np.random.randn(dim) + 1j * np.random.randn(dim),
         dtype="complex128",
     )
 
 
 def main() -> None:
-    with open("elapsed_times.csv", "w", newline="") as csvfile:
+    with open("elapsed_times.csv", "w", newline="", encoding="utf-8") as csvfile:
         fieldnames = ["n", "phastft_time", "numpy_fft_time", "pyfftw_fft_time"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
 
-        for n in range(12, 29):
+        for n in range(4, 29):
             print(f"n = {n}")
             big_n = 1 << n
             s = gen_random_signal(big_n)
 
-            a_re = [None] * len(s)
-            a_im = [None] * len(s)
-
-            for i, val in enumerate(s):
-                a_re[i] = val.real
-                a_im[i] = val.imag
-
-            a_re = np.asarray(a_re, dtype=np.float64)
-            a_im = np.asarray(a_im, dtype=np.float64)
+            a_re = np.ascontiguousarray(s.real, dtype=np.float64)
+            a_im = np.ascontiguousarray(s.imag, dtype=np.float64)
 
             start = time.time()
-            fft(a_re, a_im)
+            fft(a_re, a_im, "f")
             phastft_elapsed = round((time.time() - start) * 10**6)
             print(f"PhastFT completed in {phastft_elapsed} us")
 
@@ -68,11 +65,11 @@ def main() -> None:
             a = pyfftw.empty_aligned(big_n, dtype="complex128")
             a[:] = arr
             start = time.time()
-            b = pyfftw.interfaces.numpy_fft.fft(a)
+            a = pyfftw.interfaces.numpy_fft.fft(a)
             pyfftw_elapsed = round((time.time() - start) * 10**6)
             print(f"pyFFTW completed in {pyfftw_elapsed} us")
 
-            np.testing.assert_allclose(b, actual, rtol=1e-3, atol=0)
+            np.testing.assert_allclose(a, actual, rtol=1e-3, atol=0)
 
             writer.writerow(
                 {
@@ -85,18 +82,19 @@ def main() -> None:
 
     file_path = "elapsed_times.csv"
     loaded_data = read_csv_to_dict(file_path)
-    plot_elapsed_times(loaded_data)
-    grouped_bar_plot(loaded_data)
+    grouped_bar_plot(loaded_data, start=0, end=9)
+    grouped_bar_plot(loaded_data, start=9, end=29)
 
 
 def read_csv_to_dict(file_path: str) -> dict:
+    """Read the benchmark results from the csv file and convert it to a dict"""
     data: dict[str, list] = {
         "n": [],
         "phastft_time": [],
         "numpy_fft_time": [],
         "pyfftw_fft_time": [],
     }
-    with open(file_path, newline="") as csvfile:
+    with open(file_path, newline="", encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             data["n"].append(int(row["n"]))
@@ -113,6 +111,7 @@ def read_csv_to_dict(file_path: str) -> dict:
 
 
 def plot_elapsed_times(data: dict) -> None:
+    """Plot the timings for all libs using line plots"""
     index = [bytes2human(2**n * (128 / 8)) for n in data["n"]]
     np_fft_timings = np.asarray(data["numpy_fft_time"])
     pyfftw_timings = np.asarray(data["pyfftw_fft_time"])
@@ -122,9 +121,8 @@ def plot_elapsed_times(data: dict) -> None:
     plt.plot(index, pyfftw_timings, label="PyFFTW FFT", lw=0.8)
     plt.plot(index, phastft_timings, label="PhastFT", lw=0.8)
 
-    plt.title("FFT Elapsed Times Comparison")
-    plt.xticks(fontsize=9, rotation=-45)
-    plt.yticks(fontsize=9)
+    plt.title("PhastFT vs. pyFFTW vs. NumPy FFT")
+    plt.xticks(fontsize=8, rotation=-45)
     plt.xlabel("size of input")
     plt.ylabel("time (us)")
     plt.yscale("log")
@@ -133,14 +131,14 @@ def plot_elapsed_times(data: dict) -> None:
     plt.savefig("py_benchmarks.png", dpi=600)
 
 
-def grouped_bar_plot(data: dict):
+def grouped_bar_plot(data: dict, start=0, end=1):
+    """Plot the timings for all libs using a grouped bar chart"""
     index = data["n"]
     index = [bytes2human(2**n * (128 / 8)) for n in index]
     np_fft_timings = np.asarray(data["numpy_fft_time"])
     pyfftw_timings = np.asarray(data["pyfftw_fft_time"])  # / np_fft_timings
     phastft_timings = np.asarray(data["phastft_time"])  # / np_fft_timings
 
-    plt.figure()
     df = pd.DataFrame(
         {
             "NumPy fft": np.ones(len(index)),
@@ -150,12 +148,11 @@ def grouped_bar_plot(data: dict):
         index=index,
     )
 
-    _ax = df.plot(kind="bar", linewidth=3, rot=0)
-    plt.title("FFT Elapsed Times Comparison")
-    plt.xticks(fontsize=9, rotation=-45)
-    plt.yticks(fontsize=9)
+    title = "PhastFT vs. pyFFTW vs. NumPy FFT"
+    df[start:end].plot(kind="bar", linewidth=2, rot=0, title=title)
+    plt.xticks(fontsize=8, rotation=-45)
     plt.xlabel("size of input")
-    plt.ylabel("time taken (relative to NumPy FFT)")
+    plt.ylabel("Execution Time Ratio\n(relative to NumPy FFT)")
     plt.legend(loc="best")
     plt.tight_layout()
     plt.savefig("py_benchmarks_bar_plot.png", dpi=600)
