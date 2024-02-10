@@ -1,0 +1,8 @@
+black==24.1.1
+isort==5.13.2
+matplotlib==3.8.2
+mypy==1.8.0
+numpy==1.26.4
+pandas==2.2.0
+pyFFTW==0.13.1
+pylint==3.0.3
