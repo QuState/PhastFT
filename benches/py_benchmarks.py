@@ -155,7 +155,7 @@ def grouped_bar_plot(data: dict, start=0, end=1):
     plt.ylabel("Execution Time Ratio\n(relative to NumPy FFT)")
     plt.legend(loc="best")
     plt.tight_layout()
-    plt.savefig("py_benchmarks_bar_plot.png", dpi=600)
+    plt.savefig(f"py_benchmarks_bar_plot_{start}_{end-1}.png", dpi=600)
 
 
 if __name__ == "__main__":
