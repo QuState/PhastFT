@@ -113,4 +113,4 @@ Finally, run:
 ./profile.sh
 ```
 
-[^1]: This tutorial assumes you will clone `PhastFT` to `$HOME`*
+[^1]: This tutorial assumes you will clone `PhastFT` to `$HOME`
