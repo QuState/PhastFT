@@ -13,7 +13,7 @@
    sudo apt install libfftw3-dev
    ```
 
-2. Clone the repo. *Note: This tutorial assumes you will clone `PhastFT` to `$HOME`*
+2. Clone the `PhastFT` git repository [^1].
 
 3. Create virtual env
 
@@ -24,7 +24,9 @@ cd ~/PhastFT/benches && python -m venv .env && source .env/bin/activate
 4. Install python dependencies
 
 ```bash
-RUSTFLAGS='-Ctarget-cpu=native' pip install -r requirements.txt
+pip install -r requirements.txt
+cd ~/PhastFT/pybindings
+RUSTFLAGS='-Ctarget-cpu=native' pip install .
 ```
 
 5. Run the `FFTW3` vs. `RustFFT` vs. `PhastFT` benchmark for all inputs of size `2^n`, where `n \in [4, 30].`
@@ -39,7 +41,7 @@ RUSTFLAGS='-Ctarget-cpu=native' pip install -r requirements.txt
 python benchmark_plots.py
 ```
 
-The generated image will show up as `benchmarks_bar_plot.png`.
+The generated images will be saved in your working directory.
 
 7. Run the python benchmarks and plot the results
 
@@ -47,27 +49,34 @@ The generated image will show up as `benchmarks_bar_plot.png`.
 python py_benchmarks.py
 ```
 
-The generated image will show up as `py_benchmarks_bar_plot.png`.
+The generated images will be saved in your working directory.
 
 ## Benchmark Configuration
 
-All benchmark results assume
-| |
+### Libraries and Packages
 
-All benchmark results were produced on the following system configuration:
+| Library/Package | Version        | Language  | Benchmark Compilation Flags                                                                          |
+|-----------------|----------------|-----------|------------------------------------------------------------------------------------------------------|
+| `FFTW3`         | 3.3.10-1 amd64 | C, OCaml  | `-O3 -march=native`                                                                                  |
+| `RustFFT`       | 6.2.0          | Rust      | `-C target-cpu=native -C opt-level=3 --edition=2021; codegen-units = 1; lto = true; panic = "abort"` |
+| `PhastFT`       | 0.1.0          | Rust      | `-C target-cpu=native -C opt-level=3 --edition=2021; codegen-units = 1; lto = true; panic = "abort"` |
+| `NumPy`         | 1.26.4         | Python, C | `N/A`                                                                                                |
+| `pyFFTW`        | 0.13.1         | Python, C | `N/A`                                                                                                |
+
+### Benchmark System Configuration
 
 |                      |                                                                                                 |
 |----------------------|-------------------------------------------------------------------------------------------------|
-| **CPU**              | AMD Ryzen 9 7950X (SMT enabled)                                                                 |
+| **CPU**              | AMD Ryzen 9 7950X (SMT disabled)                                                                |
 | L1d Cache            | 512 KiB (16 instances)                                                                          |
 | L1i Cache            | 512 KiB (16 instances)                                                                          |
 | L2 Cache             | 16 MiB (16 instances)                                                                           |
 | L3 Cache             | 64 MiB (2 instances)                                                                            |
 |                      |                                                                                                 |
 | **Memory**           |                                                                                                 |
-| /0/f/0               | memory          64GiB System Memory                                                             |
-| /0/f/1               | memory          32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)              |
-| /0/f/3               | memory          32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)              |
+| /0/f/0               | 64GiB System Memory                                                                             |
+| /0/f/1               | 32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)                              |
+| /0/f/3               | 32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)                              |
 |                      |                                                                                                 |
 | **OS**               | Linux 7950x 6.1.0-17-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.69-1 (2023-12-30) x86_64 GNU/Linux |
 |                      |
@@ -103,3 +112,5 @@ Finally, run:
 ```bash
 ./profile.sh
 ```
+
+[^1]: This tutorial assumes you will clone `PhastFT` to `$HOME`*
