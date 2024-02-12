@@ -167,7 +167,7 @@ pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
 /// [2] Christian Knauth, Boran Adas, Daniel Whitfield, Xuesong Wang, Lydia Ickler, Tim Conrad, Oliver Serang:
 /// Practically efficient methods for performing bit-reversed permutation in C++11 on the x86-64 architecture
 /// [3] <https://bitbucket.org/orserang/bit-reversal-methods/src/master/src_and_bin/src/algorithms/COBRAShuffle.hpp>
-pub(crate) fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
+pub fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
     if log_n <= 2 * LOG_BLOCK_WIDTH {
         bit_rev(v, log_n);
         return;
