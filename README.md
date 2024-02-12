@@ -6,9 +6,6 @@
 
 PhastFT is a high-performance, "quantum-inspired" Fast Fourier
 Transform (FFT) library written in pure Rust.
-Despite its simplicity, its performance is competitive with FFTW.
-On large inputs it outperforms even the fastest Rust FFT libraries,
-including [RustFFT](https://crates.io/crates/rustfft/).
 
 ## Features
 
