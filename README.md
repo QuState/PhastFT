@@ -128,6 +128,9 @@ RustFFT made the choice to work on stable Rust compiler at the cost of `unsafe` 
 while PhastFT contains no `unsafe` blocks but requires a nightly build of Rust compiler
 to access the Portable SIMD API.
 
+RustFFT implements multiple FFT algorithms and tries to pick the best one depending on the workload,
+while PhastFT has a single FFT implementation and still achieves competitive performance.
+
 PhastFT uses 2x less memory than RustFFT, which is important for processing large datasets.
 
 ## What's with the name?
