@@ -1,5 +1,6 @@
 [![Build](https://github.com/QuState/PhastFT/actions/workflows/rust.yml/badge.svg)](https://github.com/QuState/PhastFT/actions/workflows/rust.yml)
 [![codecov](https://codecov.io/gh/QuState/PhastFT/graph/badge.svg?token=IM86XMURHN)](https://codecov.io/gh/QuState/PhastFT)
+[![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 
 # PhastFT
 
@@ -59,13 +60,14 @@ less memory.
 ### Rust
 
 ```rust
-fn main() {
-    let N = 1 << 10;
-    let mut reals = vec![0.0; N];
-    let mut imags = vec![0.0; N];
-    gen_random_signal(&mut reals, &mut imags);
+use phastft::planner::Direction;
+use phastft::fft;
 
-    fft_dif(&mut reals, &mut imags);
+fn main() {
+    let big_n = 1 << 10;
+    let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
+    let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
+    fft(&mut reals, &mut imags, Direction::Forward);
 }
 ```
 
@@ -97,16 +99,16 @@ fft(a_re, a_im)
 ## Benchmarks
 
 PhastFT is benchmarked against several other FFT libraries. Scripts and instructions to reproduce benchmark results and
-plots are available [here](benches).
+plots are available [here](https://github.com/QuState/PhastFT/tree/main/benches#readme).
 
 <p align="center">
-  <img src="assets/benchmarks_bar_plot_4_12.png" width="400" title="PhastFT vs. RustFFT vs. FFTW3" alt="PhastFT vs. RustFFT vs. FFTW3">
-  <img src="assets/benchmarks_bar_plot_13_29.png" width="400" title="PhastFT vs. RustFFT vs. FFTW3" alt="PhastFT vs. RustFFT vs. FFTW3">
+  <img src="https://raw.githubusercontent.com/QuState/PhastFT/main/assets/benchmarks_bar_plot_4_12.png" width="400" title="PhastFT vs. RustFFT vs. FFTW3" alt="PhastFT vs. RustFFT vs. FFTW3">
+  <img src="https://raw.githubusercontent.com/QuState/PhastFT/main/assets/benchmarks_bar_plot_13_29.png" width="400" title="PhastFT vs. RustFFT vs. FFTW3" alt="PhastFT vs. RustFFT vs. FFTW3">
 </p>
 
 <p align="center">
-  <img src="assets/py_benchmarks_bar_plot_0_8.png" width="400" title="PhastFT vs. NumPy FFT vs. pyFFTW" alt="PhastFT vs. NumPy FFT vs. pyFFTW">
-  <img src="assets/py_benchmarks_bar_plot_9_28.png" width="400" title="PhastFT vs. NumPy FFT vs. pyFFTW" alt="PhastFT vs. NumPy FFT vs. pyFFTW">
+  <img src="https://raw.githubusercontent.com/QuState/PhastFT/main/assets/py_benchmarks_bar_plot_0_8.png" width="400" title="PhastFT vs. NumPy FFT vs. pyFFTW" alt="PhastFT vs. NumPy FFT vs. pyFFTW">
+  <img src="https://raw.githubusercontent.com/QuState/PhastFT/main/assets/py_benchmarks_bar_plot_9_28.png" width="400" title="PhastFT vs. NumPy FFT vs. pyFFTW" alt="PhastFT vs. NumPy FFT vs. pyFFTW">
 </p>
 
 ## Contributing

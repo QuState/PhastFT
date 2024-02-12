@@ -4,9 +4,10 @@ const BLOCK_WIDTH: usize = 128;
 // size of the cacheline
 const LOG_BLOCK_WIDTH: usize = 7; // log2 of cacheline
 
-/// In-place bit reversal on a single buffer. Referred to as "Jennifer's method"
-/// in the link below.
-/// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
+/// In-place bit reversal on a single buffer. Also referred to as "Jennifer's method" [1].
+///
+/// ## References
+/// [1] <https://www.katjaas.nl/bitreversal/bitreversal.html>
 pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
     let mut nodd: usize;
     let mut noddrev; // to hold bitwise negated or odd values
@@ -54,7 +55,9 @@ pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
 }
 
 /// Run in-place bit reversal on the entire state (i.e., the reals and imags buffers)
-/// Source: https://www.katjaas.nl/bitreversal/bitreversal.html
+///
+/// ## References
+/// [1] <https://www.katjaas.nl/bitreversal/bitreversal.html>
 #[allow(unused)]
 #[deprecated(
     since = "0.1.0",
@@ -74,7 +77,7 @@ fn complex_bit_rev(reals: &mut [Float], imags: &mut [Float], log_n: usize) {
 
     let mut i = quartn;
     while i > 0 {
-        // start of bitreversed permutation loop, N/4 iterations
+        // start of bit-reversed permutation loop, N/4 iterations
 
         // Gray code generator for even values:
 
@@ -154,16 +157,16 @@ pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
     }
 }
 
-/// Pure Rust implementation of Cache Optimal BitReverse Algorithm (COBRA).
-/// Rewritten from a C++ implementation, which is available here:
-/// https://bitbucket.org/orserang/bit-reversal-methods/src/master/src_and_bin/src/algorithms/COBRAShuffle.hpp
+/// Pure Rust implementation of Cache Optimal Bit-Reverse Algorithm (COBRA).
+/// Rewritten from a C++ implementation [3].
 ///
-/// References
+/// ## References
 /// [1] L. Carter and K. S. Gatlin, "Towards an optimal bit-reversal permutation program," Proceedings 39th Annual
 /// Symposium on Foundations of Computer Science (Cat. No.98CB36280), Palo Alto, CA, USA, 1998, pp. 544-553, doi:
 /// 10.1109/SFCS.1998.743505.
 /// [2] Christian Knauth, Boran Adas, Daniel Whitfield, Xuesong Wang, Lydia Ickler, Tim Conrad, Oliver Serang:
 /// Practically efficient methods for performing bit-reversed permutation in C++11 on the x86-64 architecture
+/// [3] <https://bitbucket.org/orserang/bit-reversal-methods/src/master/src_and_bin/src/algorithms/COBRAShuffle.hpp>
 pub(crate) fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
     if log_n <= 2 * LOG_BLOCK_WIDTH {
         bit_rev(v, log_n);

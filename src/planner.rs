@@ -1,12 +1,27 @@
+//! The planner module provides a convenient interface for planning and executing
+//! a Fast Fourier Transform (FFT). Currently, the planner is responsible for
+//! pre-computing twiddle factors based on the input signal length, as well as the
+//! direction of the FFT.
+
 use crate::twiddles::{generate_twiddles, generate_twiddles_simd};
 
+/// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
+/// Forward is for running the regular FFT
 pub enum Direction {
+    /// Leave the exponent term in the twiddle factor alone
     Forward = 1,
+    /// Multiply the exponent term in the twiddle factor by -1
     Reverse = -1,
 }
 
+/// The planner is responsible for pre-computing and storing twiddle factors for all the
+/// `log_2(N)` stages of the FFT.
+/// The amount of twiddle factors should always be a power of 2. In addition,
+/// the amount of twiddle factors should always be `(1/2) * N`
 pub struct Planner {
+    /// The real components of the twiddle factors
     pub twiddles_re: Vec<f64>,
+    /// The imaginary components of the twiddle factors
     pub twiddles_im: Vec<f64>,
 }
 
@@ -18,7 +33,7 @@ impl Planner {
     ///
     /// # Panics
     ///
-    /// Panics if `num_points` is less than 1
+    /// Panics if `num_points < 1`
     pub fn new(num_points: usize, direction: Direction) -> Self {
         assert!(num_points > 0 && num_points.is_power_of_two());
         if num_points <= 4 {

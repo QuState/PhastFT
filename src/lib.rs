@@ -1,3 +1,11 @@
+#![doc = include_str!("../README.md")]
+#![warn(clippy::complexity)]
+#![warn(missing_docs)]
+#![warn(clippy::style)]
+#![warn(clippy::correctness)]
+#![warn(clippy::suspicious)]
+#![warn(clippy::perf)]
+#![forbid(unsafe_code)]
 #![feature(portable_simd)]
 
 use crate::cobra::cobra_apply;
@@ -12,16 +20,16 @@ pub mod options;
 pub mod planner;
 mod twiddles;
 
-/// FFT -- Decimation in Frequency
-///
-/// This is just the decimation-in-time algorithm, reversed.
-/// The inputs are in normal order, and the outputs are then bit reversed.
+/// FFT -- Decimation in Frequency. This is just the decimation-in-time algorithm, reversed.
+/// This call to FFT is run, in-place.
+/// The input should be provided in normal order, and then the modified input is bit-reversed.
 ///
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`
 ///
-/// [1] https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf
+/// ## References
+/// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
 pub fn fft(reals: &mut [Float], imags: &mut [Float], direction: Direction) {
     assert_eq!(
         reals.len(),
@@ -100,13 +108,16 @@ pub fn fft_with_opts_and_plan(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::planner::Direction;
     use std::ops::Range;
+
     use utilities::{
         assert_f64_closeness,
         rustfft::{num_complex::Complex64, FftPlanner},
     };
+
+    use crate::planner::Direction;
+
+    use super::*;
 
     #[should_panic]
     #[test]
