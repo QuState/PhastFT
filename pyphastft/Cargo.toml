@@ -1,16 +1,16 @@
 [package]
-name = "pybindings"
-version = "0.1.0"
+name = "pyphastft"
+version = "0.1.1"
 edition = "2021"
 authors = ["Saveliy Yusufov", "Shnatsel"]
 license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "pybindings"
+name = "pyphastft"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.20.2", features = ["num-complex"] }
+pyo3 = { version = "0.20.2" }
 numpy = "0.20.0"
 phastft = { path = ".." }

@@ -20,7 +20,7 @@ fn fft(mut reals: PyReadwriteArray1<f64>, mut imags: PyReadwriteArray1<f64>, dir
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn pybindings(_py: Python, m: &PyModule) -> PyResult<()> {
+fn pyphastft(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fft, m)?)?;
     Ok(())
 }
