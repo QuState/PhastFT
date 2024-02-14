@@ -1,6 +1,8 @@
 [![Build](https://github.com/QuState/PhastFT/actions/workflows/rust.yml/badge.svg)](https://github.com/QuState/PhastFT/actions/workflows/rust.yml)
 [![codecov](https://codecov.io/gh/QuState/PhastFT/graph/badge.svg?token=IM86XMURHN)](https://codecov.io/gh/QuState/PhastFT)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
+[![](https://img.shields.io/crates/v/phastft)](https://crates.io/crates/phastft)
+[![](https://docs.rs/phastft/badge.svg)](https://docs.rs/phastft/)
 
 # PhastFT
 
