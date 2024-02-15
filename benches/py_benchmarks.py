@@ -8,7 +8,7 @@ import pyfftw
 
 pyfftw.interfaces.cache.enable()
 
-from pybindings import fft
+from pyphastft import fft
 
 from utils import bytes2human
 
