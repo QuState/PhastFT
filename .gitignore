@@ -177,3 +177,9 @@ cython_debug/
 
 # macOS
 .DS_Store
+
+# Benchmarks outputs
+benches/benchmark-data.*
+benches/*benchmarks_bar_plot*.png
+benches/__pycache__
+benches/elapsed_times.csv
