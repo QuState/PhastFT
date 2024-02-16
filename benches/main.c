@@ -46,7 +46,10 @@ void gen_random_signal(double* reals, double* imags, int num_amps) {
     for (int i = 0; i < num_amps; ++i) {
         double p_sqrt = sqrt(probs[i]);
         double sin_a, cos_a;
-        sincos(angles[i], &sin_a, &cos_a);
+
+        double theta = angles[i];
+        sin_a = sin(theta);
+        cos_a = cos(theta);
 
         double re = p_sqrt * cos_a;
         double im = p_sqrt * sin_a;
