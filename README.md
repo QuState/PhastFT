@@ -81,12 +81,12 @@ Then you can install PhastFT itself:
 
 ```bash
 pip install numpy
-RUSTFLAGS='-Ctarget-cpu=native' pip install git+https://github.com/QuState/PhastFT#subdirectory=pybindings
+RUSTFLAGS='-Ctarget-cpu=native' pip install git+https://github.com/QuState/PhastFT#subdirectory=pyphastft
 ```
 
 ```python
 import numpy as np
-from pybindings import fft
+from pyphastft import fft
 
 sig_re = np.asarray(sig_re, dtype=np.float64)
 sig_im = np.asarray(sig_im, dtype=np.float64)

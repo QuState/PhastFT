@@ -4,7 +4,7 @@
 
 ### Setup Environment
 
-1. Install [FFTW3](http://www.fftw.org/download.html)
+1. Install [FFTW3](http://www.fftw.org/download.html)[^1]
 
    It may be possible to install `fftw3` using a package manager.
 
@@ -13,7 +13,7 @@
    sudo apt install libfftw3-dev
    ```
 
-2. Clone the `PhastFT` git repository [^1].
+2. Clone the `PhastFT` git repository [^2].
 
 3. Create virtual env
 
@@ -21,11 +21,11 @@
 cd ~/PhastFT/benches && python -m venv .env && source .env/bin/activate
 ```
 
-4. Install python dependencies
+4. Install python dependencies[^1]
 
 ```bash
 pip install -r requirements.txt
-cd ~/PhastFT/pybindings
+cd ~/PhastFT/pyphastft
 RUSTFLAGS='-Ctarget-cpu=native' pip install .
 ```
 
@@ -113,4 +113,6 @@ Finally, run:
 ./profile.sh
 ```
 
-[^1]: This tutorial assumes you will clone `PhastFT` to `$HOME`
+[^1]: Those with macOS on Apple Silicon should consult [pyFFTW Issue #352](https://github.com/pyFFTW/pyFFTW/issues/352#issuecomment-1945444558)
+
+[^2]: This tutorial assumes you will clone `PhastFT` to `$HOME`
