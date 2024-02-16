@@ -14,7 +14,7 @@ use crate::options::Options;
 use crate::planner::{Direction, Planner};
 use crate::twiddles::filter_twiddles;
 
-mod cobra;
+pub mod cobra;
 mod kernels;
 pub mod options;
 pub mod planner;

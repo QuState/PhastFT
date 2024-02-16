@@ -1,3 +1,18 @@
+//! This module provides several implementations of the bit reverse permutation, which is
+//! essential for algorithms like FFT.
+//!
+//! In practice, most FFT implementations avoid bit reversals; however this comes at a computational
+//! cost as well. For example, Bailey's 4 step FFT algorithm is O(N * lg(N) * lg(lg(N))).
+//! The original Cooley-Tukey implementation is O(N * lg(N)). The extra term in the 4-step algorithm
+//! comes from incorporating the bit reversals into each level of the recursion. By utilizing a
+//! cache-optimal bit reversal, we are able to avoid this extra cost [1].
+//!
+//! # References
+//!
+//! [1] L. Carter and K. S. Gatlin, "Towards an optimal bit-reversal permutation program," Proceedings 39th Annual
+//! Symposium on Foundations of Computer Science (Cat. No.98CB36280), Palo Alto, CA, USA, 1998, pp. 544-553, doi:
+//! 10.1109/SFCS.1998.743505.
+//! keywords: {Read-write memory;Costs;Computer science;Drives;Random access memory;Argon;Registers;Read only memory;Computational modeling;Libraries}
 use crate::kernels::Float;
 
 const BLOCK_WIDTH: usize = 128;
