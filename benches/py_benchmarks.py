@@ -121,7 +121,7 @@ def plot_elapsed_times(data: dict) -> None:
     plt.plot(index, pyfftw_timings, label="PyFFTW FFT", lw=0.8)
     plt.plot(index, phastft_timings, label="PhastFT", lw=0.8)
 
-    plt.title("PhastFT vs. pyFFTW vs. NumPy FFT")
+    plt.title("pyPhastFT vs. pyFFTW vs. NumPy FFT")
     plt.xticks(fontsize=8, rotation=-45)
     plt.xlabel("size of input")
     plt.ylabel("time (us)")
@@ -148,7 +148,7 @@ def grouped_bar_plot(data: dict, start=0, end=1):
         index=index,
     )
 
-    title = "PhastFT vs. pyFFTW vs. NumPy FFT"
+    title = "pyPhastFT vs. pyFFTW vs. NumPy FFT"
     df[start:end].plot(kind="bar", linewidth=2, rot=0, title=title)
     plt.xticks(fontsize=8, rotation=-45)
     plt.xlabel("size of input")
