@@ -36,16 +36,16 @@ Transform (FFT) library written in pure Rust.
 PhastFT is designed around the capabilities and limitations of modern hardware (that is, anything made in the last 10
 years or so).
 
-The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses.**
+The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses**.
 
 We picked an efficient, general-purpose FFT algorithm. Our implementation can make use of latest CPU features such as
 AVX-512, but performs well even without them.
 
 Our key insight for speeding up memory accesses is that FFT is equivalent to applying gates to all qubits in `[0, n)`.
-This creates to oppurtunity to leverage the same memory access patterns as
+This creates the opportunity to leverage the same memory access patterns as
 a [high-performance quantum state simulator](https://github.com/QuState/spinoza).
 
-We also use the Cache-Optimal Bit Reveral
+We also use the Cache-Optimal Bit Reversal
 Algorithm ([COBRA](https://csaws.cs.technion.ac.il/~itai/Courses/Cache/bit.pdf))
 on large datasets and optionally run it on 2 parallel threads, accelerating it even further.
 

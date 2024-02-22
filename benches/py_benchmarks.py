@@ -118,8 +118,8 @@ def plot_elapsed_times(data: dict) -> None:
     phastft_timings = np.asarray(data["phastft_time"])
 
     plt.plot(index, np_fft_timings, label="NumPy FFT", lw=0.8)
-    plt.plot(index, pyfftw_timings, label="PyFFTW FFT", lw=0.8)
-    plt.plot(index, phastft_timings, label="PhastFT", lw=0.8)
+    plt.plot(index, pyfftw_timings, label="pyFFTW", lw=0.8)
+    plt.plot(index, phastft_timings, label="pyPhastFT", lw=0.8)
 
     plt.title("pyPhastFT vs. pyFFTW vs. NumPy FFT")
     plt.xticks(fontsize=8, rotation=-45)
@@ -143,7 +143,7 @@ def grouped_bar_plot(data: dict, start=0, end=1):
         {
             "NumPy fft": np.ones(len(index)),
             "pyFFTW": pyfftw_timings / np_fft_timings,
-            "PhastFT": phastft_timings / np_fft_timings,
+            "pyPhastFT": phastft_timings / np_fft_timings,
         },
         index=index,
     )

@@ -22,8 +22,8 @@ def read_file(filepath: str) -> list[float]:
     return y
 
 
-def get_figure_of_interest(vals: list[int]) -> float:
-    return np.median(vals)
+def get_figure_of_interest(vals: list[float]) -> float:
+    return np.min(vals)
 
 
 def build_and_clean_data(

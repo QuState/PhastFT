@@ -13,6 +13,7 @@ exclude = ["assets", "scripts", "benches"]
 
 [dev-dependencies]
 utilities = { path = "utilities" }
+fftw = "0.8.0"
 
 [profile.release]
 codegen-units = 1
