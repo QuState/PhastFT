@@ -95,7 +95,7 @@ def plot_roots_of_unity(dist: int):
 def main():
     # gen_twiddles(4)
     print("===================\n")
-    gen_twiddles(8)
+    gen_twiddles(16)
 
 
 if __name__ == "__main__":

@@ -114,6 +114,12 @@ pub(crate) fn generate_twiddles_simd(dist: usize, direction: Direction) -> (Vec<
         output.copy_from_slice(&buf);
     };
 
+    // TODO: generate twiddles using the first quarter chunk of twiddle factors
+    // 1st chunk: old fashioned multiplication of complex nums
+    // 2nd chunk: reverse the 1st chunk, swap components, and negate both components
+    // 3rd chunk: No reversal. Swap the components and negate the *new* imaginary components
+    // 4th chunk: reverse the 1st chunk, and negate the real component
+
     // Split the twiddles into two halves. There is a cheaper way to calculate the second half
     let (first_half_re, second_half_re) = twiddles_re[1..].split_at_mut(dist / 2);
     assert_eq!(first_half_re.len(), second_half_re.len() + 1);
