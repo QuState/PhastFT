@@ -45,24 +45,27 @@ def plot(data: dict[str, list], n_range: range) -> None:
     y0 = np.asarray(data["fftw3"])
     y1 = np.asarray(data["phastft"])
     y2 = np.asarray(data["rustfft"])
+    y3 = np.asarray(data["fftwrb"])
 
     y0 /= y2
     y1 /= y2
+    y3 /= y2
 
     df = pd.DataFrame(
         {
             "RustFFT": np.ones(len(index)),
             "FFTW3": y0,
             "PhastFT": y1,
+            "FFTW3-RB": y3,
         },
         index=index,
     )
 
-    title = "PhastFT vs. FFTW3 vs. RustFFT"
-    df.plot(kind="bar", linewidth=2, rot=0, title=title)
+    df.plot(kind="bar", linewidth=2, rot=0)
+    plt.title("PhastFT vs. FFTW3 vs. FFTW3 RB vs. RustFFT", fontsize=14)
     plt.xticks(fontsize=8, rotation=-45)
-    plt.xlabel("size of input")
-    plt.ylabel("Execution Time Ratio\n(relative to RustFFT)")
+    plt.xlabel("size of input", fontsize=10)
+    plt.ylabel("Execution Time Ratio\n(relative to RustFFT)", fontsize=11)
     plt.legend(loc="best")
     plt.tight_layout()
     plt.savefig(f"benchmarks_bar_plot_{n_range.start}_{n_range.stop -1}.png", dpi=600)
@@ -71,7 +74,7 @@ def plot(data: dict[str, list], n_range: range) -> None:
 
 def main():
     """Entry point... yay"""
-    lib_names = ("rustfft", "phastft", "fftw3")
+    lib_names = ("rustfft", "phastft", "fftw3", "fftwrb")
     ranges = (range(4, 13), range(13, 30))
 
     for n_range in ranges:
@@ -89,6 +92,7 @@ def main():
             len(all_data["rustfft"])
             == len(all_data["fftw3"])
             == len(all_data["phastft"])
+            == len(all_data["fftwrb"])
         )
         plot(all_data, n_range)
 
