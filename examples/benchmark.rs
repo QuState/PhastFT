@@ -3,13 +3,13 @@ use std::str::FromStr;
 
 use utilities::gen_random_signal;
 
-use phastft::fft;
 use phastft::planner::Direction;
+use phastft::{fft, Float};
 
 fn benchmark_fft(n: usize) {
     let big_n = 1 << n;
-    let mut reals = vec![0.0; big_n];
-    let mut imags = vec![0.0; big_n];
+    let mut reals: Vec<Float> = vec![0.0; big_n];
+    let mut imags: Vec<Float> = vec![0.0; big_n];
     gen_random_signal(&mut reals, &mut imags);
 
     let now = std::time::Instant::now();

@@ -10,6 +10,10 @@ keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
 categories = ["algorithms", "compression", "science"]
 exclude = ["assets", "scripts", "benches"]
 
+[features]
+default = ["double"]
+single = []
+double = []
 
 [dev-dependencies]
 utilities = { path = "utilities" }

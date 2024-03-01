@@ -1,13 +1,13 @@
 use std::env;
 use std::str::FromStr;
 
-use phastft::fft;
 use phastft::planner::Direction;
+use phastft::{fft, Float};
 
 fn benchmark_fft(num_qubits: usize) {
     let n = 1 << num_qubits;
-    let mut reals: Vec<f64> = (1..=n).map(|i| i as f64).collect();
-    let mut imags: Vec<f64> = (1..=n).map(|i| i as f64).collect();
+    let mut reals: Vec<_> = (1..=n).map(|i| i as Float).collect();
+    let mut imags: Vec<_> = (1..=n).map(|i| i as Float).collect();
     fft(&mut reals, &mut imags, Direction::Forward);
 }
 

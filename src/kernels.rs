@@ -1,7 +1,11 @@
+#[cfg(feature = "single")]
+use std::simd::f32x16;
+#[cfg(feature = "double")]
 use std::simd::f64x8;
 
-pub type Float = f64;
+use crate::Float;
 
+#[cfg(feature = "double")]
 pub(crate) fn fft_chunk_n_simd(
     reals: &mut [Float],
     imags: &mut [Float],
@@ -20,7 +24,7 @@ pub(crate) fn fft_chunk_n_simd(
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
             reals_s0
-                .chunks_exact_mut(8)
+                .array_chunks_mut::<8>()
                 .zip(reals_s1.chunks_exact_mut(8))
                 .zip(imags_s0.chunks_exact_mut(8))
                 .zip(imags_s1.chunks_exact_mut(8))
@@ -45,7 +49,51 @@ pub(crate) fn fft_chunk_n_simd(
         });
 }
 
-// TODO(saveliy): parallelize
+#[cfg(feature = "single")]
+pub(crate) fn fft_chunk_n_simd(
+    reals: &mut [Float],
+    imags: &mut [Float],
+    twiddles_re: &[Float],
+    twiddles_im: &[Float],
+    dist: usize,
+) {
+    const VECTOR_SIZE: usize = 16;
+    let chunk_size = dist << 1;
+    assert!(chunk_size >= 16);
+
+    reals
+        .chunks_exact_mut(chunk_size)
+        .zip(imags.chunks_exact_mut(chunk_size))
+        .for_each(|(reals_chunk, imags_chunk)| {
+            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+
+            reals_s0
+                .chunks_exact_mut(VECTOR_SIZE)
+                .zip(reals_s1.chunks_exact_mut(VECTOR_SIZE))
+                .zip(imags_s0.chunks_exact_mut(VECTOR_SIZE))
+                .zip(imags_s1.chunks_exact_mut(VECTOR_SIZE))
+                .zip(twiddles_re.chunks_exact(VECTOR_SIZE))
+                .zip(twiddles_im.chunks_exact(VECTOR_SIZE))
+                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
+                    let real_c0 = f32x16::from_slice(re_s0);
+                    let real_c1 = f32x16::from_slice(re_s1);
+                    let imag_c0 = f32x16::from_slice(im_s0);
+                    let imag_c1 = f32x16::from_slice(im_s1);
+
+                    let tw_re = f32x16::from_slice(w_re);
+                    let tw_im = f32x16::from_slice(w_im);
+
+                    re_s0.copy_from_slice((real_c0 + real_c1).as_array());
+                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array());
+                    let v_re = real_c0 - real_c1;
+                    let v_im = imag_c0 - imag_c1;
+                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array());
+                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array());
+                });
+        });
+}
+
 pub(crate) fn fft_chunk_n(
     reals: &mut [Float],
     imags: &mut [Float],
@@ -119,7 +167,7 @@ pub(crate) fn fft_chunk_4(reals: &mut [Float], imags: &mut [Float]) {
         });
 }
 
-/// `chunk_size == 2`, so skip phase
+/// `chunk_size == 2`, so we only need 1 and -1
 pub(crate) fn fft_chunk_2(reals: &mut [Float], imags: &mut [Float]) {
     reals
         .chunks_exact_mut(2)

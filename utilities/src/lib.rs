@@ -1,9 +1,10 @@
 pub extern crate rustfft;
 
+// export rustfft to phastft
 use std::f64::consts::PI;
 
-use rand::distributions::Uniform;
-use rand::prelude::*;
+use rand::{distributions::Uniform, prelude::*};
+use rustfft::num_traits::Float;
 
 /// Asserts that two f64 numbers are approximately equal.
 ///
@@ -40,7 +41,7 @@ pub fn assert_f32_closeness(actual: f32, expected: f32, epsilon: f32) {
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`
-pub fn gen_random_signal(reals: &mut [f64], imags: &mut [f64]) {
+pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
     let mut rng = thread_rng();
     let between = Uniform::from(0.0..1.0);
@@ -49,7 +50,7 @@ pub fn gen_random_signal(reals: &mut [f64], imags: &mut [f64]) {
 
     let mut probs: Vec<_> = (0..num_amps).map(|_| between.sample(&mut rng)).collect();
 
-    let total: f64 = probs.iter().sum();
+    let total: _ = probs.iter().sum();
     let total_recip = total.recip();
 
     probs.iter_mut().for_each(|p| *p *= total_recip);
@@ -77,12 +78,12 @@ mod tests {
     #[test]
     fn generate_random_signal() {
         let big_n = 1 << 25;
-        let mut reals = vec![0.0; big_n];
-        let mut imags = vec![0.0; big_n];
+        let mut reals: Vec<_> = vec![0.0; big_n];
+        let mut imags: Vec<_> = vec![0.0; big_n];
 
         gen_random_signal(&mut reals, &mut imags);
 
-        let sum: f64 = reals
+        let sum = reals
             .iter()
             .zip(imags.iter())
             .map(|(re, im)| re.powi(2) + im.powi(2))

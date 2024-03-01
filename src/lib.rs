@@ -7,9 +7,10 @@
 #![warn(clippy::perf)]
 #![forbid(unsafe_code)]
 #![feature(portable_simd)]
+#![feature(array_chunks)]
 
 use crate::cobra::cobra_apply;
-use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd, Float};
+use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd};
 use crate::options::Options;
 use crate::planner::{Direction, Planner};
 use crate::twiddles::filter_twiddles;
@@ -19,6 +20,13 @@ mod kernels;
 pub mod options;
 pub mod planner;
 mod twiddles;
+mod utils;
+
+#[cfg(feature = "double")]
+pub type Float = f64;
+
+#[cfg(feature = "single")]
+pub type Float = f32;
 
 /// FFT -- Decimation in Frequency. This is just the decimation-in-time algorithm, reversed.
 /// This call to FFT is run, in-place.
@@ -110,14 +118,28 @@ pub fn fft_with_opts_and_plan(
 mod tests {
     use std::ops::Range;
 
-    use utilities::{
-        assert_f64_closeness,
-        rustfft::{num_complex::Complex64, FftPlanner},
-    };
+    #[cfg(feature = "single")]
+    use utilities::assert_f32_closeness;
+    #[cfg(feature = "double")]
+    use utilities::assert_f64_closeness;
+    use utilities::rustfft::FftPlanner;
+    use utilities::rustfft::num_complex::Complex;
 
     use crate::planner::Direction;
 
     use super::*;
+
+    fn assert_float_closeness(actual: Float, expected: Float, epsilon: Float) {
+        #[cfg(feature = "double")]
+        {
+            assert_f64_closeness(actual, expected, epsilon)
+        }
+
+        #[cfg(feature = "single")]
+        {
+            assert_f32_closeness(actual, expected, epsilon)
+        }
+    }
 
     #[should_panic]
     #[test]
@@ -165,12 +187,12 @@ mod tests {
         for k in range {
             let n: usize = 1 << k;
 
-            let mut reals: Vec<Float> = (1..=n).map(|i| i as f64).collect();
-            let mut imags: Vec<Float> = (1..=n).map(|i| i as f64).collect();
+            let mut reals: Vec<Float> = (1..=n).map(|i| i as Float).collect();
+            let mut imags: Vec<Float> = (1..=n).map(|i| i as Float).collect();
             fft(&mut reals, &mut imags, Direction::Forward);
 
-            let mut buffer: Vec<Complex64> = (1..=n)
-                .map(|i| Complex64::new(i as f64, i as f64))
+            let mut buffer: Vec<Complex<Float>> = (1..=n)
+                .map(|i| Complex::new(i as Float, i as Float))
                 .collect();
 
             let mut planner = FftPlanner::new();
@@ -184,8 +206,8 @@ mod tests {
                 .for_each(|(i, (z_re, z_im))| {
                     let expect_re = buffer[i].re;
                     let expect_im = buffer[i].im;
-                    assert_f64_closeness(*z_re, expect_re, 0.01);
-                    assert_f64_closeness(*z_im, expect_im, 0.01);
+                    assert_float_closeness(*z_re, expect_re, 0.01);
+                    assert_float_closeness(*z_im, expect_im, 0.01);
                 });
         }
     }

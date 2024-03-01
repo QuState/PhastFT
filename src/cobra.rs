@@ -13,7 +13,8 @@
 //! Symposium on Foundations of Computer Science (Cat. No.98CB36280), Palo Alto, CA, USA, 1998, pp. 544-553, doi:
 //! 10.1109/SFCS.1998.743505.
 //! keywords: {Read-write memory;Costs;Computer science;Drives;Random access memory;Argon;Registers;Read only memory;Computational modeling;Libraries}
-use crate::kernels::Float;
+
+use crate::Float;
 
 const BLOCK_WIDTH: usize = 128;
 // size of the cacheline
@@ -317,17 +318,17 @@ mod tests {
     fn jennifer_method() {
         for n in 2..24 {
             let big_n = 1 << n;
-            let mut actual_re: Vec<f64> = (0..big_n).map(f64::from).collect();
-            let mut actual_im: Vec<f64> = (0..big_n).map(f64::from).collect();
+            let mut actual_re: Vec<Float> = (0..big_n).map(|i| i as Float).collect();
+            let mut actual_im: Vec<Float> = (0..big_n).map(|i| i as Float).collect();
 
             #[allow(deprecated)]
             complex_bit_rev(&mut actual_re, &mut actual_im, n);
 
-            let input_re: Vec<f64> = (0..big_n).map(f64::from).collect();
+            let input_re: Vec<Float> = (0..big_n).map(|i| i as Float).collect();
             let expected_re = top_down_bit_reverse_permutation(&input_re);
             assert_eq!(actual_re, expected_re);
 
-            let input_im: Vec<f64> = (0..big_n).map(f64::from).collect();
+            let input_im: Vec<Float> = (0..big_n).map(|i| i as Float).collect();
             let expected_im = top_down_bit_reverse_permutation(&input_im);
             assert_eq!(actual_im, expected_im);
         }
@@ -337,17 +338,17 @@ mod tests {
     fn jennifer_method_parallel() {
         for n in 2..24 {
             let big_n = 1 << n;
-            let mut actual_re: Vec<f64> = (0..big_n).map(f64::from).collect();
-            let mut actual_im: Vec<f64> = (0..big_n).map(f64::from).collect();
+            let mut actual_re: Vec<Float> = (0..big_n).map(|i| i as Float).collect();
+            let mut actual_im: Vec<Float> = (0..big_n).map(|i| i as Float).collect();
 
             #[allow(deprecated)]
             bit_reverse_permute_state_par(&mut actual_re, &mut actual_im, n);
 
-            let input_re: Vec<f64> = (0..big_n).map(f64::from).collect();
+            let input_re: Vec<Float> = (0..big_n).map(|i| i as Float).collect();
             let expected_re = top_down_bit_reverse_permutation(&input_re);
             assert_eq!(actual_re, expected_re);
 
-            let input_im: Vec<f64> = (0..big_n).map(f64::from).collect();
+            let input_im: Vec<Float> = (0..big_n).map(|i| i as Float).collect();
             let expected_im = top_down_bit_reverse_permutation(&input_im);
             assert_eq!(actual_im, expected_im);
         }

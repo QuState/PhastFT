@@ -2,7 +2,7 @@
 //! a Fast Fourier Transform (FFT). Currently, the planner is responsible for
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
-
+use crate::Float;
 use crate::twiddles::{generate_twiddles, generate_twiddles_simd};
 
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
@@ -20,9 +20,9 @@ pub enum Direction {
 /// the amount of twiddle factors should always be `(1/2) * N`
 pub struct Planner {
     /// The real components of the twiddle factors
-    pub twiddles_re: Vec<f64>,
+    pub twiddles_re: Vec<Float>,
     /// The imaginary components of the twiddle factors
-    pub twiddles_im: Vec<f64>,
+    pub twiddles_im: Vec<Float>,
 }
 
 impl Planner {
@@ -66,9 +66,25 @@ impl Planner {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "single")]
+    use utilities::assert_f32_closeness;
+    #[cfg(feature = "double")]
     use utilities::assert_f64_closeness;
 
+    use crate::Float;
     use crate::planner::{Direction, Planner};
+
+    fn assert_float_closeness(actual: Float, expected: Float, epsilon: Float) {
+        #[cfg(feature = "double")]
+        {
+            assert_f64_closeness(actual, expected, epsilon)
+        }
+
+        #[cfg(feature = "single")]
+        {
+            assert_f32_closeness(actual, expected, epsilon)
+        }
+    }
 
     #[test]
     fn no_twiddles() {
@@ -101,8 +117,8 @@ mod tests {
                 .for_each(|(((a, b), c), d)| {
                     let temp_re = a * c - b * d;
                     let temp_im = a * d + b * c;
-                    assert_f64_closeness(temp_re, 1.0, 1e-6);
-                    assert_f64_closeness(temp_im, 0.0, 1e-6);
+                    assert_float_closeness(temp_re, 1.0, 1e-6);
+                    assert_float_closeness(temp_im, 0.0, 1e-6);
                 });
         }
     }
