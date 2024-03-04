@@ -24,7 +24,7 @@ pub(crate) fn fft_chunk_n_simd(
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
             reals_s0
-                .array_chunks_mut::<8>()
+                .chunks_exact_mut(8)
                 .zip(reals_s1.chunks_exact_mut(8))
                 .zip(imags_s0.chunks_exact_mut(8))
                 .zip(imags_s1.chunks_exact_mut(8))
@@ -59,7 +59,7 @@ pub(crate) fn fft_chunk_n_simd(
 ) {
     const VECTOR_SIZE: usize = 16;
     let chunk_size = dist << 1;
-    assert!(chunk_size >= 16);
+    assert!(chunk_size >= 32);
 
     reals
         .chunks_exact_mut(chunk_size)

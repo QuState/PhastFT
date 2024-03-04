@@ -7,7 +7,6 @@
 #![warn(clippy::perf)]
 #![forbid(unsafe_code)]
 #![feature(portable_simd)]
-#![feature(array_chunks)]
 
 use crate::cobra::cobra_apply;
 use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd};
@@ -20,11 +19,12 @@ mod kernels;
 pub mod options;
 pub mod planner;
 mod twiddles;
-mod utils;
 
+/// Redefine `Float` as `f64` for double precision data
 #[cfg(feature = "double")]
 pub type Float = f64;
 
+/// Redefine `Float` as `f32` for single precision data
 #[cfg(feature = "single")]
 pub type Float = f32;
 
@@ -91,7 +91,7 @@ pub fn fft_with_opts_and_plan(
             if t < n - 1 {
                 filter_twiddles(twiddles_re, twiddles_im);
             }
-            if chunk_size >= 16 {
+            if chunk_size >= 32 {
                 fft_chunk_n_simd(reals, imags, twiddles_re, twiddles_im, dist);
             } else {
                 fft_chunk_n(reals, imags, twiddles_re, twiddles_im, dist);
@@ -118,28 +118,13 @@ pub fn fft_with_opts_and_plan(
 mod tests {
     use std::ops::Range;
 
-    #[cfg(feature = "single")]
-    use utilities::assert_f32_closeness;
-    #[cfg(feature = "double")]
-    use utilities::assert_f64_closeness;
+    use utilities::assert_float_closeness;
     use utilities::rustfft::FftPlanner;
     use utilities::rustfft::num_complex::Complex;
 
     use crate::planner::Direction;
 
     use super::*;
-
-    fn assert_float_closeness(actual: Float, expected: Float, epsilon: Float) {
-        #[cfg(feature = "double")]
-        {
-            assert_f64_closeness(actual, expected, epsilon)
-        }
-
-        #[cfg(feature = "single")]
-        {
-            assert_f32_closeness(actual, expected, epsilon)
-        }
-    }
 
     #[should_panic]
     #[test]

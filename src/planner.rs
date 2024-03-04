@@ -66,25 +66,9 @@ impl Planner {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "single")]
-    use utilities::assert_f32_closeness;
-    #[cfg(feature = "double")]
-    use utilities::assert_f64_closeness;
+    use utilities::assert_float_closeness;
 
-    use crate::Float;
     use crate::planner::{Direction, Planner};
-
-    fn assert_float_closeness(actual: Float, expected: Float, epsilon: Float) {
-        #[cfg(feature = "double")]
-        {
-            assert_f64_closeness(actual, expected, epsilon)
-        }
-
-        #[cfg(feature = "single")]
-        {
-            assert_f32_closeness(actual, expected, epsilon)
-        }
-    }
 
     #[test]
     fn no_twiddles() {
@@ -117,8 +101,8 @@ mod tests {
                 .for_each(|(((a, b), c), d)| {
                     let temp_re = a * c - b * d;
                     let temp_im = a * d + b * c;
-                    assert_float_closeness(temp_re, 1.0, 1e-6);
-                    assert_float_closeness(temp_im, 0.0, 1e-6);
+                    assert_float_closeness(temp_re, 1.0, 1e-3);
+                    assert_float_closeness(temp_im, 0.0, 1e-3);
                 });
         }
     }

@@ -2,10 +2,16 @@ use std::{env, ptr::slice_from_raw_parts_mut, str::FromStr};
 
 use fftw::{
     array::AlignedVec,
-    plan::{C2CPlan, C2CPlan64},
     types::{Flag, Sign},
 };
+use fftw::plan::C2CPlan;
+#[cfg(feature = "single")]
+use fftw::plan::C2CPlan32;
+#[cfg(feature = "double")]
+use fftw::plan::C2CPlan64;
 use utilities::{gen_random_signal, rustfft::num_complex::Complex};
+
+use phastft::Float;
 
 fn benchmark_fftw(n: usize) {
     let big_n = 1 << n;
@@ -13,7 +19,7 @@ fn benchmark_fftw(n: usize) {
     let mut reals = vec![0.0; big_n];
     let mut imags = vec![0.0; big_n];
 
-    gen_random_signal(&mut reals, &mut imags);
+    gen_random_signal::<Float>(&mut reals, &mut imags);
     let mut nums = AlignedVec::new(big_n);
     reals
         .drain(..)
@@ -22,6 +28,8 @@ fn benchmark_fftw(n: usize) {
         .for_each(|((re, im), z)| *z = Complex::new(re, im));
 
     let now = std::time::Instant::now();
+
+    #[cfg(feature = "double")]
     C2CPlan64::aligned(
         &[big_n],
         Sign::Backward,
@@ -34,6 +42,21 @@ fn benchmark_fftw(n: usize) {
         &mut nums,
     )
     .unwrap();
+
+    #[cfg(feature = "single")]
+    C2CPlan32::aligned(
+        &[big_n],
+        Sign::Backward,
+        Flag::DESTROYINPUT | Flag::ESTIMATE,
+    )
+    .unwrap()
+    .c2c(
+        // SAFETY: See above comment.
+        unsafe { &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), big_n) },
+        &mut nums,
+    )
+    .unwrap();
+
     let elapsed = now.elapsed().as_micros();
     println!("{elapsed}");
 }

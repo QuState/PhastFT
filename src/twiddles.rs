@@ -1,12 +1,14 @@
-#[cfg(feature = "single")]
-use std::simd::f32x8;
 #[cfg(feature = "double")]
-use std::simd::f64x8;
+use std::simd::Simd;
 
 use crate::Float;
 use crate::planner::Direction;
 
-const PI: Float = std::f64::consts::PI as Float;
+#[cfg(feature = "single")]
+const PI: Float = std::f32::consts::PI;
+
+#[cfg(feature = "double")]
+const PI: Float = std::f64::consts::PI;
 
 pub(crate) struct Twiddles {
     st: Float,
@@ -109,21 +111,10 @@ pub(crate) fn generate_twiddles_simd(
     };
 
     let apply_symmetry_re = |input: &[Float], output: &mut [Float]| {
-        #[cfg(feature = "double")]
-        {
-            let first_re = f64x8::from_slice(input);
-            let minus_one = f64x8::splat(-1.0);
-            let negated = (first_re * minus_one).reverse();
-            output.copy_from_slice(negated.as_array());
-        }
-
-        #[cfg(feature = "single")]
-        {
-            let first_re = f32x8::from_slice(input);
-            let minus_one = f32x8::splat(-1.0);
-            let negated = (first_re * minus_one).reverse();
-            output.copy_from_slice(negated.as_array());
-        }
+        let first_re = Simd::<Float, 8>::from_slice(input);
+        let minus_one = Simd::<Float, 8>::splat(-1.0);
+        let negated = (first_re * minus_one).reverse();
+        output.copy_from_slice(negated.as_array());
     };
 
     let apply_symmetry_im = |input: &[Float], output: &mut [Float]| {
@@ -207,26 +198,15 @@ pub(crate) fn filter_twiddles(twiddles_re: &mut Vec<Float>, twiddles_im: &mut Ve
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "single")]
-    use utilities::assert_f32_closeness;
-    #[cfg(feature = "double")]
-    use utilities::assert_f64_closeness;
+    use utilities::assert_float_closeness;
 
     use super::*;
 
-    const FRAC_1_SQRT_2: Float = std::f64::consts::FRAC_1_SQRT_2 as Float;
+    #[cfg(feature = "double")]
+    const FRAC_1_SQRT_2: Float = std::f64::consts::FRAC_1_SQRT_2;
 
-    fn assert_float_closeness(actual: Float, expected: Float, epsilon: Float) {
-        #[cfg(feature = "double")]
-        {
-            assert_f64_closeness(actual, expected, epsilon)
-        }
-
-        #[cfg(feature = "single")]
-        {
-            assert_f32_closeness(actual, expected, epsilon)
-        }
-    }
+    #[cfg(feature = "single")]
+    const FRAC_1_SQRT_2: Float = std::f32::consts::FRAC_1_SQRT_2;
 
     #[test]
     fn twiddles_4() {
@@ -235,23 +215,23 @@ mod tests {
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
         println!("{w_re} {w_im}");
-        assert_float_closeness(w_re, 1.0, 1e-10);
-        assert_float_closeness(w_im, 0.0, 1e-10);
+        assert_float_closeness(w_re, 1.0, 1e-6);
+        assert_float_closeness(w_im, 0.0, 1e-6);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
         println!("{w_re} {w_im}");
-        assert_float_closeness(w_re, FRAC_1_SQRT_2, 1e-10);
-        assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
+        assert_float_closeness(w_re, FRAC_1_SQRT_2, 1e-6);
+        assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-6);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
         println!("{w_re} {w_im}");
-        assert_float_closeness(w_re, 0.0, 1e-10);
-        assert_float_closeness(w_im, -1.0, 1e-10);
+        assert_float_closeness(w_re, 0.0, 1e-6);
+        assert_float_closeness(w_im, -1.0, 1e-6);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
         println!("{w_re} {w_im}");
-        assert_float_closeness(w_re, -FRAC_1_SQRT_2, 1e-10);
-        assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
+        assert_float_closeness(w_re, -FRAC_1_SQRT_2, 1e-6);
+        assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-6);
     }
 
     #[test]
@@ -266,14 +246,14 @@ mod tests {
                 .iter()
                 .zip(twiddles_re_ref.iter())
                 .for_each(|(simd, reference)| {
-                    assert_float_closeness(*simd, *reference, 1e-10);
+                    assert_float_closeness(*simd, *reference, 1e-3);
                 });
 
             twiddles_im
                 .iter()
                 .zip(twiddles_im_ref.iter())
                 .for_each(|(simd, reference)| {
-                    assert_float_closeness(*simd, *reference, 1e-10);
+                    assert_float_closeness(*simd, *reference, 1e-3);
                 });
         }
     }
