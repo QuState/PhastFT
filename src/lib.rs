@@ -6,7 +6,7 @@
 #![warn(clippy::suspicious)]
 #![warn(clippy::perf)]
 #![forbid(unsafe_code)]
-#![feature(portable_simd)]
+#![feature(portable_simd, array_chunks)]
 
 use crate::cobra::cobra_apply;
 use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd, Float};
