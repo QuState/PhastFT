@@ -94,6 +94,16 @@ sig_im = np.asarray(sig_im, dtype=np.float64)
 fft(a_re, a_im)
 ```
 
+### Normalization
+
+`phastft` does not normalize outputs. Users can normalize outputs after running a forward FFT followed by an inverse
+FFT by scaling each element by `1/N`, where `N` is the number of data points.
+
+### Output Order
+
+`phastft` always finishes processing input data by running
+a [bit-reversal permutation](https://en.wikipedia.org/wiki/Bit-reversal_permutation) on the processed data.
+
 ## Benchmarks
 
 PhastFT is benchmarked against several other FFT libraries. Scripts and instructions to reproduce benchmark results and
