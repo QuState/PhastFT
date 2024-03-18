@@ -1,37 +1,43 @@
-use std::{f64::consts::PI, simd::f64x8};
+use std::simd::f64x8;
 
-use crate::kernels::Float;
+use num_traits::{Float, FloatConst};
+
 use crate::planner::Direction;
 
-pub(crate) struct Twiddles {
-    st: Float,
-    ct: Float,
-    w_re_prev: Float,
-    w_im_prev: Float,
+pub(crate) struct Twiddles<T: Float> {
+    st: T,
+    ct: T,
+    w_re_prev: T,
+    w_im_prev: T,
 }
 
-impl Twiddles {
+impl<T: Float + FloatConst> Twiddles<T> {
     /// `cache_size` is the amount of roots of unity kept pre-built at any point in time.
     /// `num_roots` is the total number of roots of unity that will need to be computed.
     /// `cache_size` can be thought of as the length of a chunk of roots of unity from
     /// out of the total amount (i.e., `num_roots`)
     #[allow(dead_code)]
     pub fn new(num_roots: usize) -> Self {
-        let theta = -PI / (num_roots as Float);
+        let theta = -T::PI() / (T::from(num_roots).unwrap());
         let (st, ct) = theta.sin_cos();
         Self {
             st,
             ct,
-            w_re_prev: 1.0,
-            w_im_prev: 0.0,
+            w_re_prev: T::one(),
+            w_im_prev: T::zero(),
         }
     }
 }
 
-impl Iterator for Twiddles {
-    type Item = (Float, Float);
+// TODO: generate twiddles using the first quarter chunk of twiddle factors
+// 1st chunk: old fashioned multiplication of complex nums
+// 2nd chunk: reverse the 1st chunk, swap components, and negate both components
+// 3rd chunk: No reversal. Swap the components and negate the *new* imaginary components
+// 4th chunk: reverse the 1st chunk, and negate the real component
+impl<T: Float> Iterator for Twiddles<T> {
+    type Item = (T, T);
 
-    fn next(&mut self) -> Option<(f64, f64)> {
+    fn next(&mut self) -> Option<(T, T)> {
         let w_re = self.w_re_prev;
         let w_im = self.w_im_prev;
 
@@ -43,19 +49,22 @@ impl Iterator for Twiddles {
     }
 }
 
-pub fn generate_twiddles(dist: usize, direction: Direction) -> (Vec<f64>, Vec<f64>) {
-    let mut twiddles_re = vec![0.0; dist];
-    let mut twiddles_im = vec![0.0; dist];
-    twiddles_re[0] = 1.0;
+pub fn generate_twiddles<T: Float + FloatConst>(
+    dist: usize,
+    direction: Direction,
+) -> (Vec<T>, Vec<T>) {
+    let mut twiddles_re = vec![T::zero(); dist];
+    let mut twiddles_im = vec![T::zero(); dist];
+    twiddles_re[0] = T::one();
 
     let sign = match direction {
-        Direction::Forward => 1.0,
-        Direction::Reverse => -1.0,
+        Direction::Forward => T::one(),
+        Direction::Reverse => -T::one(),
     };
 
-    let angle: Float = sign * -PI / (dist as f64);
+    let angle = sign * T::PI() / T::from(dist).unwrap();
     let (st, ct) = angle.sin_cos();
-    let (mut w_re, mut w_im) = (1.0, 0.0);
+    let (mut w_re, mut w_im) = (T::one(), T::zero());
 
     let mut i = 1;
     while i < (dist / 2) + 1 {
@@ -76,22 +85,25 @@ pub fn generate_twiddles(dist: usize, direction: Direction) -> (Vec<f64>, Vec<f6
     (twiddles_re, twiddles_im)
 }
 
-pub(crate) fn generate_twiddles_simd(dist: usize, direction: Direction) -> (Vec<f64>, Vec<f64>) {
+pub(crate) fn generate_twiddles_simd<T: Default + Float + FloatConst>(
+    dist: usize,
+    direction: Direction,
+) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 8; // TODO: make this a const generic?
     assert!(dist >= CHUNK_SIZE * 2);
     assert_eq!(dist % CHUNK_SIZE, 0);
-    let mut twiddles_re = vec![0.0; dist];
-    let mut twiddles_im = vec![0.0; dist];
-    twiddles_re[0] = 1.0;
+    let mut twiddles_re = vec![T::zero(); dist];
+    let mut twiddles_im = vec![T::zero(); dist];
+    twiddles_re[0] = T::one();
 
     let sign = match direction {
-        Direction::Forward => 1.0,
-        Direction::Reverse => -1.0,
+        Direction::Forward => T::one(),
+        Direction::Reverse => -T::one(),
     };
 
-    let angle: Float = sign * -PI / (dist as f64);
+    let angle = sign * T::PI() / T::from(dist).unwrap();
     let (st, ct) = angle.sin_cos();
-    let (mut w_re, mut w_im) = (1.0, 0.0);
+    let (mut w_re, mut w_im) = (T::one(), T::zero());
 
     let mut next_twiddle = || {
         let temp = w_re;
@@ -100,25 +112,19 @@ pub(crate) fn generate_twiddles_simd(dist: usize, direction: Direction) -> (Vec<
         (w_re, w_im)
     };
 
-    let apply_symmetry_re = |input: &[Float], output: &mut [Float]| {
+    let apply_symmetry_re = |input: &[T], output: &mut [T]| {
         let first_re = f64x8::from_slice(input);
         let minus_one = f64x8::splat(-1.0);
         let negated = (first_re * minus_one).reverse();
         output.copy_from_slice(negated.as_array());
     };
 
-    let apply_symmetry_im = |input: &[Float], output: &mut [Float]| {
-        let mut buf: [Float; CHUNK_SIZE] = [Float::default(); 8];
+    let apply_symmetry_im = |input: &[T], output: &mut [T]| {
+        let mut buf: [T; CHUNK_SIZE] = [T::default(); 8];
         buf.copy_from_slice(input);
         buf.reverse();
         output.copy_from_slice(&buf);
     };
-
-    // TODO: generate twiddles using the first quarter chunk of twiddle factors
-    // 1st chunk: old fashioned multiplication of complex nums
-    // 2nd chunk: reverse the 1st chunk, swap components, and negate both components
-    // 3rd chunk: No reversal. Swap the components and negate the *new* imaginary components
-    // 4th chunk: reverse the 1st chunk, and negate the real component
 
     // Split the twiddles into two halves. There is a cheaper way to calculate the second half
     let (first_half_re, second_half_re) = twiddles_re[1..].split_at_mut(dist / 2);
@@ -168,14 +174,12 @@ pub(crate) fn generate_twiddles_simd(dist: usize, direction: Direction) -> (Vec<
     (twiddles_re, twiddles_im)
 }
 
-pub(crate) fn filter_twiddles(twiddles_re: &mut Vec<f64>, twiddles_im: &mut Vec<f64>) {
+pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &mut Vec<T>, twiddles_im: &mut Vec<T>) {
     assert_eq!(twiddles_re.len(), twiddles_im.len());
     let dist = twiddles_re.len();
 
-    let filtered_twiddles_re: Vec<f64> =
-        twiddles_re.chunks_exact(2).map(|chunk| chunk[0]).collect();
-    let filtered_twiddles_im: Vec<f64> =
-        twiddles_im.chunks_exact(2).map(|chunk| chunk[0]).collect();
+    let filtered_twiddles_re: Vec<T> = twiddles_re.chunks_exact(2).map(|chunk| chunk[0]).collect();
+    let filtered_twiddles_im: Vec<T> = twiddles_im.chunks_exact(2).map(|chunk| chunk[0]).collect();
 
     assert!(
         filtered_twiddles_re.len() == filtered_twiddles_im.len()

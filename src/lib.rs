@@ -8,8 +8,12 @@
 #![forbid(unsafe_code)]
 #![feature(portable_simd)]
 
+use num_traits::Float;
+
 use crate::cobra::cobra_apply;
-use crate::kernels::{fft_chunk_2, fft_chunk_4, fft_chunk_n, fft_chunk_n_simd, Float};
+use crate::kernels::{
+    fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_2, fft_chunk_4, fft_chunk_n,
+};
 use crate::options::Options;
 use crate::planner::{Direction, Planner};
 use crate::twiddles::filter_twiddles;
@@ -30,7 +34,7 @@ mod twiddles;
 ///
 /// ## References
 /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
-pub fn fft(reals: &mut [Float], imags: &mut [Float], direction: Direction) {
+pub fn fft_64(reals: &mut [f64], imags: &mut [f64], direction: Direction) {
     assert_eq!(
         reals.len(),
         imags.len(),
@@ -43,7 +47,23 @@ pub fn fft(reals: &mut [Float], imags: &mut [Float], direction: Direction) {
     assert!(planner.num_twiddles().is_power_of_two() && planner.num_twiddles() == reals.len() / 2);
 
     let opts = Options::guess_options(reals.len());
-    fft_with_opts_and_plan(reals, imags, &opts, &mut planner);
+    fft_64_with_opts_and_plan(reals, imags, &opts, &mut planner);
+}
+
+pub fn fft_32(reals: &mut [f32], imags: &mut [f32], direction: Direction) {
+    assert_eq!(
+        reals.len(),
+        imags.len(),
+        "real and imaginary inputs must be of equal size, but got: {} {}",
+        reals.len(),
+        imags.len()
+    );
+
+    let mut planner = Planner::new(reals.len(), direction);
+    assert!(planner.num_twiddles().is_power_of_two() && planner.num_twiddles() == reals.len() / 2);
+
+    let opts = Options::guess_options(reals.len());
+    fft_32_with_opts_and_plan(reals, imags, &opts, &mut planner);
 }
 
 /// Same as [fft], but also accepts [`Options`] that control optimization strategies, as well as
@@ -59,11 +79,11 @@ pub fn fft(reals: &mut [Float], imags: &mut [Float], direction: Direction) {
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`, or if the input length is *not* a power of two.
-pub fn fft_with_opts_and_plan(
-    reals: &mut [Float],
-    imags: &mut [Float],
+pub fn fft_32_with_opts_and_plan(
+    reals: &mut [f32],
+    imags: &mut [f32],
     opts: &Options,
-    planner: &mut Planner,
+    planner: &mut Planner<f32>,
 ) {
     assert!(reals.len() == imags.len() && reals.len().is_power_of_two());
     let n: usize = reals.len().ilog2() as usize;
@@ -84,7 +104,54 @@ pub fn fft_with_opts_and_plan(
                 filter_twiddles(twiddles_re, twiddles_im);
             }
             if chunk_size >= 16 {
-                fft_chunk_n_simd(reals, imags, twiddles_re, twiddles_im, dist);
+                fft_32_chunk_n_simd(reals, imags, twiddles_re, twiddles_im, dist);
+            } else {
+                fft_chunk_n(reals, imags, twiddles_re, twiddles_im, dist);
+            }
+        } else if chunk_size == 2 {
+            fft_chunk_2(reals, imags);
+        } else if chunk_size == 4 {
+            fft_chunk_4(reals, imags);
+        }
+    }
+
+    if opts.multithreaded_bit_reversal {
+        std::thread::scope(|s| {
+            s.spawn(|| cobra_apply(reals, n));
+            s.spawn(|| cobra_apply(imags, n));
+        });
+    } else {
+        cobra_apply(reals, n);
+        cobra_apply(imags, n);
+    }
+}
+
+pub fn fft_64_with_opts_and_plan(
+    reals: &mut [f64],
+    imags: &mut [f64],
+    opts: &Options,
+    planner: &mut Planner<f64>,
+) {
+    assert!(reals.len() == imags.len() && reals.len().is_power_of_two());
+    let n: usize = reals.len().ilog2() as usize;
+
+    let twiddles_re = &mut planner.twiddles_re;
+    let twiddles_im = &mut planner.twiddles_im;
+
+    // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance
+    // between pairs
+    assert!(twiddles_re.len() == reals.len() / 2 && twiddles_im.len() == imags.len() / 2);
+
+    for t in (0..n).rev() {
+        let dist = 1 << t;
+        let chunk_size = dist << 1;
+
+        if chunk_size > 4 {
+            if t < n - 1 {
+                filter_twiddles(twiddles_re, twiddles_im);
+            }
+            if chunk_size >= 16 {
+                fft_64_chunk_n_simd(reals, imags, twiddles_re, twiddles_im, dist);
             } else {
                 fft_chunk_n(reals, imags, twiddles_re, twiddles_im, dist);
             }
@@ -112,7 +179,7 @@ mod tests {
 
     use utilities::{
         assert_f64_closeness,
-        rustfft::{num_complex::Complex64, FftPlanner},
+        rustfft::{FftPlanner, num_complex::Complex64},
     };
 
     use crate::planner::Direction;
@@ -132,7 +199,7 @@ mod tests {
         let opts = Options::guess_options(reals.len());
 
         // but this call should, in principle, panic as well
-        fft_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
     }
 
     // A regression test to make sure the `Planner` is compatible with fft execution.
@@ -155,7 +222,7 @@ mod tests {
         let opts = Options::guess_options(reals.len());
 
         // but this call should panic as well
-        fft_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
     }
 
     #[test]
@@ -165,9 +232,9 @@ mod tests {
         for k in range {
             let n: usize = 1 << k;
 
-            let mut reals: Vec<Float> = (1..=n).map(|i| i as f64).collect();
-            let mut imags: Vec<Float> = (1..=n).map(|i| i as f64).collect();
-            fft(&mut reals, &mut imags, Direction::Forward);
+            let mut reals: Vec<_> = (1..=n).map(|i| i as f64).collect();
+            let mut imags: Vec<_> = (1..=n).map(|i| i as f64).collect();
+            fft_64(&mut reals, &mut imags, Direction::Forward);
 
             let mut buffer: Vec<Complex64> = (1..=n)
                 .map(|i| Complex64::new(i as f64, i as f64))

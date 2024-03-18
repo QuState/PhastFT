@@ -3,6 +3,8 @@
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
 
+use num_traits::{Float, FloatConst};
+
 use crate::twiddles::{generate_twiddles, generate_twiddles_simd};
 
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
@@ -18,14 +20,14 @@ pub enum Direction {
 /// `log_2(N)` stages of the FFT.
 /// The amount of twiddle factors should always be a power of 2. In addition,
 /// the amount of twiddle factors should always be `(1/2) * N`
-pub struct Planner {
+pub struct Planner<T: Float> {
     /// The real components of the twiddle factors
-    pub twiddles_re: Vec<f64>,
+    pub twiddles_re: Vec<T>,
     /// The imaginary components of the twiddle factors
-    pub twiddles_im: Vec<f64>,
+    pub twiddles_im: Vec<T>,
 }
 
-impl Planner {
+impl<T: Float + FloatConst + Default> Planner<T> {
     /// Create a `Planner` for an FFT of size `num_points`.
     /// The twiddle factors are pre-computed based on the provided [`Direction`].
     /// For `Forward`, use [`Direction::Forward`].
@@ -73,7 +75,7 @@ mod tests {
     #[test]
     fn no_twiddles() {
         for num_points in [2, 4] {
-            let planner = Planner::new(num_points, Direction::Forward);
+            let planner = Planner::<f64>::new(num_points, Direction::Forward);
             assert!(planner.twiddles_im.is_empty() && planner.twiddles_re.is_empty());
         }
     }
@@ -82,8 +84,8 @@ mod tests {
     fn forward_mul_inverse_eq_identity() {
         for i in 3..25 {
             let num_points = 1 << i;
-            let planner_forward = Planner::new(num_points, Direction::Forward);
-            let planner_reverse = Planner::new(num_points, Direction::Reverse);
+            let planner_forward = Planner::<f64>::new(num_points, Direction::Forward);
+            let planner_reverse = Planner::<f64>::new(num_points, Direction::Reverse);
 
             assert_eq!(
                 planner_reverse.num_twiddles(),
