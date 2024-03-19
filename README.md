@@ -58,14 +58,16 @@ including [RustFFT](https://crates.io/crates/rustfft/), while using significantl
 ### Rust
 
 ```rust
-use phastft::planner::Direction;
-use phastft::fft;
+use phastft::{
+    planner::Direction,
+    fft_64
+};
 
 fn main() {
     let big_n = 1 << 10;
     let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
     let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
-    fft(&mut reals, &mut imags, Direction::Forward);
+    fft_64(&mut reals, &mut imags, Direction::Forward);
 }
 ```
 

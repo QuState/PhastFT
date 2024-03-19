@@ -3,7 +3,7 @@ use std::simd::{f32x8, f64x8};
 use num_traits::Float;
 
 macro_rules! fft_butterfly_n_simd {
-    ($func_name:ident, $precision:ty, $lanes:literal, $simd_vector:expr) => {
+    ($func_name:ident, $precision:ty, $lanes:literal, $simd_vector:ty) => {
         pub fn $func_name(
             reals: &mut [$precision],
             imags: &mut [$precision],
@@ -28,13 +28,13 @@ macro_rules! fft_butterfly_n_simd {
                         .zip(twiddles_re.chunks_exact($lanes))
                         .zip(twiddles_im.chunks_exact($lanes))
                         .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
-                            let real_c0 = $simd_vector::from_slice(re_s0);
-                            let real_c1 = $simd_vector::from_slice(re_s1);
-                            let imag_c0 = $simd_vector::from_slice(im_s0);
-                            let imag_c1 = $simd_vector::from_slice(im_s1);
+                            let real_c0 = <$simd_vector>::from_slice(re_s0);
+                            let real_c1 = <$simd_vector>::from_slice(re_s1);
+                            let imag_c0 = <$simd_vector>::from_slice(im_s0);
+                            let imag_c1 = <$simd_vector>::from_slice(im_s1);
 
-                            let tw_re = $simd_vector::from_slice(w_re);
-                            let tw_im = $simd_vector::from_slice(w_im);
+                            let tw_re = <$simd_vector>::from_slice(w_re);
+                            let tw_im = <$simd_vector>::from_slice(w_im);
 
                             re_s0.copy_from_slice((real_c0 + real_c1).as_array());
                             im_s0.copy_from_slice((imag_c0 + imag_c1).as_array());

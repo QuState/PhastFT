@@ -5,7 +5,7 @@
 
 use num_traits::{Float, FloatConst};
 
-use crate::twiddles::{generate_twiddles, generate_twiddles_simd};
+use crate::twiddles::generate_twiddles;
 
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
 /// Forward is for running the regular FFT
@@ -47,7 +47,7 @@ impl<T: Float + FloatConst + Default> Planner<T> {
 
         let dist = num_points >> 1;
         let (twiddles_re, twiddles_im) = if dist >= 8 * 2 {
-            generate_twiddles_simd(dist, direction)
+            generate_twiddles(dist, direction)
         } else {
             generate_twiddles(dist, direction)
         };

@@ -8,8 +8,6 @@
 #![forbid(unsafe_code)]
 #![feature(portable_simd)]
 
-use num_traits::Float;
-
 use crate::cobra::cobra_apply;
 use crate::kernels::{
     fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_2, fft_chunk_4, fft_chunk_n,
@@ -50,6 +48,16 @@ pub fn fft_64(reals: &mut [f64], imags: &mut [f64], direction: Direction) {
     fft_64_with_opts_and_plan(reals, imags, &opts, &mut planner);
 }
 
+/// FFT -- Decimation in Frequency. This is just the decimation-in-time algorithm, reversed.
+/// This call to FFT is run, in-place.
+/// The input should be provided in normal order, and then the modified input is bit-reversed.
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()`
+///
+/// ## References
+/// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
 pub fn fft_32(reals: &mut [f32], imags: &mut [f32], direction: Direction) {
     assert_eq!(
         reals.len(),
@@ -126,6 +134,19 @@ pub fn fft_32_with_opts_and_plan(
     }
 }
 
+/// Same as [fft], but also accepts [`Options`] that control optimization strategies, as well as
+/// a [`Planner`] in the case that this FFT will need to be run multiple times.
+///
+/// `fft` automatically guesses the best strategy for a given input,
+/// so you only need to call this if you are tuning performance for a specific hardware platform.
+///
+/// In addition, `fft` automatically creates a planner to be used. In the case that you plan
+/// on running an FFT many times on inputs of the same size, use this function with the pre-built
+/// [`Planner`].
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()`, or if the input length is *not* a power of two.
 pub fn fft_64_with_opts_and_plan(
     reals: &mut [f64],
     imags: &mut [f64],
@@ -181,8 +202,6 @@ mod tests {
         assert_f64_closeness,
         rustfft::{FftPlanner, num_complex::Complex64},
     };
-
-    use crate::planner::Direction;
 
     use super::*;
 
