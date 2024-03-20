@@ -231,29 +231,29 @@ mod tests {
         assert_f64_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
     }
 
-    // #[test]
-    // fn twiddles_simd() {
-    //     for n in 4..28 {
-    //         let dist = 1 << n;
-    //
-    //         let (twiddles_re_ref, twiddles_im_ref) = generate_twiddles(dist, Direction::Forward);
-    //         let (twiddles_re, twiddles_im) = generate_twiddles_simd(dist, Direction::Forward);
-    //
-    //         twiddles_re
-    //             .iter()
-    //             .zip(twiddles_re_ref.iter())
-    //             .for_each(|(simd, reference)| {
-    //                 assert_f64_closeness(*simd, *reference, 1e-10);
-    //             });
-    //
-    //         twiddles_im
-    //             .iter()
-    //             .zip(twiddles_im_ref.iter())
-    //             .for_each(|(simd, reference)| {
-    //                 assert_f64_closeness(*simd, *reference, 1e-10);
-    //             });
-    //     }
-    // }
+    #[test]
+    fn twiddles_simd() {
+        for n in 4..28 {
+            let dist = 1 << n;
+
+            let (twiddles_re_ref, twiddles_im_ref) = generate_twiddles(dist, Direction::Forward);
+            let (twiddles_re, twiddles_im) = generate_twiddles_simd_64(dist, Direction::Forward);
+
+            twiddles_re
+                .iter()
+                .zip(twiddles_re_ref.iter())
+                .for_each(|(simd, reference)| {
+                    assert_f64_closeness(*simd, *reference, 1e-10);
+                });
+
+            twiddles_im
+                .iter()
+                .zip(twiddles_im_ref.iter())
+                .for_each(|(simd, reference)| {
+                    assert_f64_closeness(*simd, *reference, 1e-10);
+                });
+        }
+    }
 
     #[test]
     fn twiddles_filter() {
