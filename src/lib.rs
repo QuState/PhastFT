@@ -147,7 +147,7 @@ mod tests {
 
     use utilities::{
         assert_f64_closeness,
-        rustfft::{FftPlanner, num_complex::Complex64},
+        rustfft::{num_complex::Complex64, FftPlanner},
     };
 
     use super::*;
