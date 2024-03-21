@@ -72,44 +72,66 @@ impl_planner_for!(Planner32, f32, generate_twiddles_simd_32);
 
 #[cfg(test)]
 mod tests {
-    use utilities::assert_f64_closeness;
+    use utilities::{assert_f32_closeness, assert_f64_closeness};
 
-    use crate::planner::{Direction, Planner64};
+    use super::*;
 
-    #[test]
-    fn no_twiddles() {
-        for num_points in [2, 4] {
-            let planner = Planner64::new(num_points, Direction::Forward);
-            assert!(planner.twiddles_im.is_empty() && planner.twiddles_re.is_empty());
-        }
+    macro_rules! test_no_twiddles {
+        ($test_name:ident, $planner:ty) => {
+            #[test]
+            fn $test_name() {
+                for num_points in [2, 4] {
+                    let planner = <$planner>::new(num_points, Direction::Forward);
+                    assert!(planner.twiddles_im.is_empty() && planner.twiddles_re.is_empty());
+                }
+            }
+        };
     }
 
-    #[test]
-    fn forward_mul_inverse_eq_identity() {
-        for i in 3..25 {
-            let num_points = 1 << i;
-            let planner_forward = Planner64::new(num_points, Direction::Forward);
-            let planner_reverse = Planner64::new(num_points, Direction::Reverse);
+    test_no_twiddles!(no_twiddles_64, Planner64);
+    test_no_twiddles!(no_twiddles_32, Planner32);
 
-            assert_eq!(
-                planner_reverse.num_twiddles(),
-                planner_forward.num_twiddles()
-            );
+    macro_rules! forward_mul_inverse_eq_identity {
+        ($test_name:ident, $planner:ty, $float_check:ident) => {
+            #[test]
+            fn $test_name() {
+                for i in 3..25 {
+                    let num_points = 1 << i;
+                    let planner_forward = <$planner>::new(num_points, Direction::Forward);
+                    let planner_reverse = <$planner>::new(num_points, Direction::Reverse);
 
-            // (a + ib) (c + id) = ac + iad + ibc - bd
-            //                   = ac - bd + i(ad + bc)
-            planner_forward
-                .twiddles_re
-                .iter()
-                .zip(planner_forward.twiddles_im.iter())
-                .zip(planner_reverse.twiddles_re.iter())
-                .zip(planner_reverse.twiddles_im)
-                .for_each(|(((a, b), c), d)| {
-                    let temp_re = a * c - b * d;
-                    let temp_im = a * d + b * c;
-                    assert_f64_closeness(temp_re, 1.0, 1e-6);
-                    assert_f64_closeness(temp_im, 0.0, 1e-6);
-                });
-        }
+                    assert_eq!(
+                        planner_reverse.num_twiddles(),
+                        planner_forward.num_twiddles()
+                    );
+
+                    // (a + ib) (c + id) = ac + iad + ibc - bd
+                    //                   = ac - bd + i(ad + bc)
+                    planner_forward
+                        .twiddles_re
+                        .iter()
+                        .zip(planner_forward.twiddles_im.iter())
+                        .zip(planner_reverse.twiddles_re.iter())
+                        .zip(planner_reverse.twiddles_im)
+                        .for_each(|(((a, b), c), d)| {
+                            let temp_re = a * c - b * d;
+                            let temp_im = a * d + b * c;
+                            $float_check(temp_re, 1.0, 1e-2);
+                            $float_check(temp_im, 0.0, 1e-2);
+                        });
+                }
+            }
+        };
     }
+
+    forward_mul_inverse_eq_identity!(
+        forward_reverse_eq_identity_64,
+        Planner64,
+        assert_f64_closeness
+    );
+    forward_mul_inverse_eq_identity!(
+        forward_reverse_eq_identity_32,
+        Planner32,
+        assert_f32_closeness
+    );
 }

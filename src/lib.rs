@@ -187,7 +187,7 @@ mod tests {
         let mut imags = vec![0.0; num_points];
         let opts = Options::guess_options(reals.len());
 
-        // but this call should panic as well
+        // this call should panic
         fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
     }
 
