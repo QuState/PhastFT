@@ -1,33 +1,20 @@
 pub extern crate rustfft;
 
 use std::f64::consts::PI;
+use std::fmt::Display;
 
 use rand::distributions::Uniform;
 use rand::prelude::*;
+use rustfft::num_traits::Float;
 
-/// Asserts that two f64 numbers are approximately equal.
+/// Asserts that two floating-point numbers are approximately equal.
 ///
 /// # Panics
 ///
 /// Panics if `actual` and `expected` are too far from each other
 #[allow(dead_code)]
 #[track_caller]
-pub fn assert_f64_closeness(actual: f64, expected: f64, epsilon: f64) {
-    if (actual - expected).abs() >= epsilon {
-        panic!(
-            "Assertion failed: {actual} too far from expected value {expected} (with epsilon {epsilon})",
-        );
-    }
-}
-
-/// Asserts that two f32 numbers are approximately equal.
-///
-/// # Panics
-///
-/// Panics if `actual` and `expected` are too far from each other
-#[allow(dead_code)]
-#[track_caller]
-pub fn assert_f32_closeness(actual: f32, expected: f32, epsilon: f32) {
+pub fn assert_float_closeness<T: Float + Display>(actual: T, expected: T, epsilon: T) {
     if (actual - expected).abs() >= epsilon {
         panic!(
             "Assertion failed: {actual} too far from expected value {expected} (with epsilon {epsilon})",
