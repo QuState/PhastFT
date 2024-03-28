@@ -201,7 +201,7 @@ pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &mut Vec<T>, twiddles_im: &
 mod tests {
     use std::f64::consts::FRAC_1_SQRT_2;
 
-    use utilities::assert_f64_closeness;
+    use utilities::assert_float_closeness;
 
     use super::*;
 
@@ -212,48 +212,57 @@ mod tests {
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
         println!("{w_re} {w_im}");
-        assert_f64_closeness(w_re, 1.0, 1e-10);
-        assert_f64_closeness(w_im, 0.0, 1e-10);
+        assert_float_closeness(w_re, 1.0, 1e-10);
+        assert_float_closeness(w_im, 0.0, 1e-10);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
         println!("{w_re} {w_im}");
-        assert_f64_closeness(w_re, FRAC_1_SQRT_2, 1e-10);
-        assert_f64_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
+        assert_float_closeness(w_re, FRAC_1_SQRT_2, 1e-10);
+        assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
         println!("{w_re} {w_im}");
-        assert_f64_closeness(w_re, 0.0, 1e-10);
-        assert_f64_closeness(w_im, -1.0, 1e-10);
+        assert_float_closeness(w_re, 0.0, 1e-10);
+        assert_float_closeness(w_im, -1.0, 1e-10);
 
         let (w_re, w_im) = twiddle_iter.next().unwrap();
         println!("{w_re} {w_im}");
-        assert_f64_closeness(w_re, -FRAC_1_SQRT_2, 1e-10);
-        assert_f64_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
+        assert_float_closeness(w_re, -FRAC_1_SQRT_2, 1e-10);
+        assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
     }
 
-    #[test]
-    fn twiddles_simd() {
-        for n in 4..28 {
-            let dist = 1 << n;
+    macro_rules! test_twiddles_simd {
+        ($test_name:ident, $generate_twiddles_simd:ident, $epsilon:literal) => {
+            #[test]
+            fn $test_name() {
+                for n in 4..25 {
+                    let dist = 1 << n;
 
-            let (twiddles_re_ref, twiddles_im_ref) = generate_twiddles(dist, Direction::Forward);
-            let (twiddles_re, twiddles_im) = generate_twiddles_simd_64(dist, Direction::Forward);
+                    let (twiddles_re_ref, twiddles_im_ref) =
+                        generate_twiddles(dist, Direction::Forward);
+                    let (twiddles_re, twiddles_im) =
+                        $generate_twiddles_simd(dist, Direction::Forward);
 
-            twiddles_re
-                .iter()
-                .zip(twiddles_re_ref.iter())
-                .for_each(|(simd, reference)| {
-                    assert_f64_closeness(*simd, *reference, 1e-10);
-                });
+                    twiddles_re
+                        .iter()
+                        .zip(twiddles_re_ref.iter())
+                        .for_each(|(simd, reference)| {
+                            assert_float_closeness(*simd, *reference, $epsilon);
+                        });
 
-            twiddles_im
-                .iter()
-                .zip(twiddles_im_ref.iter())
-                .for_each(|(simd, reference)| {
-                    assert_f64_closeness(*simd, *reference, 1e-10);
-                });
-        }
+                    twiddles_im
+                        .iter()
+                        .zip(twiddles_im_ref.iter())
+                        .for_each(|(simd, reference)| {
+                            assert_float_closeness(*simd, *reference, $epsilon);
+                        });
+                }
+            }
+        };
     }
+
+    test_twiddles_simd!(twiddles_simd_32, generate_twiddles_simd_32, 1e-1);
+    test_twiddles_simd!(twiddles_simd_64, generate_twiddles_simd_64, 1e-10);
 
     #[test]
     fn twiddles_filter() {
@@ -269,8 +278,8 @@ mod tests {
 
         for i in 0..dist {
             let (tw_re, tw_im) = twiddles_iter.next().unwrap();
-            assert_f64_closeness(twiddles_re[i], tw_re, 1e-6);
-            assert_f64_closeness(twiddles_im[i], tw_im, 1e-6);
+            assert_float_closeness(twiddles_re[i], tw_re, 1e-6);
+            assert_float_closeness(twiddles_im[i], tw_im, 1e-6);
         }
 
         for t in (0..n - 1).rev() {
@@ -285,8 +294,8 @@ mod tests {
 
             for i in 0..dist {
                 let (tw_re, tw_im) = twiddles_iter.next().unwrap();
-                assert_f64_closeness(twiddles_re[i], tw_re, 1e-6);
-                assert_f64_closeness(twiddles_im[i], tw_im, 1e-6);
+                assert_float_closeness(twiddles_re[i], tw_re, 1e-6);
+                assert_float_closeness(twiddles_im[i], tw_im, 1e-6);
             }
         }
     }

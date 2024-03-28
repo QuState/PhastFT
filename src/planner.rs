@@ -72,7 +72,7 @@ impl_planner_for!(Planner32, f32, generate_twiddles_simd_32);
 
 #[cfg(test)]
 mod tests {
-    use utilities::{assert_f32_closeness, assert_f64_closeness};
+    use utilities::assert_float_closeness;
 
     use super::*;
 
@@ -92,7 +92,7 @@ mod tests {
     test_no_twiddles!(no_twiddles_32, Planner32);
 
     macro_rules! forward_mul_inverse_eq_identity {
-        ($test_name:ident, $planner:ty, $float_check:ident) => {
+        ($test_name:ident, $planner:ty) => {
             #[test]
             fn $test_name() {
                 for i in 3..25 {
@@ -116,22 +116,14 @@ mod tests {
                         .for_each(|(((a, b), c), d)| {
                             let temp_re = a * c - b * d;
                             let temp_im = a * d + b * c;
-                            $float_check(temp_re, 1.0, 1e-2);
-                            $float_check(temp_im, 0.0, 1e-2);
+                            assert_float_closeness(temp_re, 1.0, 1e-2);
+                            assert_float_closeness(temp_im, 0.0, 1e-2);
                         });
                 }
             }
         };
     }
 
-    forward_mul_inverse_eq_identity!(
-        forward_reverse_eq_identity_64,
-        Planner64,
-        assert_f64_closeness
-    );
-    forward_mul_inverse_eq_identity!(
-        forward_reverse_eq_identity_32,
-        Planner32,
-        assert_f32_closeness
-    );
+    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_64, Planner64);
+    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_32, Planner32);
 }

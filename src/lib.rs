@@ -145,81 +145,105 @@ impl_fft_with_opts_and_plan_for!(
 mod tests {
     use std::ops::Range;
 
-    use utilities::{
-        assert_f64_closeness,
-        rustfft::{num_complex::Complex64, FftPlanner},
-    };
+    use utilities::assert_float_closeness;
+    use utilities::rustfft::num_complex::Complex;
+    use utilities::rustfft::FftPlanner;
 
     use super::*;
 
-    #[should_panic]
-    #[test]
-    fn non_power_of_two_fft() {
-        let num_points = 5;
+    macro_rules! non_power_of_2_planner {
+        ($test_name:ident, $planner:ty) => {
+            #[should_panic]
+            #[test]
+            fn $test_name() {
+                let num_points = 5;
 
-        // this test will actually always fail at this stage
-        let mut planner = Planner64::new(num_points, Direction::Forward);
-
-        let mut reals = vec![0.0; num_points];
-        let mut imags = vec![0.0; num_points];
-        let opts = Options::guess_options(reals.len());
-
-        // but this call should, in principle, panic as well
-        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+                // this test _should_ always fail at this stage
+                let _ = <$planner>::new(num_points, Direction::Forward);
+            }
+        };
     }
 
-    // A regression test to make sure the `Planner` is compatible with fft execution.
-    #[should_panic]
-    #[test]
-    fn wrong_num_points_in_planner() {
-        let n = 16;
-        let num_points = 1 << n;
+    non_power_of_2_planner!(non_power_of_2_planner_32, Planner32);
+    non_power_of_2_planner!(non_power_of_2_planner_64, Planner64);
 
-        // We purposely set n = 16 and pass it to the planner.
-        // n = 16 == 2^{4} is clearly a power of two, so the planner won't throw it out.
-        // However, the call to `fft_with_opts_and_plan` should panic since it tests that the
-        // size of the generated twiddle factors is half the size of the input.
-        // In this case, we have an input of size 1024 (used for mp3), but we tell the planner the
-        // input size is 16.
-        let mut planner = Planner64::new(n, Direction::Forward);
+    macro_rules! wrong_num_points_in_planner {
+        ($test_name:ident, $planner:ty, $fft_with_opts_and_plan:ident) => {
+            // A regression test to make sure the `Planner` is compatible with fft execution.
+            #[should_panic]
+            #[test]
+            fn $test_name() {
+                let n = 16;
+                let num_points = 1 << n;
 
-        let mut reals = vec![0.0; num_points];
-        let mut imags = vec![0.0; num_points];
-        let opts = Options::guess_options(reals.len());
+                // We purposely set n = 16 and pass it to the planner.
+                // n == 16 == 2^{4} is clearly a power of two, so the planner won't throw it out.
+                // However, the call to `fft_with_opts_and_plan` should panic since it tests that the
+                // size of the generated twiddle factors is half the size of the input.
+                // In this case, we have an input of size 1024 (used for mp3), but we tell the planner the
+                // input size is 16.
+                let mut planner = <$planner>::new(n, Direction::Forward);
 
-        // this call should panic
-        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+                let mut reals = vec![0.0; num_points];
+                let mut imags = vec![0.0; num_points];
+                let opts = Options::guess_options(reals.len());
+
+                // this call should panic
+                $fft_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+            }
+        };
     }
 
-    #[test]
-    fn fft_correctness() {
-        let range = Range { start: 4, end: 17 };
+    wrong_num_points_in_planner!(
+        wrong_num_points_in_planner_32,
+        Planner32,
+        fft_32_with_opts_and_plan
+    );
+    wrong_num_points_in_planner!(
+        wrong_num_points_in_planner_64,
+        Planner64,
+        fft_64_with_opts_and_plan
+    );
 
-        for k in range {
-            let n: usize = 1 << k;
+    macro_rules! test_fft_correctness {
+        ($test_name:ident, $precision:ty, $fft_type:ident, $range_start:literal, $range_end:literal) => {
+            #[test]
+            fn $test_name() {
+                let range = Range {
+                    start: $range_start,
+                    end: $range_end,
+                };
 
-            let mut reals: Vec<_> = (1..=n).map(|i| i as f64).collect();
-            let mut imags: Vec<_> = (1..=n).map(|i| i as f64).collect();
-            fft_64(&mut reals, &mut imags, Direction::Forward);
+                for k in range {
+                    let n: usize = 1 << k;
 
-            let mut buffer: Vec<Complex64> = (1..=n)
-                .map(|i| Complex64::new(i as f64, i as f64))
-                .collect();
+                    let mut reals: Vec<$precision> = (1..=n).map(|i| i as $precision).collect();
+                    let mut imags: Vec<$precision> = (1..=n).map(|i| i as $precision).collect();
+                    $fft_type(&mut reals, &mut imags, Direction::Forward);
 
-            let mut planner = FftPlanner::new();
-            let fft = planner.plan_fft_forward(buffer.len());
-            fft.process(&mut buffer);
+                    let mut buffer: Vec<Complex<$precision>> = (1..=n)
+                        .map(|i| Complex::new(i as $precision, i as $precision))
+                        .collect();
 
-            reals
-                .iter()
-                .zip(imags.iter())
-                .enumerate()
-                .for_each(|(i, (z_re, z_im))| {
-                    let expect_re = buffer[i].re;
-                    let expect_im = buffer[i].im;
-                    assert_f64_closeness(*z_re, expect_re, 0.01);
-                    assert_f64_closeness(*z_im, expect_im, 0.01);
-                });
-        }
+                    let mut planner = FftPlanner::new();
+                    let fft = planner.plan_fft_forward(buffer.len());
+                    fft.process(&mut buffer);
+
+                    reals
+                        .iter()
+                        .zip(imags.iter())
+                        .enumerate()
+                        .for_each(|(i, (z_re, z_im))| {
+                            let expect_re = buffer[i].re;
+                            let expect_im = buffer[i].im;
+                            assert_float_closeness(*z_re, expect_re, 0.01);
+                            assert_float_closeness(*z_im, expect_im, 0.01);
+                        });
+                }
+            }
+        };
     }
+
+    test_fft_correctness!(fft_correctness_32, f32, fft_32, 4, 9);
+    test_fft_correctness!(fft_correctness_64, f64, fft_64, 4, 17);
 }
