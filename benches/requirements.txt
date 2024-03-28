@@ -1,4 +1,4 @@
-black==24.1.1
+black==24.3.0
 isort==5.13.2
 matplotlib==3.8.2
 mypy==1.8.0
