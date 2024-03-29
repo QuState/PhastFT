@@ -1,4 +1,4 @@
-use std::simd::{f32x8, f64x8};
+use std::simd::{f32x16, f64x8};
 
 use num_traits::Float;
 
@@ -12,7 +12,7 @@ macro_rules! fft_butterfly_n_simd {
             dist: usize,
         ) {
             let chunk_size = dist << 1;
-            assert!(chunk_size >= 16);
+            assert!(chunk_size >= $lanes * 2);
             reals
                 .chunks_exact_mut(chunk_size)
                 .zip(imags.chunks_exact_mut(chunk_size))
@@ -49,7 +49,7 @@ macro_rules! fft_butterfly_n_simd {
 }
 
 fft_butterfly_n_simd!(fft_64_chunk_n_simd, f64, 8, f64x8);
-fft_butterfly_n_simd!(fft_32_chunk_n_simd, f32, 8, f32x8);
+fft_butterfly_n_simd!(fft_32_chunk_n_simd, f32, 16, f32x16);
 
 pub(crate) fn fft_chunk_n<T: Float>(
     reals: &mut [T],
