@@ -10,6 +10,8 @@ keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
 categories = ["algorithms", "compression", "science"]
 exclude = ["assets", "scripts", "benches"]
 
+[dependencies]
+num-traits = "0.2.18"
 
 [dev-dependencies]
 utilities = { path = "utilities" }
@@ -23,3 +25,4 @@ panic = "abort"
 [profile.profiling]
 inherits = "release"
 debug = true
+
