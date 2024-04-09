@@ -2,17 +2,20 @@ from pyphastft import fft
 import numpy as np
 import pyaudio
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+from pyqtgraph.Qt import QtWidgets, QtCore
 import sys
 
 
 class RealTimeAudioSpectrum(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super(RealTimeAudioSpectrum, self).__init__(parent)
-        self.n_fft_bins = 32  # FFT size (number of bins)
+        self.n_fft_bins = 1024  # Increased FFT size for better frequency resolution
+        self.n_display_bins = 32  # Maintain the same number of bars in the display
         self.sample_rate = 44100
         self.smoothing_factor = 0.1  # Smaller value for more smoothing
-        self.ema_fft_data = np.zeros(self.n_fft_bins // 2)  # Initialize EMA array
+        self.ema_fft_data = np.zeros(
+            self.n_display_bins
+        )  # Adjusted to the number of display bins
         self.init_ui()
         self.init_audio_stream()
 
@@ -22,36 +25,39 @@ class RealTimeAudioSpectrum(QtWidgets.QWidget):
         self.layout.addWidget(self.plot_widget)
 
         # Customize plot aesthetics
-        self.plot_widget.setBackground('k')
+        self.plot_widget.setBackground("k")
         self.plot_item = self.plot_widget.getPlotItem()
-        self.plot_item.setTitle("PyPhastFT RT Input Audio Spectrum Visualizer", color="w", size="16pt")
-
-        # self.plot_item.getAxis('left').setLabel("Magnitude", color="w", size="14pt")
-        # self.plot_item.getAxis('bottom').setLabel("Frequency (Hz)", color="w", size="14pt")
-
-        # Hide x and y axis lines, ticks, and numbers
-        # self.plot_item.getAxis('left').setStyle(showValues=False)
-        # self.plot_item.getAxis('left').setPen(pg.mkPen(None))  # Hides the axis line
-        # self.plot_item.getAxis('bottom').setStyle(showValues=False)
-        # self.plot_item.getAxis('bottom').setPen(pg.mkPen(None))  # Hides the axis line
+        self.plot_item.setTitle(
+            "Real-Time Audio Spectrum Visualizer\npowered by PhastFT",
+            color="w",
+            size="16pt",
+        )
 
         # Hide axis labels
-        self.plot_item.getAxis('left').hide()
-        self.plot_item.getAxis('bottom').hide()
+        self.plot_item.getAxis("left").hide()
+        self.plot_item.getAxis("bottom").hide()
 
         # Set fixed ranges for the x and y axes to prevent them from jumping
         self.plot_item.setXRange(0, self.sample_rate / 2, padding=0)
-        self.plot_item.setYRange(0, 1, padding=0)  # You may want to adjust this based on your FFT data
+        self.plot_item.setYRange(0, 1, padding=0)
 
-        self.bar_width = (self.sample_rate / 2) / (self.n_fft_bins // 2) * 0.90  # Width based on frequency spacing
+        self.bar_width = (
+            (self.sample_rate / 2) / self.n_display_bins * 0.90
+        )  # Adjusted width for display bins
 
         # Calculate bar positions so they are centered with respect to their frequency values
-        self.freqs = np.linspace(0 + self.bar_width/2, self.sample_rate / 2 - self.bar_width/2, self.n_fft_bins // 2)
+        self.freqs = np.linspace(
+            0 + self.bar_width / 2,
+            self.sample_rate / 2 - self.bar_width / 2,
+            self.n_display_bins,
+        )
 
-        # Adjust x-axis range to account for the full width of the first and last bars
-        self.plot_item.setXRange(-self.bar_width, self.sample_rate / 2 + self.bar_width, padding=0)
-
-        self.bar_graph = pg.BarGraphItem(x=self.freqs, height=np.zeros(self.n_fft_bins // 2), width=self.bar_width, brush=pg.mkBrush('m'))
+        self.bar_graph = pg.BarGraphItem(
+            x=self.freqs,
+            height=np.zeros(self.n_display_bins),
+            width=self.bar_width,
+            brush=pg.mkBrush("m"),
+        )
         self.plot_item.addItem(self.bar_graph)
 
         self.timer = QtCore.QTimer()
@@ -65,25 +71,35 @@ class RealTimeAudioSpectrum(QtWidgets.QWidget):
             channels=1,
             rate=self.sample_rate,
             input=True,
-            frames_per_buffer=self.n_fft_bins,
+            frames_per_buffer=self.n_fft_bins,  # This should match the FFT size
             stream_callback=self.audio_callback,
         )
         self.stream.start_stream()
 
     def audio_callback(self, in_data, frame_count, time_info, status):
-        audio_data = np.frombuffer(in_data, dtype=np.float32).astype(np.float64)
-        reals = audio_data
-        imaginaries = np.zeros(self.n_fft_bins, dtype=np.float64)
-        fft(reals, imaginaries, direction='f')
-        new_fft_data = np.sqrt(reals**2 + imaginaries**2)[:self.n_fft_bins // 2]
+        audio_data = np.frombuffer(in_data, dtype=np.float32)
+        reals = np.zeros(self.n_fft_bins)
+        imaginaries = np.zeros(self.n_fft_bins)
+        reals[: len(audio_data)] = audio_data  # Fill the reals array with audio data
+        fft(reals, imaginaries, direction="f")
+        fft_magnitude = np.sqrt(reals**2 + imaginaries**2)[: self.n_fft_bins // 2]
+
+        # Aggregate or interpolate FFT data to fit into display bins
+        new_fft_data = np.interp(
+            np.linspace(0, len(fft_magnitude), self.n_display_bins),
+            np.arange(len(fft_magnitude)),
+            fft_magnitude,
+        )
 
         # Apply exponential moving average filter
-        self.ema_fft_data = self.ema_fft_data * self.smoothing_factor + \
-            new_fft_data * (1 - self.smoothing_factor)
+        self.ema_fft_data = self.ema_fft_data * self.smoothing_factor + new_fft_data * (
+            1 - self.smoothing_factor
+        )
         return (in_data, pyaudio.paContinue)
 
     def update(self):
-        self.bar_graph.setOpts(height=self.ema_fft_data, width=self.bar_width)
+        if hasattr(self, "ema_fft_data"):
+            self.bar_graph.setOpts(height=self.ema_fft_data, width=self.bar_width)
 
     def closeEvent(self, event):
         self.stream.stop_stream()

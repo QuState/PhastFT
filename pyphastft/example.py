@@ -11,7 +11,9 @@ def main():
     # Find the next lower power of 2 for the number of samples
     n_samples = 2 ** int(np.log2(t_max * fs))
 
-    t = np.linspace(0, n_samples / fs, n_samples, endpoint=False)  # Adjusted time vector
+    t = np.linspace(
+        0, n_samples / fs, n_samples, endpoint=False
+    )  # Adjusted time vector
 
     # Generate the signal
     s_re = 2 * np.sin(2 * np.pi * t) + np.sin(2 * np.pi * 10 * t)
