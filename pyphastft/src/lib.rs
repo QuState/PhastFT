@@ -1,5 +1,5 @@
 use numpy::PyReadwriteArray1;
-use phastft::{fft as fft_rs, planner::Direction};
+use phastft::{fft_64 as fft_64_rs, planner::Direction};
 use pyo3::prelude::*;
 
 #[pyfunction]
@@ -11,7 +11,7 @@ fn fft(mut reals: PyReadwriteArray1<f64>, mut imags: PyReadwriteArray1<f64>, dir
         Direction::Reverse
     };
 
-    fft_rs(
+    fft_64_rs(
         reals.as_slice_mut().unwrap(),
         imags.as_slice_mut().unwrap(),
         dir,

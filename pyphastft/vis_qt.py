@@ -1,9 +1,10 @@
-from pyphastft import fft
+import sys
+
 import numpy as np
 import pyaudio
 import pyqtgraph as pg
+from pyphastft import fft
 from pyqtgraph.Qt import QtWidgets, QtCore
-import sys
 
 
 class RealTimeAudioSpectrum(QtWidgets.QWidget):
@@ -28,7 +29,7 @@ class RealTimeAudioSpectrum(QtWidgets.QWidget):
         self.plot_widget.setBackground("k")
         self.plot_item = self.plot_widget.getPlotItem()
         self.plot_item.setTitle(
-            "Real-Time Audio Spectrum Visualizer\npowered by PhastFT",
+            "Real-Time Audio Spectrum Visualizer powered by PhastFT",
             color="w",
             size="16pt",
         )
@@ -79,10 +80,10 @@ class RealTimeAudioSpectrum(QtWidgets.QWidget):
     def audio_callback(self, in_data, frame_count, time_info, status):
         audio_data = np.frombuffer(in_data, dtype=np.float32)
         reals = np.zeros(self.n_fft_bins)
-        imaginaries = np.zeros(self.n_fft_bins)
+        imags = np.zeros(self.n_fft_bins)
         reals[: len(audio_data)] = audio_data  # Fill the reals array with audio data
-        fft(reals, imaginaries, direction="f")
-        fft_magnitude = np.sqrt(reals**2 + imaginaries**2)[: self.n_fft_bins // 2]
+        fft(reals, imags, direction="f")
+        fft_magnitude = np.sqrt(reals**2 + imags**2)[: self.n_fft_bins // 2]
 
         # Aggregate or interpolate FFT data to fit into display bins
         new_fft_data = np.interp(
@@ -93,13 +94,12 @@ class RealTimeAudioSpectrum(QtWidgets.QWidget):
 
         # Apply exponential moving average filter
         self.ema_fft_data = self.ema_fft_data * self.smoothing_factor + new_fft_data * (
-            1 - self.smoothing_factor
+            1.0 - self.smoothing_factor
         )
-        return (in_data, pyaudio.paContinue)
+        return in_data, pyaudio.paContinue
 
     def update(self):
-        if hasattr(self, "ema_fft_data"):
-            self.bar_graph.setOpts(height=self.ema_fft_data, width=self.bar_width)
+        self.bar_graph.setOpts(height=self.ema_fft_data, width=self.bar_width)
 
     def closeEvent(self, event):
         self.stream.stop_stream()

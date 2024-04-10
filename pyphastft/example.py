@@ -1,7 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.fft import fft
 
-from pyphastft import fft
+# from pyphastft import fft
 
 
 def main():
@@ -16,7 +17,7 @@ def main():
     )  # Adjusted time vector
 
     # Generate the signal
-    s_re = 2 * np.sin(2 * np.pi * t) + np.sin(2 * np.pi * 10 * t)
+    s_re = 2 * np.sin(2 * np.pi * t + 1) + np.sin(2 * np.pi * 10 * t + 1)
     s_im = np.ascontiguousarray([0.0] * len(s_re), dtype=np.float64)
 
     # Plot the original signal
@@ -30,7 +31,7 @@ def main():
     plt.legend()
 
     # Perform FFT
-    fft(s_re, s_im, direction="f")
+    s_re = fft(s_re)
 
     # Plot the magnitude spectrum of the FFT result
     plt.subplot(2, 1, 2)
