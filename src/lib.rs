@@ -30,8 +30,7 @@ macro_rules! impl_fft_for {
         ///
         /// # Panics
         ///
-        /// Panics if `reals.len() != imags.len()` or if `reals.len()` and `imags.len()` are not a power of
-        /// 2
+        /// Panics if `reals.len() != imags.len()`, or if the input length is _not_ a power of 2.
         ///
         /// ## References
         /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
@@ -77,7 +76,7 @@ macro_rules! impl_fft_with_opts_and_plan_for {
         ///
         /// # Panics
         ///
-        /// Panics if `reals.len() != imags.len()`, or if the input length is *not* a power of 2.
+        /// Panics if `reals.len() != imags.len()`, or if the input length is _not_ a power of 2.
         pub fn $func_name(
             reals: &mut [$precision],
             imags: &mut [$precision],

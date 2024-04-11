@@ -11,22 +11,25 @@ Transform (FFT) library written in pure Rust.
 
 ## Features
 
-- Simple implementation using a single, general-purpose FFT algorithm
+- Simple implementation using the Cooley-Tukey FFT algorithm
 - Performance on par with other Rust FFT implementations
 - Zero `unsafe` code
-- Takes advantage of latest CPU features up to and including AVX-512, but performs well even without them
+- Takes advantage of latest CPU features up to and including `AVX-512`, but performs well even without them
 - Optional parallelization of some steps to 2 threads (with even more planned)
 - 2x lower memory usage than [RustFFT](https://crates.io/crates/rustfft/)
 - Python bindings (via [PyO3](https://github.com/PyO3/pyo3))
 
 ## Limitations
 
+- Only supports input with a length of `2^n` (i.e., a power of 2) -- input should be padded with zeros to the next power
+  of 2
 - No runtime CPU feature detection (yet). Right now achieving the highest performance requires compiling
-  with `-C target-cpu=native` or [`cargo multivers`](https://github.com/ronnychevalier/cargo-multivers).
+  with `-C target-cpu=native` or [`cargo multivers`](https://github.com/ronnychevalier/cargo-multivers)
 - Requires nightly Rust compiler due to use of portable SIMD
 
 ## Planned features
 
+- Bluestein's algorithm (to handle arbitrary sized FFTs)
 - Runtime CPU feature detection
 - More multi-threading
 - More work on cache-optimal FFT
@@ -39,7 +42,7 @@ years or so).
 The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses**.
 
 We picked an efficient, general-purpose FFT algorithm. Our implementation can make use of latest CPU features such as
-AVX-512, but performs well even without them.
+`AVX-512`, but performs well even without them.
 
 Our key insight for speeding up memory accesses is that FFT is equivalent to applying gates to all qubits in `[0, n)`.
 This creates the opportunity to leverage the same memory access patterns as
@@ -130,7 +133,7 @@ submit a pull request. Follow the contribution guidelines outlined in the CONTRI
 
 PhastFT is licensed under MIT or Apache 2.0 license, at your option.
 
-## PhastFT vs RustFFT
+## PhastFT vs. RustFFT
 
 [RustFFT](https://crates.io/crates/rustfft/) is another excellent FFT implementation in pure Rust.
 RustFFT and PhastFT make different trade-offs.
