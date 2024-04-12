@@ -6,7 +6,7 @@
 #![warn(clippy::suspicious)]
 #![warn(clippy::perf)]
 #![forbid(unsafe_code)]
-#![feature(portable_simd)]
+#![feature(portable_simd, avx512_target_feature)]
 
 use crate::cobra::cobra_apply;
 use crate::kernels::{
@@ -77,6 +77,15 @@ macro_rules! impl_fft_with_opts_and_plan_for {
         /// # Panics
         ///
         /// Panics if `reals.len() != imags.len()`, or if the input length is _not_ a power of 2.
+        #[multiversion::multiversion(
+                                    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+                                            "x86_64+avx2+fma", // x86_64-v3
+                                            "x86_64+sse4.2", // x86_64-v2
+                                            "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                            "x86+avx2+fma",
+                                            "x86+sse4.2",
+                                            "x86+sse2",
+        ))]
         pub fn $func_name(
             reals: &mut [$precision],
             imags: &mut [$precision],

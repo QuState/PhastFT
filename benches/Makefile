@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror -O3 -march=native
+CFLAGS = -Wall -Wextra -Werror -O3
 LIBS = -lfftw3 -lm
 
 bench_fftw: main.c

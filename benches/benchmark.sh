@@ -15,8 +15,6 @@ max_iters=1000  # Set your desired maximum number of iterations
 OUTPUT_DIR=benchmark-data.$(date +"%Y.%m.%d.%H-%M-%S")
 mkdir -p "$OUTPUT_DIR"/fftw3 && mkdir "$OUTPUT_DIR"/rustfft && mkdir "$OUTPUT_DIR"/phastft && mkdir "$OUTPUT_DIR"/fftwrb
 
-RUSTFLAGS="-C target-cpu=native"
-
 benchmark_fftw3() {
     make clean && make
 

@@ -4,6 +4,7 @@ use num_traits::Float;
 
 macro_rules! fft_butterfly_n_simd {
     ($func_name:ident, $precision:ty, $lanes:literal, $simd_vector:ty) => {
+        #[inline]
         pub fn $func_name(
             reals: &mut [$precision],
             imags: &mut [$precision],
@@ -51,6 +52,7 @@ macro_rules! fft_butterfly_n_simd {
 fft_butterfly_n_simd!(fft_64_chunk_n_simd, f64, 8, f64x8);
 fft_butterfly_n_simd!(fft_32_chunk_n_simd, f32, 16, f32x16);
 
+#[inline]
 pub(crate) fn fft_chunk_n<T: Float>(
     reals: &mut [T],
     imags: &mut [T],
@@ -91,6 +93,7 @@ pub(crate) fn fft_chunk_n<T: Float>(
 }
 
 /// `chunk_size == 4`, so hard code twiddle factors
+#[inline]
 pub(crate) fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
     let dist = 2;
     let chunk_size = dist << 1;
@@ -125,6 +128,7 @@ pub(crate) fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
 }
 
 /// `chunk_size == 2`, so skip phase
+#[inline]
 pub(crate) fn fft_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     reals
         .chunks_exact_mut(2)

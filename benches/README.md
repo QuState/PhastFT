@@ -18,7 +18,7 @@
 3. Create virtual env
 
 ```bash
-cd ~/PhastFT/benches && python -m venv .env && source .env/bin/activate
+cd ~/PhastFT/benches && python3 -m venv .env && source .env/bin/activate
 ```
 
 4. Install python dependencies[^1]
@@ -26,7 +26,7 @@ cd ~/PhastFT/benches && python -m venv .env && source .env/bin/activate
 ```bash
 pip install -r requirements.txt
 cd ~/PhastFT/pyphastft
-RUSTFLAGS='-Ctarget-cpu=native' pip install .
+pip install .
 ```
 
 5. Run the `FFTW3` vs. `RustFFT` vs. `PhastFT` benchmark for all inputs of size `2^n`, where `n \in [4, 30].`
@@ -55,13 +55,13 @@ The generated images will be saved in your working directory.
 
 ### Libraries and Packages
 
-| Library/Package | Version        | Language  | Benchmark Compilation Flags                                                                          |
-|-----------------|----------------|-----------|------------------------------------------------------------------------------------------------------|
-| `FFTW3`         | 3.3.10-1 amd64 | C, OCaml  | `-O3 -march=native`                                                                                  |
-| `RustFFT`       | 6.2.0          | Rust      | `-C target-cpu=native -C opt-level=3 --edition=2021; codegen-units = 1; lto = true; panic = "abort"` |
-| `PhastFT`       | 0.1.0          | Rust      | `-C target-cpu=native -C opt-level=3 --edition=2021; codegen-units = 1; lto = true; panic = "abort"` |
-| `NumPy`         | 1.26.4         | Python, C | `N/A`                                                                                                |
-| `pyFFTW`        | 0.13.1         | Python, C | `N/A`                                                                                                |
+| Library/Package | Version        | Language  | Benchmark Compilation Flags                                                     |
+|-----------------|----------------|-----------|---------------------------------------------------------------------------------|
+| `FFTW3`         | 3.3.10-1 amd64 | C, OCaml  | `-O3`                                                                           |
+| `RustFFT`       | 6.2.0          | Rust      | `-C opt-level=3 --edition=2021; codegen-units = 1; lto = true; panic = "abort"` |
+| `PhastFT`       | 0.1.0          | Rust      | `-C opt-level=3 --edition=2021; codegen-units = 1; lto = true; panic = "abort"` |
+| `NumPy`         | 1.26.4         | Python, C | `N/A`                                                                           |
+| `pyFFTW`        | 0.13.1         | Python, C | `N/A`                                                                           |
 
 ### Benchmark System Configuration
 
