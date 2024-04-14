@@ -66,12 +66,10 @@ use phastft::{
     fft_64
 };
 
-fn main() {
-    let big_n = 1 << 10;
-    let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
-    let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
-    fft_64(&mut reals, &mut imags, Direction::Forward);
-}
+let big_n = 1 << 10;
+let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
+let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
+fft_64(&mut reals, &mut imags, Direction::Forward);
 ```
 
 ### Python
