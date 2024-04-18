@@ -24,6 +24,7 @@ const LOG_BLOCK_WIDTH: usize = 7; // log2 of cacheline
 ///
 /// ## References
 /// [1] <https://www.katjaas.nl/bitreversal/bitreversal.html>
+#[inline]
 pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
     let mut nodd: usize;
     let mut noddrev; // to hold bitwise negated or odd values
@@ -164,6 +165,14 @@ pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
 /// [2] Christian Knauth, Boran Adas, Daniel Whitfield, Xuesong Wang, Lydia Ickler, Tim Conrad, Oliver Serang:
 /// Practically efficient methods for performing bit-reversed permutation in C++11 on the x86-64 architecture
 /// [3] <https://bitbucket.org/orserang/bit-reversal-methods/src/master/src_and_bin/src/algorithms/COBRAShuffle.hpp>
+#[multiversion::multiversion(targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+                                     "x86_64+avx2+fma", // x86_64-v3
+                                     "x86_64+sse4.2", // x86_64-v2
+                                     "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                     "x86+avx2+fma",
+                                     "x86+sse4.2",
+                                     "x86+sse2",
+))]
 pub fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
     if log_n <= 2 * LOG_BLOCK_WIDTH {
         bit_rev(v, log_n);

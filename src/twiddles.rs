@@ -181,6 +181,7 @@ macro_rules! generate_twiddles_simd {
 generate_twiddles_simd!(generate_twiddles_simd_64, f64, 8, f64x8);
 generate_twiddles_simd!(generate_twiddles_simd_32, f32, 8, f32x8);
 
+#[inline]
 pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &mut Vec<T>, twiddles_im: &mut Vec<T>) {
     assert_eq!(twiddles_re.len(), twiddles_im.len());
     let dist = twiddles_re.len();

@@ -23,14 +23,11 @@ Transform (FFT) library written in pure Rust.
 
 - Only supports input with a length of `2^n` (i.e., a power of 2) -- input should be padded with zeros to the next power
   of 2
-- No runtime CPU feature detection (yet). Right now achieving the highest performance requires compiling
-  with `-C target-cpu=native` or [`cargo multivers`](https://github.com/ronnychevalier/cargo-multivers)
 - Requires nightly Rust compiler due to use of portable SIMD
 
 ## Planned features
 
 - Bluestein's algorithm (to handle arbitrary sized FFTs)
-- Runtime CPU feature detection
 - More multi-threading
 - More work on cache-optimal FFT
 
@@ -84,7 +81,7 @@ Then you can install PhastFT itself:
 
 ```bash
 pip install numpy
-RUSTFLAGS='-Ctarget-cpu=native' pip install git+https://github.com/QuState/PhastFT#subdirectory=pyphastft
+pip install git+https://github.com/QuState/PhastFT#subdirectory=pyphastft
 ```
 
 ```python

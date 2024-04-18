@@ -8,7 +8,7 @@ then
     exit 1
 fi
 
-RUSTFLAGS='-Ctarget-cpu=native' cargo +nightly build --profile profiling --example profile
+cargo +nightly build --profile profiling --example profile
 
 sudo perf record --call-graph=dwarf ./target/profiling/examples/profile $1 && sudo perf script -f -F +pid > processed_result.perf
 

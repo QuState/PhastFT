@@ -12,6 +12,7 @@ exclude = ["assets", "scripts", "benches"]
 
 [dependencies]
 num-traits = "0.2.18"
+multiversion = "0.7"
 
 [dev-dependencies]
 utilities = { path = "utilities" }
