@@ -32,7 +32,7 @@ pip install .
 5. Run the `FFTW3` vs. `RustFFT` vs. `PhastFT` benchmark for all inputs of size `2^n`, where `n \in [4, 30].`
 
 ```bash
-./benchmark.sh 4 30
+./benchmark.sh 4 29
 ```
 
 6. Plot the results
@@ -65,26 +65,27 @@ The generated images will be saved in your working directory.
 
 ### Benchmark System Configuration
 
-|                      |                                                                                                 |
-|----------------------|-------------------------------------------------------------------------------------------------|
-| **CPU**              | AMD Ryzen 9 7950X (SMT disabled)                                                                |
-| L1d Cache            | 512 KiB (16 instances)                                                                          |
-| L1i Cache            | 512 KiB (16 instances)                                                                          |
-| L2 Cache             | 16 MiB (16 instances)                                                                           |
-| L3 Cache             | 64 MiB (2 instances)                                                                            |
-|                      |                                                                                                 |
-| **Memory**           |                                                                                                 |
-| /0/f/0               | 64GiB System Memory                                                                             |
-| /0/f/1               | 32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)                              |
-| /0/f/3               | 32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)                              |
-|                      |                                                                                                 |
-| **OS**               | Linux 7950x 6.1.0-17-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.69-1 (2023-12-30) x86_64 GNU/Linux |
-|                      |
-| **Rust**             |                                                                                                 |
-| Installed Toolchains | stable-x86_64-unknown-linux-gnu                                                                 |
-|                      | nightly-x86_64-unknown-linux-gnu (default)                                                      |
-| Active Toolchain     | nightly-x86_64-unknown-linux-gnu (default)                                                      |
-| Rustc Version        | 1.77.0-nightly (5bd5d214e 2024-01-25)                                                           |
+|                           |                                                                                                 |
+|---------------------------|-------------------------------------------------------------------------------------------------|
+| **CPU**                   | AMD Ryzen 9 7950X (SMT off)                                                                     |
+| L1d Cache                 | 512 KiB (16 instances)                                                                          |
+| L1i Cache                 | 512 KiB (16 instances)                                                                          |
+| L2 Cache                  | 16 MiB (16 instances)                                                                           |
+| L3 Cache                  | 64 MiB (2 instances)                                                                            |
+|                           |                                                                                                 |
+| **Memory**                |                                                                                                 |
+| /0/f/0                    | 64GiB System Memory                                                                             |
+| /0/f/1                    | 32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)                              |
+| /0/f/3                    | 32GiB DIMM Synchronous Unbuffered (Unregistered) 6000 MHz (0.2 ns)                              |
+|                           |                                                                                                 |
+| **OS**                    | Linux 7950x 6.1.0-17-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.69-1 (2023-12-30) x86_64 GNU/Linux |
+| CPU Freq Scaling Governor | Performance                                                                                     |
+|                           |                                                                                                 |
+| **Rust**                  |                                                                                                 |
+| Installed Toolchains      | stable-x86_64-unknown-linux-gnu                                                                 |
+|                           | nightly-x86_64-unknown-linux-gnu (default)                                                      |
+| Active Toolchain          | nightly-x86_64-unknown-linux-gnu (default)                                                      |
+| Rustc Version             | rustc 1.79.0-nightly (7f2fc33da 2024-04-22)                                                     |
 
 ## Profiling
 
@@ -113,6 +114,7 @@ Finally, run:
 ./profile.sh
 ```
 
-[^1]: Those with macOS on Apple Silicon should consult [pyFFTW Issue #352](https://github.com/pyFFTW/pyFFTW/issues/352#issuecomment-1945444558)
+[^1]: Those with macOS on Apple Silicon should
+consult [pyFFTW Issue #352](https://github.com/pyFFTW/pyFFTW/issues/352#issuecomment-1945444558)
 
 [^2]: This tutorial assumes you will clone `PhastFT` to `$HOME`
