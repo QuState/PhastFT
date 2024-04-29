@@ -15,6 +15,7 @@ Transform (FFT) library written in pure Rust.
 - Performance on par with other Rust FFT implementations
 - Zero `unsafe` code
 - Takes advantage of latest CPU features up to and including `AVX-512`, but performs well even without them
+- Selects the fastest implementation at runtime. No need for `-C target-cpu=native`!
 - Optional parallelization of some steps to 2 threads (with even more planned)
 - 2x lower memory usage than [RustFFT](https://crates.io/crates/rustfft/)
 - Python bindings (via [PyO3](https://github.com/PyO3/pyo3))
