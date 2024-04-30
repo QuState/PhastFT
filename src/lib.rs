@@ -20,6 +20,7 @@ pub mod cobra;
 mod kernels;
 pub mod options;
 pub mod planner;
+mod r2c_kernels;
 mod twiddles;
 
 macro_rules! impl_fft_for {
@@ -156,8 +157,8 @@ mod tests {
     use std::ops::Range;
 
     use utilities::assert_float_closeness;
-    use utilities::rustfft::num_complex::Complex;
     use utilities::rustfft::FftPlanner;
+    use utilities::rustfft::num_complex::Complex;
 
     use super::*;
 
