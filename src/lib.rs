@@ -154,15 +154,72 @@ impl_fft_with_opts_and_plan_for!(
     16
 );
 
+/// Utility function to separate interleaved format signals (i.e., Vector of Complex Number Structs)
+/// into separate vectors for the corresponding real and imaginary components.
+pub fn separate_re_im<T: Float>(signal: &[Complex<T>], chunk_size: usize) -> (Vec<T>, Vec<T>) {
+    let mut reals = Vec::with_capacity(signal.len());
+    let mut imaginaries = Vec::with_capacity(signal.len());
+    let iter = signal.chunks_exact(chunk_size);
+    let rem = iter.remainder();
+
+    // We don't assume power of 2 size, so we don't use `chunks_exact`.
+    // Process each chunk, including the last chunk which may be smaller.
+    for chunk in iter {
+        for num in chunk {
+            reals.push(num.re);
+            imaginaries.push(num.im);
+        }
+    }
+
+    for num in rem {
+        reals.push(num.re);
+        imaginaries.push(num.im);
+    }
+
+    (reals, imaginaries)
+}
+
+/// Utility function to combine separate vectors of real and imaginary components
+/// into a single vector of Complex Number Structs.
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()`.
+pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
+    assert_eq!(reals.len(), imags.len());
+
+    reals
+        .iter()
+        .zip(imags.iter())
+        .map(|(z_re, z_im)| Complex::new(*z_re, *z_im))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::ops::Range;
 
     use utilities::assert_float_closeness;
-    use utilities::rustfft::num_complex::Complex;
     use utilities::rustfft::FftPlanner;
+    use utilities::rustfft::num_complex::Complex;
 
     use super::*;
+
+    #[test]
+    fn test_separate_and_combine_re_im() {
+        let complex_vec = vec![
+            Complex::new(1.0, 2.0),
+            Complex::new(3.0, 4.0),
+            Complex::new(5.0, 6.0),
+            Complex::new(7.0, 8.0),
+        ];
+
+        let (reals, imags) = separate_re_im(&complex_vec, 2);
+
+        let recombined_vec = combine_re_im(&reals, &imags);
+
+        assert_eq!(complex_vec, recombined_vec);
+    }
 
     macro_rules! non_power_of_2_planner {
         ($test_name:ident, $planner:ty) => {
@@ -259,29 +316,4 @@ mod tests {
 
     test_fft_correctness!(fft_correctness_32, f32, fft_32, 4, 9);
     test_fft_correctness!(fft_correctness_64, f64, fft_64, 4, 17);
-}
-
-/// Utility function to separate interleaved format signals (i.e., Vector of Complex Number Structs)
-/// into separate vectors for the corresponding real and imaginary components.
-pub fn separate_re_im<T: Float>(signal: &[Complex<T>], chunk_size: usize) -> (Vec<T>, Vec<T>) {
-    let mut reals = Vec::with_capacity(signal.len());
-    let mut imaginaries = Vec::with_capacity(signal.len());
-    let iter = signal.chunks_exact(chunk_size);
-    let rem = iter.remainder();
-
-    // We don't assume power of 2 size, so we don't use `chunks_exact`.
-    // Process each chunk, including the last chunk which may be smaller.
-    for chunk in iter {
-        for num in chunk {
-            reals.push(num.re);
-            imaginaries.push(num.im);
-        }
-    }
-
-    for num in rem {
-        reals.push(num.re);
-        imaginaries.push(num.im);
-    }
-
-    (reals, imaginaries)
 }
