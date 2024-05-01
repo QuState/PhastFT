@@ -65,6 +65,26 @@ macro_rules! impl_fft_for {
 impl_fft_for!(fft_64, f64, Planner64, fft_64_with_opts_and_plan);
 impl_fft_for!(fft_32, f32, Planner32, fft_32_with_opts_and_plan);
 
+macro_rules! impl_fft_interleaved_for {
+    ($func_name:ident, $precision:ty, $fft_func:ident) => {
+        /// FFT -- Decimation in Frequency. This is just the decimation-in-time algorithm, reversed.
+        /// This call to FFT is run, in-place.
+        /// The input should be provided in normal order, and then the modified input is bit-reversed.
+        ///
+        ///
+        /// ## References
+        /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
+        pub fn $func_name(signal: &mut [Complex<$precision>], direction: Direction) {
+            let (mut reals, mut imags) = separate_re_im(signal, 2);
+            $fft_func(&mut reals, &mut imags, direction);
+            signal.copy_from_slice(&combine_re_im(&reals, &imags))
+        }
+    };
+}
+
+impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32);
+impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64);
+
 macro_rules! impl_fft_with_opts_and_plan_for {
     ($func_name:ident, $precision:ty, $planner:ty, $simd_butterfly_kernel:ident, $lanes:literal) => {
         /// Same as [fft], but also accepts [`Options`] that control optimization strategies, as well as
@@ -316,4 +336,43 @@ mod tests {
 
     test_fft_correctness!(fft_correctness_32, f32, fft_32, 4, 9);
     test_fft_correctness!(fft_correctness_64, f64, fft_64, 4, 17);
+
+    #[test]
+    fn fft_interleaved_correctness() {
+        let n = 4;
+        let big_n = 1 << n;
+        let mut actual_signal: Vec<_> = (1..=big_n).map(|i| Complex::new(i as f64, 0.0)).collect();
+        let mut expected_reals: Vec<_> = (1..=big_n).map(|i| i as f64).collect();
+        let mut expected_imags = vec![0.0; big_n];
+
+        fft_64_interleaved(&mut actual_signal, Direction::Forward);
+        fft_64(&mut expected_reals, &mut expected_imags, Direction::Forward);
+
+        actual_signal
+            .iter()
+            .zip(expected_reals)
+            .zip(expected_imags)
+            .for_each(|((z, z_re), z_im)| {
+                assert_float_closeness(z.re, z_re, 1e-10);
+                assert_float_closeness(z.im, z_im, 1e-10);
+            });
+
+        let n = 4;
+        let big_n = 1 << n;
+        let mut actual_signal: Vec<_> = (1..=big_n).map(|i| Complex::new(i as f32, 0.0)).collect();
+        let mut expected_reals: Vec<_> = (1..=big_n).map(|i| i as f32).collect();
+        let mut expected_imags = vec![0.0; big_n];
+
+        fft_32_interleaved(&mut actual_signal, Direction::Forward);
+        fft_32(&mut expected_reals, &mut expected_imags, Direction::Forward);
+
+        actual_signal
+            .iter()
+            .zip(expected_reals)
+            .zip(expected_imags)
+            .for_each(|((z, z_re), z_im)| {
+                assert_float_closeness(z.re, z_re, 1e-10);
+                assert_float_closeness(z.im, z_im, 1e-10);
+            });
+    }
 }
