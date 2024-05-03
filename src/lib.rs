@@ -70,8 +70,8 @@ macro_rules! impl_fft_for {
                 Direction::Reverse => {
                     let scaling_factor = (reals.len() as $precision).recip();
                     for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
-                        *z_re = (*z_re) * scaling_factor;
-                        *z_im = -(*z_im) * -scaling_factor;
+                        *z_re *= scaling_factor;
+                        *z_im *= -scaling_factor;
                     }
                 }
                 _ => (),
