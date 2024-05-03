@@ -300,4 +300,49 @@ mod tests {
             }
         }
     }
+
+    macro_rules! forward_mul_inverse_eq_identity {
+        ($test_name:ident, $generate_twiddles_simd_fn:ident) => {
+            #[test]
+            fn $test_name() {
+                for i in 3..25 {
+                    let num_points = 1 << i;
+                    let dist = num_points >> 1;
+
+                    let (fwd_twiddles_re, fwd_twiddles_im) = if dist >= 8 * 2 {
+                        $generate_twiddles_simd_fn(dist, Direction::Forward)
+                    } else {
+                        generate_twiddles(dist, Direction::Forward)
+                    };
+
+                    assert_eq!(fwd_twiddles_re.len(), fwd_twiddles_im.len());
+
+                    let (rev_twiddles_re, rev_twiddles_im) = if dist >= 8 * 2 {
+                        $generate_twiddles_simd_fn(dist, Direction::Reverse)
+                    } else {
+                        generate_twiddles(dist, Direction::Reverse)
+                    };
+
+                    assert_eq!(rev_twiddles_re.len(), rev_twiddles_im.len());
+
+                    // (a + ib) (c + id) = ac + iad + ibc - bd
+                    //                   = ac - bd + i(ad + bc)
+                    fwd_twiddles_re
+                        .iter()
+                        .zip(fwd_twiddles_im.iter())
+                        .zip(rev_twiddles_re.iter())
+                        .zip(rev_twiddles_im.iter())
+                        .for_each(|(((a, b), c), d)| {
+                            let temp_re = a * c - b * d;
+                            let temp_im = a * d + b * c;
+                            assert_float_closeness(temp_re, 1.0, 1e-2);
+                            assert_float_closeness(temp_im, 0.0, 1e-2);
+                        });
+                }
+            }
+        };
+    }
+
+    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_64, generate_twiddles_simd_64);
+    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_32, generate_twiddles_simd_32);
 }
