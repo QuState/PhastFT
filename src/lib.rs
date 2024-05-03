@@ -75,7 +75,7 @@ macro_rules! impl_fft_interleaved_for {
         /// ## References
         /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
         pub fn $func_name(signal: &mut [Complex<$precision>], direction: Direction) {
-            let (mut reals, mut imags) = separate_re_im(signal, 2);
+            let (mut reals, mut imags) = separate_re_im(signal);
             $fft_func(&mut reals, &mut imags, direction);
             signal.copy_from_slice(&combine_re_im(&reals, &imags))
         }
@@ -176,27 +176,8 @@ impl_fft_with_opts_and_plan_for!(
 
 /// Utility function to separate interleaved format signals (i.e., Vector of Complex Number Structs)
 /// into separate vectors for the corresponding real and imaginary components.
-pub fn separate_re_im<T: Float>(signal: &[Complex<T>], chunk_size: usize) -> (Vec<T>, Vec<T>) {
-    let mut reals = Vec::with_capacity(signal.len());
-    let mut imaginaries = Vec::with_capacity(signal.len());
-    let iter = signal.chunks_exact(chunk_size);
-    let rem = iter.remainder();
-
-    // We don't assume power of 2 size, so we don't use `chunks_exact`.
-    // Process each chunk, including the last chunk which may be smaller.
-    for chunk in iter {
-        for num in chunk {
-            reals.push(num.re);
-            imaginaries.push(num.im);
-        }
-    }
-
-    for num in rem {
-        reals.push(num.re);
-        imaginaries.push(num.im);
-    }
-
-    (reals, imaginaries)
+pub fn separate_re_im<T: Float>(signal: &[Complex<T>]) -> (Vec<T>, Vec<T>) {
+    signal.iter().map(|z| (z.re, z.im)).unzip()
 }
 
 /// Utility function to combine separate vectors of real and imaginary components
@@ -234,7 +215,7 @@ mod tests {
             Complex::new(7.0, 8.0),
         ];
 
-        let (reals, imags) = separate_re_im(&complex_vec, 2);
+        let (reals, imags) = separate_re_im(&complex_vec);
 
         let recombined_vec = combine_re_im(&reals, &imags);
 
