@@ -6,6 +6,7 @@ use crate::twiddles::{generate_twiddles, generate_twiddles_simd_32, generate_twi
 
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
 /// Forward is for running the regular FFT
+#[derive(Copy, Clone)]
 pub enum Direction {
     /// Leave the exponent term in the twiddle factor alone
     Forward = 1,
@@ -34,7 +35,7 @@ macro_rules! impl_planner_for {
             /// # Panics
             ///
             /// Panics if `num_points < 1` or if `num_points` is __not__ a power of 2.
-            pub fn new(num_points: usize, direction: Direction) -> Self {
+            pub fn new(num_points: usize, _direction: Direction) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
                 if num_points <= 4 {
                     return Self {
@@ -46,9 +47,9 @@ macro_rules! impl_planner_for {
                 let dist = num_points >> 1;
 
                 let (twiddles_re, twiddles_im) = if dist >= 8 * 2 {
-                    $generate_twiddles_simd_fn(dist, direction)
+                    $generate_twiddles_simd_fn(dist, Direction::Forward)
                 } else {
-                    generate_twiddles(dist, direction)
+                    generate_twiddles(dist, Direction::Forward)
                 };
 
                 assert_eq!(twiddles_re.len(), twiddles_im.len());
@@ -72,8 +73,6 @@ impl_planner_for!(Planner32, f32, generate_twiddles_simd_32);
 
 #[cfg(test)]
 mod tests {
-    use utilities::assert_float_closeness;
-
     use super::*;
 
     macro_rules! test_no_twiddles {
@@ -90,40 +89,4 @@ mod tests {
 
     test_no_twiddles!(no_twiddles_64, Planner64);
     test_no_twiddles!(no_twiddles_32, Planner32);
-
-    macro_rules! forward_mul_inverse_eq_identity {
-        ($test_name:ident, $planner:ty) => {
-            #[test]
-            fn $test_name() {
-                for i in 3..25 {
-                    let num_points = 1 << i;
-                    let planner_forward = <$planner>::new(num_points, Direction::Forward);
-                    let planner_reverse = <$planner>::new(num_points, Direction::Reverse);
-
-                    assert_eq!(
-                        planner_reverse.num_twiddles(),
-                        planner_forward.num_twiddles()
-                    );
-
-                    // (a + ib) (c + id) = ac + iad + ibc - bd
-                    //                   = ac - bd + i(ad + bc)
-                    planner_forward
-                        .twiddles_re
-                        .iter()
-                        .zip(planner_forward.twiddles_im.iter())
-                        .zip(planner_reverse.twiddles_re.iter())
-                        .zip(planner_reverse.twiddles_im)
-                        .for_each(|(((a, b), c), d)| {
-                            let temp_re = a * c - b * d;
-                            let temp_im = a * d + b * c;
-                            assert_float_closeness(temp_re, 1.0, 1e-2);
-                            assert_float_closeness(temp_im, 0.0, 1e-2);
-                        });
-                }
-            }
-        };
-    }
-
-    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_64, Planner64);
-    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_32, Planner32);
 }
