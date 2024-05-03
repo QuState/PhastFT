@@ -6,6 +6,7 @@ use crate::twiddles::{generate_twiddles, generate_twiddles_simd_32, generate_twi
 
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
 /// Forward is for running the regular FFT
+#[derive(Copy, Clone)]
 pub enum Direction {
     /// Leave the exponent term in the twiddle factor alone
     Forward = 1,
@@ -46,9 +47,9 @@ macro_rules! impl_planner_for {
                 let dist = num_points >> 1;
 
                 let (twiddles_re, twiddles_im) = if dist >= 8 * 2 {
-                    $generate_twiddles_simd_fn(dist, direction)
+                    $generate_twiddles_simd_fn(dist, Direction::Forward)
                 } else {
-                    generate_twiddles(dist, direction)
+                    generate_twiddles(dist, Direction::Forward)
                 };
 
                 assert_eq!(twiddles_re.len(), twiddles_im.len());

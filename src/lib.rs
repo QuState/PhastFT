@@ -47,14 +47,35 @@ macro_rules! impl_fft_for {
                 imags.len()
             );
 
-            let mut planner = <$planner>::new(reals.len(), direction);
+            let mut planner = <$planner>::new(reals.len(), Direction::Forward);
             assert!(
                 planner.num_twiddles().is_power_of_two()
                     && planner.num_twiddles() == reals.len() / 2
             );
 
             let opts = Options::guess_options(reals.len());
+
+            match direction {
+                Direction::Reverse => {
+                    for z_im in imags.iter_mut() {
+                        *z_im = -*z_im;
+                    }
+                }
+                _ => (),
+            }
+
             $opts_and_plan(reals, imags, &opts, &mut planner);
+
+            match direction {
+                Direction::Reverse => {
+                    let scaling_factor = (reals.len() as $precision).recip();
+                    for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
+                        *z_re = (*z_re) * scaling_factor;
+                        *z_im = -(*z_im) * -scaling_factor;
+                    }
+                }
+                _ => (),
+            }
         }
     };
 }
@@ -256,4 +277,32 @@ mod tests {
 
     test_fft_correctness!(fft_correctness_32, f32, fft_32, 4, 9);
     test_fft_correctness!(fft_correctness_64, f64, fft_64, 4, 17);
+
+    #[test]
+    fn ifft_using_fft() {
+        let n = 4;
+        let big_n = 1 << n;
+
+        let mut reals: Vec<_> = (1..=big_n).map(|i| i as f64).collect();
+        let mut imags: Vec<_> = vec![0.0; big_n];
+        println!("{:?}", reals);
+        println!("{:?}\n", imags);
+
+        fft_64(&mut reals, &mut imags, Direction::Forward);
+        println!("{:?}", reals);
+        println!("{:?}\n", imags);
+
+        fft_64(&mut reals, &mut imags, Direction::Reverse);
+        println!("{:?}", reals);
+        println!("{:?}", imags);
+
+        let mut signal_re = 1.0;
+
+        // Now check that the identity is indeed the original signal we generated above
+        for (z_re, z_im) in reals.into_iter().zip(imags.into_iter()) {
+            assert_float_closeness(z_re, signal_re, 1e-4);
+            assert_float_closeness(z_im, 0.0, 1e-4);
+            signal_re += 1.0;
+        }
+    }
 }
