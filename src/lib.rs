@@ -67,10 +67,11 @@ impl_fft_for!(fft_32, f32, Planner32, fft_32_with_opts_and_plan);
 
 macro_rules! impl_fft_interleaved_for {
     ($func_name:ident, $precision:ty, $fft_func:ident) => {
-        /// FFT -- Decimation in Frequency. This is just the decimation-in-time algorithm, reversed.
-        /// This call to FFT is run, in-place.
-        /// The input should be provided in normal order, and then the modified input is bit-reversed.
+        /// FFT Interleaved -- this is an alternative to `fft_64`/`fft_32` in the case where
+        /// the input data is a array of `[num_complex::Complex]`.
         ///
+        /// The input should be provided in normal order, and then the modified input is
+        /// bit-reversed.
         ///
         /// ## References
         /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
