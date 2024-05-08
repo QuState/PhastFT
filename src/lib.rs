@@ -8,7 +8,9 @@
 #![forbid(unsafe_code)]
 #![feature(portable_simd, avx512_target_feature)]
 
+#[cfg(feature = "complex-nums")]
 use num_complex::Complex;
+#[cfg(feature = "complex-nums")]
 use num_traits::Float;
 
 use crate::cobra::cobra_apply;
@@ -65,10 +67,11 @@ macro_rules! impl_fft_for {
 impl_fft_for!(fft_64, f64, Planner64, fft_64_with_opts_and_plan);
 impl_fft_for!(fft_32, f32, Planner32, fft_32_with_opts_and_plan);
 
+#[cfg(feature = "complex-nums")]
 macro_rules! impl_fft_interleaved_for {
     ($func_name:ident, $precision:ty, $fft_func:ident) => {
-        /// FFT Interleaved -- this is an alternative to `fft_64`/`fft_32` in the case where
-        /// the input data is a array of `[num_complex::Complex]`.
+        /// FFT Interleaved -- this is an alternative to [`fft_64`]/[`fft_32`] in the case where
+        /// the input data is a array of [`num_complex::Complex`].
         ///
         /// The input should be provided in normal order, and then the modified input is
         /// bit-reversed.
@@ -83,7 +86,9 @@ macro_rules! impl_fft_interleaved_for {
     };
 }
 
+#[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32);
+#[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64);
 
 macro_rules! impl_fft_with_opts_and_plan_for {
@@ -177,6 +182,7 @@ impl_fft_with_opts_and_plan_for!(
 
 /// Utility function to separate interleaved format signals (i.e., Vector of Complex Number Structs)
 /// into separate vectors for the corresponding real and imaginary components.
+#[cfg(feature = "complex-nums")]
 pub fn separate_re_im<T: Float>(signal: &[Complex<T>]) -> (Vec<T>, Vec<T>) {
     signal.iter().map(|z| (z.re, z.im)).unzip()
 }
@@ -187,6 +193,7 @@ pub fn separate_re_im<T: Float>(signal: &[Complex<T>]) -> (Vec<T>, Vec<T>) {
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
+#[cfg(feature = "complex-nums")]
 pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
     assert_eq!(reals.len(), imags.len());
 
@@ -202,11 +209,12 @@ mod tests {
     use std::ops::Range;
 
     use utilities::assert_float_closeness;
-    use utilities::rustfft::num_complex::Complex;
     use utilities::rustfft::FftPlanner;
+    use utilities::rustfft::num_complex::Complex;
 
     use super::*;
 
+    #[cfg(feature = "complex-nums")]
     #[test]
     fn test_separate_and_combine_re_im() {
         let complex_vec = vec![
@@ -319,6 +327,7 @@ mod tests {
     test_fft_correctness!(fft_correctness_32, f32, fft_32, 4, 9);
     test_fft_correctness!(fft_correctness_64, f64, fft_64, 4, 17);
 
+    #[cfg(feature = "complex-nums")]
     #[test]
     fn fft_interleaved_correctness() {
         let n = 4;
