@@ -176,9 +176,9 @@ impl_fft_with_opts_and_plan_for!(
 mod tests {
     use std::ops::Range;
 
-    use utilities::assert_float_closeness;
-    use utilities::rustfft::num_complex::Complex;
+    use utilities::{assert_float_closeness, gen_random_signal};
     use utilities::rustfft::FftPlanner;
+    use utilities::rustfft::num_complex::Complex;
 
     use super::*;
 
@@ -279,30 +279,32 @@ mod tests {
     test_fft_correctness!(fft_correctness_64, f64, fft_64, 4, 17);
 
     #[test]
-    fn ifft_using_fft() {
-        let n = 4;
-        let big_n = 1 << n;
+    fn fft_round_trip() {
+        for i in 4..23 {
+            let big_n = 1 << i;
+            let mut reals = vec![0.0; big_n];
+            let mut imags = vec![0.0; big_n];
 
-        let mut reals: Vec<_> = (1..=big_n).map(|i| i as f64).collect();
-        let mut imags: Vec<_> = vec![0.0; big_n];
-        println!("{:?}", reals);
-        println!("{:?}\n", imags);
+            gen_random_signal(&mut reals, &mut imags);
 
-        fft_64(&mut reals, &mut imags, Direction::Forward);
-        println!("{:?}", reals);
-        println!("{:?}\n", imags);
+            let original_reals = reals.clone();
+            let original_imags = imags.clone();
 
-        fft_64(&mut reals, &mut imags, Direction::Reverse);
-        println!("{:?}", reals);
-        println!("{:?}", imags);
+            // Forward FFT
+            fft_64(&mut reals, &mut imags, Direction::Forward);
 
-        let mut signal_re = 1.0;
+            // Inverse FFT
+            fft_64(&mut reals, &mut imags, Direction::Reverse);
 
-        // Now check that the identity is indeed the original signal we generated above
-        for (z_re, z_im) in reals.into_iter().zip(imags.into_iter()) {
-            assert_float_closeness(z_re, signal_re, 1e-4);
-            assert_float_closeness(z_im, 0.0, 1e-4);
-            signal_re += 1.0;
+            // Ensure we get back the original signal within some tolerance
+            for ((orig_re, orig_im), (res_re, res_im)) in original_reals
+                .into_iter()
+                .zip(original_imags.into_iter())
+                .zip(reals.into_iter().zip(imags.into_iter()))
+            {
+                assert_float_closeness(res_re, orig_re, 1e-6);
+                assert_float_closeness(res_im, orig_im, 1e-6);
+            }
         }
     }
 }
