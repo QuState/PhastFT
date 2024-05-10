@@ -176,9 +176,9 @@ impl_fft_with_opts_and_plan_for!(
 mod tests {
     use std::ops::Range;
 
-    use utilities::{assert_float_closeness, gen_random_signal};
-    use utilities::rustfft::FftPlanner;
     use utilities::rustfft::num_complex::Complex;
+    use utilities::rustfft::FftPlanner;
+    use utilities::{assert_float_closeness, gen_random_signal};
 
     use super::*;
 
