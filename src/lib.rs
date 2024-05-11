@@ -48,14 +48,35 @@ macro_rules! impl_fft_for {
                 imags.len()
             );
 
-            let mut planner = <$planner>::new(reals.len(), direction);
+            let mut planner = <$planner>::new(reals.len(), Direction::Forward);
             assert!(
                 planner.num_twiddles().is_power_of_two()
                     && planner.num_twiddles() == reals.len() / 2
             );
 
             let opts = Options::guess_options(reals.len());
+
+            match direction {
+                Direction::Reverse => {
+                    for z_im in imags.iter_mut() {
+                        *z_im = -*z_im;
+                    }
+                }
+                _ => (),
+            }
+
             $opts_and_plan(reals, imags, &opts, &mut planner);
+
+            match direction {
+                Direction::Reverse => {
+                    let scaling_factor = (reals.len() as $precision).recip();
+                    for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
+                        *z_re *= scaling_factor;
+                        *z_im *= -scaling_factor;
+                    }
+                }
+                _ => (),
+            }
         }
     };
 }
@@ -156,7 +177,7 @@ impl_fft_with_opts_and_plan_for!(
 mod tests {
     use std::ops::Range;
 
-    use utilities::assert_float_closeness;
+    use utilities::{assert_float_closeness, gen_random_signal};
     use utilities::rustfft::FftPlanner;
     use utilities::rustfft::num_complex::Complex;
 
@@ -257,4 +278,34 @@ mod tests {
 
     test_fft_correctness!(fft_correctness_32, f32, fft_32, 4, 9);
     test_fft_correctness!(fft_correctness_64, f64, fft_64, 4, 17);
+
+    #[test]
+    fn fft_round_trip() {
+        for i in 4..23 {
+            let big_n = 1 << i;
+            let mut reals = vec![0.0; big_n];
+            let mut imags = vec![0.0; big_n];
+
+            gen_random_signal(&mut reals, &mut imags);
+
+            let original_reals = reals.clone();
+            let original_imags = imags.clone();
+
+            // Forward FFT
+            fft_64(&mut reals, &mut imags, Direction::Forward);
+
+            // Inverse FFT
+            fft_64(&mut reals, &mut imags, Direction::Reverse);
+
+            // Ensure we get back the original signal within some tolerance
+            for ((orig_re, orig_im), (res_re, res_im)) in original_reals
+                .into_iter()
+                .zip(original_imags.into_iter())
+                .zip(reals.into_iter().zip(imags.into_iter()))
+            {
+                assert_float_closeness(res_re, orig_re, 1e-6);
+                assert_float_closeness(res_im, orig_im, 1e-6);
+            }
+        }
+    }
 }
