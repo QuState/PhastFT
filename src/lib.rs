@@ -20,7 +20,6 @@ pub mod cobra;
 mod kernels;
 pub mod options;
 pub mod planner;
-mod r2c_kernels;
 mod twiddles;
 
 macro_rules! impl_fft_for {
@@ -191,9 +190,9 @@ pub fn fft_64_r2c(signal: &mut [f64]) -> (Vec<f64>, Vec<f64>) {
 mod tests {
     use std::ops::Range;
 
-    use utilities::{assert_float_closeness, gen_random_signal};
-    use utilities::rustfft::FftPlanner;
     use utilities::rustfft::num_complex::Complex;
+    use utilities::rustfft::FftPlanner;
+    use utilities::{assert_float_closeness, gen_random_signal};
 
     use super::*;
 
