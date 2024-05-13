@@ -173,6 +173,20 @@ impl_fft_with_opts_and_plan_for!(
     16
 );
 
+// TODO: make this generic over f64/f32 using macro
+/// Real-to-Complex FFT `f64`. Note the input is a real-valued signal.  
+pub fn fft_64_r2c(signal: &mut [f64]) -> (Vec<f64>, Vec<f64>) {
+    let n = signal.len();
+    let (mut reals, mut imags): (Vec<f64>, Vec<f64>) =
+        signal.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
+
+    fft_64(&mut reals, &mut imags, Direction::Forward);
+
+    // TODO: implement/fix untangle
+    todo!();
+    (reals, imags)
+}
+
 #[cfg(test)]
 mod tests {
     use std::ops::Range;
@@ -307,5 +321,23 @@ mod tests {
                 assert_float_closeness(res_im, orig_im, 1e-6);
             }
         }
+    }
+
+    #[test]
+    fn fft_r2c_vs_c2c() {
+        let n = 4;
+        let big_n = 1 << n;
+        let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
+
+        let (signal_re, signal_im) = fft_64_r2c(&mut reals);
+        println!("{:?}", signal_re);
+        println!("{:?}\n", signal_im);
+
+        let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
+        let mut imags = vec![0.0; big_n];
+        fft_64(&mut reals, &mut imags, Direction::Forward);
+
+        println!("{:?}", reals);
+        println!("{:?}\n", imags);
     }
 }
