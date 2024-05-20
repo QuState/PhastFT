@@ -8,6 +8,8 @@
 #![forbid(unsafe_code)]
 #![feature(portable_simd, avx512_target_feature)]
 
+use std::f64::consts::PI;
+
 use crate::cobra::cobra_apply;
 use crate::kernels::{
     fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_2, fft_chunk_4, fft_chunk_n,
@@ -172,17 +174,80 @@ impl_fft_with_opts_and_plan_for!(
     16
 );
 
+fn compute_twiddle_factors(big_n: usize) -> (Vec<f64>, Vec<f64>) {
+    let half_n = big_n / 2;
+    let mut real_parts = Vec::with_capacity(half_n);
+    let mut imag_parts = Vec::with_capacity(half_n);
+
+    for k in 0..half_n {
+        let angle = -2.0 * PI * (k as f64) / (big_n as f64);
+        real_parts.push(angle.cos());
+        imag_parts.push(angle.sin());
+    }
+
+    (real_parts, imag_parts)
+}
+
 // TODO: make this generic over f64/f32 using macro
 /// Real-to-Complex FFT `f64`. Note the input is a real-valued signal.  
-pub fn fft_64_r2c(signal: &mut [f64]) -> (Vec<f64>, Vec<f64>) {
-    let n = signal.len();
+pub fn fft_64_r2c(signal: &[f64]) -> (Vec<f64>, Vec<f64>) {
+    let big_n = signal.len();
+
+    // z[n] = x_{e}[n] + j * x_{o}[n]
     let (mut reals, mut imags): (Vec<f64>, Vec<f64>) =
         signal.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
 
+    // Z[k] = DFT{z}
     fft_64(&mut reals, &mut imags, Direction::Forward);
 
-    // TODO: implement/fix untangle
-    todo!();
+    let mut x_evens_re = vec![0.0; big_n / 2];
+    let mut x_evens_im = vec![0.0; big_n / 2];
+
+    for k in 0..big_n / 2 {
+        let re = 0.5 * (reals[k] + reals[big_n / 2 - 1 - k]);
+        let im = 0.5 * (imags[k] - imags[big_n / 2 - 1 - k]);
+        x_evens_re[k] = re;
+        x_evens_im[k] = im;
+    }
+
+    let mut x_odds_re = vec![0.0; big_n / 2];
+    let mut x_odds_im = vec![0.0; big_n / 2];
+
+    // -i * ((a + ib) - (c - id)) = -(b + d) - i(a - c)
+    for k in 0..big_n / 2 {
+        let re = 0.5 * (-imags[k] - imags[big_n / 2 - 1 - k]);
+        let im = 0.5 * (-reals[k] + reals[k]);
+        x_odds_re[k] = re;
+        x_odds_im[k] = im;
+    }
+
+    // 7. X[k] = X_{e}[k] + X_{o}[e] * e^{-2*j*pi*(k/N)}, for k \in {0, ..., N/2 - 1}
+    let (twiddles_re, twiddles_im) = compute_twiddle_factors(big_n);
+    for k in 0..big_n / 2 {
+        let a = x_evens_re[k];
+        let b = x_evens_im[k];
+        let c = x_odds_re[k];
+        let d = x_odds_im[k];
+        let g = twiddles_re[k];
+        let h = twiddles_im[k];
+
+        // (a + ib) + (c + id) * (g + ih) = (a + cg - dh) + i(b + ch + dg)
+        reals[k] = a + c * g - d * h;
+        imags[k] = b + c * h + d * g;
+    }
+
+    // 8. X[k] = X_e[k] - X_{o}[k], for k = N/2
+    let k = big_n / 2 - 1;
+    reals[k] = x_evens_re[k] - x_odds_re[k];
+    imags[k] = x_evens_im[k] - x_odds_im[k];
+
+    // 9. X[k] = X*[N - k], for k \in {N/2 + 1, ..., N - 1}
+    for k in (big_n / 2 + 1)..big_n {
+        eprintln!("k: {k} and {}", big_n - k - 1);
+        reals[k] = reals[big_n - k - 1];
+        imags[k] = -imags[big_n - k - 1];
+    }
+
     (reals, imags)
 }
 
@@ -190,9 +255,9 @@ pub fn fft_64_r2c(signal: &mut [f64]) -> (Vec<f64>, Vec<f64>) {
 mod tests {
     use std::ops::Range;
 
-    use utilities::rustfft::num_complex::Complex;
-    use utilities::rustfft::FftPlanner;
     use utilities::{assert_float_closeness, gen_random_signal};
+    use utilities::rustfft::FftPlanner;
+    use utilities::rustfft::num_complex::Complex;
 
     use super::*;
 
