@@ -294,8 +294,8 @@ mod tests {
     use std::ops::Range;
 
     use utilities::assert_float_closeness;
-    use utilities::rustfft::FftPlanner;
     use utilities::rustfft::num_complex::Complex;
+    use utilities::rustfft::FftPlanner;
 
     use super::*;
 
