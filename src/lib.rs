@@ -208,6 +208,7 @@ impl_fft_with_opts_and_plan_for!(
     16
 );
 
+#[cfg(feature = "complex-nums")]
 macro_rules! impl_separate_re_im {
     ($func_name:ident, $precision:ty, $lanes:literal, $simd_vec:ty) => {
         /// Utility function to separate interleaved format signals (i.e., Vector of Complex Number Structs)
@@ -293,8 +294,8 @@ mod tests {
     use std::ops::Range;
 
     use utilities::assert_float_closeness;
-    use utilities::rustfft::num_complex::Complex;
     use utilities::rustfft::FftPlanner;
+    use utilities::rustfft::num_complex::Complex;
 
     use super::*;
 
