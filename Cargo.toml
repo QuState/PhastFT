@@ -13,11 +13,12 @@ exclude = ["assets", "scripts", "benches"]
 [dependencies]
 num-traits = "0.2.18"
 multiversion = "0.7"
-num-complex = { version = "0.4.6", optional = true }
+num-complex = { version = "0.4.6", features = ["bytemuck"], optional = true }
+bytemuck = { version = "1.16.0", optional = true }
 
 [features]
 default = []
-complex-nums = ["dep:num-complex"]
+complex-nums = ["dep:num-complex", "dep:bytemuck"]
 
 [dev-dependencies]
 utilities = { path = "utilities" }
