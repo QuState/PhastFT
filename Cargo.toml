@@ -23,6 +23,11 @@ complex-nums = ["dep:num-complex", "dep:bytemuck"]
 [dev-dependencies]
 utilities = { path = "utilities" }
 fftw = "0.8.0"
+criterion = "0.5.1"
+
+[[bench]]
+name = "bench"
+harness = false
 
 [profile.release]
 codegen-units = 1
