@@ -229,11 +229,10 @@ macro_rules! impl_separate_re_im {
             let mut reals = vec![0.0; n];
             let mut imags = vec![0.0; n];
 
-            let complex_f64 = cast_slice(signal);
+            let complex_t: &[$precision] = cast_slice(signal);
             const CHUNK_SIZE: usize = $lanes * 2;
 
-            let mut i = 0;
-            for ((chunk, chunk_re), chunk_im) in complex_f64
+            for ((chunk, chunk_re), chunk_im) in complex_t
                 .chunks_exact(CHUNK_SIZE)
                 .zip(reals.chunks_exact_mut($lanes))
                 .zip(imags.chunks_exact_mut($lanes))
@@ -246,11 +245,11 @@ macro_rules! impl_separate_re_im {
 
                 chunk_re.copy_from_slice(&re_deinterleaved.to_array());
                 chunk_im.copy_from_slice(&im_deinterleaved.to_array());
-                i += CHUNK_SIZE;
             }
 
-            let remainder = complex_f64.chunks_exact(CHUNK_SIZE).remainder();
+            let remainder = complex_t.chunks_exact(CHUNK_SIZE).remainder();
             if !remainder.is_empty() {
+                let i = reals.len() - remainder.len() / 2;
             remainder
                 .chunks_exact(2)
                 .zip(reals[i..].iter_mut())
