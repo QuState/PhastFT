@@ -3,7 +3,7 @@
 use std::simd::{f32x16, f64x8};
 
 use bytemuck::cast_slice;
-use criterion::{black_box, Criterion, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use num_complex::Complex;
 
 use phastft::separate_re_im_f64;
