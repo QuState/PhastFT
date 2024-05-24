@@ -256,9 +256,9 @@ pub fn fft_64_r2c(signal: &[f64]) -> (Vec<f64>, Vec<f64>) {
 mod tests {
     use std::ops::Range;
 
-    use utilities::{assert_float_closeness, gen_random_signal};
-    use utilities::rustfft::FftPlanner;
     use utilities::rustfft::num_complex::Complex;
+    use utilities::rustfft::FftPlanner;
+    use utilities::{assert_float_closeness, gen_random_signal};
 
     use super::*;
 

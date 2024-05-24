@@ -1,8 +1,8 @@
 //! Implementation of Real valued FFT
 use std::f64::consts::PI;
 
-use crate::{compute_twiddle_factors, Direction};
 use crate::fft_64;
+use crate::{compute_twiddle_factors, Direction};
 
 fn precompute_chirp(n: usize, m: usize) -> (Vec<f64>, Vec<f64>) {
     let mut chirp_re = vec![0.0; m];
