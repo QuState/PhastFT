@@ -19,6 +19,7 @@ use crate::planner::{Direction, Planner32, Planner64};
 use crate::twiddles::filter_twiddles;
 
 pub mod cobra;
+pub mod fft;
 mod kernels;
 pub mod options;
 pub mod planner;
