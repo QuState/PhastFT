@@ -19,6 +19,7 @@ fn precompute_chirp(n: usize, m: usize) -> (Vec<f64>, Vec<f64>) {
     (chirp_re, chirp_im)
 }
 
+/// Implementation of Real-Valued FFT
 pub fn real_fft(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let n = input_re.len();
 
@@ -44,6 +45,20 @@ pub fn real_fft(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
         *zo = -(*zo);
     }
 
+    println!("Z even: {z_even:?}\nZ odd: {z_odd:?}\n");
+    println!("Z even min conj : {z_even_min_conj:?}\nZ odd min conj: {z_odd_min_conj:?}");
+
+    /*
+    [ 64.       +72.j        -27.3137085+11.3137085j -16.        +0.j
+    -11.3137085 -4.6862915j  -8.        -8.j         -4.6862915-11.3137085j
+       0.       -16.j         11.3137085-27.3137085j]
+
+    [ 64.       -72.j         11.3137085+27.3137085j   0.       +16.j
+      -4.6862915+11.3137085j  -8.        +8.j        -11.3137085 +4.6862915j
+     -16.        -0.j        -27.3137085-11.3137085j]
+
+     */
+
     // Zx = 0.5  * (Z + Zminconj)
     let (z_x_re, z_x_im): (Vec<_>, Vec<_>) = z_even
         .iter()
@@ -57,6 +72,8 @@ pub fn real_fft(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
         })
         .unzip();
 
+    println!("Zx reals: {z_x_re:?}\nZx imags: {z_x_im:?}\n");
+
     // Zy = -0.5j * (Z - Zminconj)
     let (z_y_re, z_y_im): (Vec<_>, Vec<_>) = z_even
         .iter()
@@ -67,10 +84,24 @@ pub fn real_fft(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
             let a = ze - ze_mc;
             let b = zo - zo_mc;
 
-            // 0.5i (a + ib) = 0.5i * a - 0.5 * b
-            (-0.5 * b, 0.5 * a)
+            // -0.5i (a + ib) = -0.5i * a + 0.5 * b
+            (0.5 * b, -0.5 * a)
         })
         .unzip();
+
+    /*
+    Zx:
+
+    [64. +0.j        -8.+19.3137085j -8. +8.j        -8. +3.3137085j
+     -8. +0.j        -8. -3.3137085j -8. -8.j        -8.-19.3137085j]
+
+    Zy:
+
+    [72. -0.j        -8.+19.3137085j -8. +8.j        -8. +3.3137085j
+     -8. +0.j        -8. -3.3137085j -8. -8.j        -8.-19.3137085j]
+     */
+
+    println!("Zy reals: {z_y_re:?}\nZy imags: {z_y_im:?}");
 
     let (twiddle_re, twiddle_im) = compute_twiddle_factors(n); // np.exp(-1j * 2 * math.pi * np.arange(N//2) / N)
 
@@ -116,19 +147,30 @@ pub fn real_fft(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
 
 #[cfg(test)]
 mod tests {
+    use utilities::assert_float_closeness;
+
     use super::*;
 
     #[test]
     fn r2c_vs_c2c() {
-        let mut input_re: Vec<_> = (1..=16).map(|i| i as f64).collect(); // Length is 7, which is a prime number
+        let n = 4;
+        let big_n = 1 << 4;
+        let mut input_re: Vec<_> = (1..=big_n).map(|i| i as f64).collect(); // Length is 7, which is a prime number
+
+        let (r2c_res_reals, r2c_res_imags) = real_fft(&mut input_re);
+
+        input_re = (1..=big_n).map(|i| i as f64).collect();
         let mut input_im = vec![0.0; input_re.len()]; // Assume the imaginary part is zero for this example
-
-        let (re, im) = real_fft(&mut input_re);
-        println!("actual:\n{:?}\n{:?}\n", re, im);
-
-        input_re = (1..=16).map(|i| i as f64).collect();
-        input_im = vec![0.0; input_re.len()]; // Assume the imaginary part is zero for this example
         fft_64(&mut input_re, &mut input_im, Direction::Forward);
-        println!("expected:\n{:?}\n{:?}\n", input_re, input_im);
+
+        r2c_res_reals
+            .iter()
+            .zip(r2c_res_imags.iter())
+            .zip(input_re.iter())
+            .zip(input_im.iter())
+            .for_each(|(((a_re, a_im), e_re), e_im)| {
+                assert_float_closeness(*a_re, *e_re, 1e-6);
+                assert_float_closeness(*a_im, *e_im, 1e-6);
+            });
     }
 }
