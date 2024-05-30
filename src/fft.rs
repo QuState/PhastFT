@@ -1,8 +1,8 @@
 //! Implementation of Real valued FFT
 use num_traits::Float;
 
-use crate::fft_64;
 use crate::Direction;
+use crate::fft_64;
 
 fn compute_twiddle_factors<T: Float>(big_n: usize) -> (Vec<T>, Vec<T>) {
     let half_n = big_n / 2;
@@ -21,7 +21,12 @@ fn compute_twiddle_factors<T: Float>(big_n: usize) -> (Vec<T>, Vec<T>) {
 }
 
 /// Implementation of Real-Valued FFT
-pub fn r2c_fft_f64(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
+///
+/// # Panics
+///
+/// Panics if `output_re.len() != output_im.len()` and `input_re.len()` == `output_re.len()`
+pub fn r2c_fft_f64(input_re: &[f64], output_re: &mut [f64], output_im: &mut [f64]) {
+    assert!(output_re.len() == output_im.len() && input_re.len() == output_re.len());
     let big_n = input_re.len();
 
     // Splitting odd and even
@@ -33,7 +38,6 @@ pub fn r2c_fft_f64(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
 
     // take care of the np.flip()
     let mut z_even_min_conj: Vec<_> = z_even.iter().copied().rev().collect();
-
     let mut z_odd_min_conj: Vec<_> = z_odd.iter().copied().rev().collect();
 
     // Zminconj = np.roll(np.flip(Z), 1).conj()
@@ -79,8 +83,6 @@ pub fn r2c_fft_f64(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let (twiddle_re, twiddle_im): (Vec<f64>, Vec<f64>) = compute_twiddle_factors(big_n);
 
     // Zall = np.concatenate([Zx + W*Zy, Zx - W*Zy])
-    let mut z_all_re = Vec::with_capacity(z_x_re.len() + z_y_re.len());
-    let mut z_all_im = Vec::with_capacity(z_x_im.len() + z_y_im.len());
 
     for i in 0..big_n / 2 {
         let zx_re = z_x_re[i];
@@ -94,8 +96,8 @@ pub fn r2c_fft_f64(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let wz_im = w_re * zy_im + w_im * zy_re;
 
         // Zx + W * Zy
-        z_all_re.push(zx_re + wz_re);
-        z_all_im.push(zx_im + wz_im);
+        output_re[i] = zx_re + wz_re;
+        output_im[i] = zx_im + wz_im;
     }
 
     for i in 0..big_n / 2 {
@@ -110,20 +112,9 @@ pub fn r2c_fft_f64(input_re: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let wz_im = w_re * zy_im + w_im * zy_re;
 
         // Zx - W * Zy
-        z_all_re.push(zx_re - wz_re);
-        z_all_im.push(zx_im - wz_im);
+        output_re[i + big_n / 2] = zx_re - wz_re;
+        output_im[i + big_n / 2] = zx_im - wz_im;
     }
-
-    // println!(
-    //     "z_x_re: {}\nz_x_im: {}\nz_all_re len: {}\nz_all_im len: {}\n",
-    //     z_x_re.len(),
-    //     z_x_im.len(),
-    //     z_all_re.len(),
-    //     z_all_im.len()
-    // );
-
-    // return Zall
-    (z_all_re, z_all_im)
 }
 
 #[cfg(test)]
@@ -136,19 +127,20 @@ mod tests {
         ($func:ident, $precision:ty, $fft_precision:ident, $rftt_funct:ident) => {
             #[test]
             fn $func() {
-                for n in 4..=10 {
+                for n in 4..=11 {
                     let big_n = 1 << n;
                     let input_re: Vec<$precision> = (1..=big_n).map(|i| i as $precision).collect(); // Length is 7, which is a prime number
+                    let (mut output_re, mut output_im) = (vec![0.0; big_n], vec![0.0; big_n]);
 
-                    let (r2c_res_reals, r2c_res_imags) = $rftt_funct(&input_re);
+                    $rftt_funct(&input_re, &mut output_re, &mut output_im);
 
                     let mut input_re: Vec<_> = (1..=big_n).map(|i| i as $precision).collect();
                     let mut input_im = vec![0.0; input_re.len()]; // Assume the imaginary part is zero for this example
                     $fft_precision(&mut input_re, &mut input_im, Direction::Forward);
 
-                    r2c_res_reals
+                    output_re
                         .iter()
-                        .zip(r2c_res_imags.iter())
+                        .zip(output_im.iter())
                         .zip(input_re.iter())
                         .zip(input_im.iter())
                         .for_each(|(((a_re, a_im), e_re), e_im)| {
