@@ -1,8 +1,8 @@
 //! Implementation of Real valued FFT
 use num_traits::Float;
 
-use crate::Direction;
 use crate::fft_64;
+use crate::Direction;
 
 fn compute_twiddle_factors<T: Float>(big_n: usize) -> (Vec<T>, Vec<T>) {
     let half_n = big_n / 2;
