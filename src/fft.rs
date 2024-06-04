@@ -1,8 +1,8 @@
 //! Implementation of Real valued FFT
 use num_traits::Float;
 
-use crate::fft_64;
 use crate::Direction;
+use crate::fft_64;
 
 fn compute_twiddle_factors<T: Float>(big_n: usize) -> (Vec<T>, Vec<T>) {
     let half_n = big_n / 2;
@@ -36,49 +36,56 @@ pub fn r2c_fft_f64(input_re: &[f64], output_re: &mut [f64], output_im: &mut [f64
     // Z = np.fft.fft(z)
     fft_64(&mut z_even, &mut z_odd, Direction::Forward);
 
-    // take care of the np.flip()
-    let mut z_even_min_conj: Vec<_> = z_even.iter().copied().rev().collect();
-    let mut z_odd_min_conj: Vec<_> = z_odd.iter().copied().rev().collect();
+    let mut z_x_re = Vec::with_capacity(z_even.len());
+    let mut z_x_im = Vec::with_capacity(z_even.len());
+    let mut z_y_re = Vec::with_capacity(z_even.len());
+    let mut z_y_im = Vec::with_capacity(z_even.len());
+
+    z_x_re.push(0.0);
+    z_x_im.push(0.0);
+    z_y_re.push(0.0);
+    z_y_im.push(0.0);
 
     // Zminconj = np.roll(np.flip(Z), 1).conj()
-    // now roll both by 1
-    z_even_min_conj.rotate_right(1);
-    z_odd_min_conj.rotate_right(1);
-
-    // the conj() call can be resolved by negating every imaginary component
-    for zo in z_odd_min_conj.iter_mut() {
-        *zo = -(*zo);
-    }
-
-    // Zx = 0.5  * (Z + Zminconj)
-    let (z_x_re, z_x_im): (Vec<_>, Vec<_>) = z_even
-        .iter()
-        .zip(z_odd.iter())
-        .zip(z_even_min_conj.iter())
-        .zip(z_odd_min_conj.iter())
-        .map(|(((ze, zo), ze_mc), zo_mc)| {
-            let a = 0.5 * (ze + ze_mc);
-            let b = 0.5 * (zo + zo_mc);
-            (a, b)
-        })
-        .unzip();
-
+    // Zx =  0.5  * (Z + Zminconj)
     // Zy = -0.5j * (Z - Zminconj)
-    let (z_y_re, z_y_im): (Vec<_>, Vec<_>) = z_even
+    z_even
         .iter()
-        .zip(z_odd.iter())
-        .zip(z_even_min_conj.iter())
-        .zip(z_odd_min_conj.iter())
-        .map(|(((ze, zo), ze_mc), zo_mc)| {
-            let a = ze - ze_mc;
-            let b = zo - zo_mc;
+        .skip(1)
+        .zip(z_odd.iter().skip(1))
+        .zip(z_even.iter().skip(1).rev())
+        .zip(z_odd.iter().skip(1).rev())
+        .for_each(|(((z_e, z_o), z_e_mc), z_o_mc)| {
+            let a = *z_e;
+            let b = *z_o;
+            let c = *z_e_mc;
+            let d = -(*z_o_mc);
 
-            // -0.5i (a + ib) = -0.5i * a - 0.5i * ib
-            //                = -0.5i * a + 0.5 * b
-            //                = 0.5 * b - 0.5 * ia
-            (0.5 * b, -0.5 * a)
-        })
-        .unzip();
+            let t = 0.5 * (a + c);
+            let u = 0.5 * (b + d);
+            let v = -0.5 * (a - c);
+            let w = 0.5 * (b - d);
+
+            z_x_re.push(t);
+            z_x_im.push(u);
+            z_y_re.push(w);
+            z_y_im.push(v);
+        });
+
+    let a = z_even[0];
+    let b = z_odd[0];
+    let c = z_even[0];
+    let d = -z_odd[0];
+
+    let t = 0.5 * (a + c);
+    let u = 0.5 * (b + d);
+    let v = -0.5 * (a - c);
+    let w = 0.5 * (b - d);
+
+    z_x_re[0] = t;
+    z_x_im[0] = u;
+    z_y_re[0] = w;
+    z_y_im[0] = v;
 
     let (twiddle_re, twiddle_im): (Vec<f64>, Vec<f64>) = compute_twiddle_factors(big_n);
 
