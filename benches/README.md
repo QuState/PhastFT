@@ -87,6 +87,29 @@ The generated images will be saved in your working directory.
 | Active Toolchain          | nightly-x86_64-unknown-linux-gnu (default)                                                      |
 | Rustc Version             | rustc 1.79.0-nightly (7f2fc33da 2024-04-22)                                                     |
 
+## Measuruing throughput with `criterion`
+
+0. Install gnuplot if you want `criterion` to use gnuplot as the plotting backend.
+   On macOS, just run:
+```bash
+brew install gnuplot 
+```
+
+1. Run benchmarks
+```bash
+cargo bench
+```
+
+2. Open the report using a browser. The report will be located in the `target` directory. 
+   For example, from the root of the `PhastFT` repository (on macOS) run:
+```bash
+open -a firefox target/criterion/r2c_versus_c2c/report/index.html
+```
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/QuState/PhastFT/main/assets/lines.svg" width="400" title="R2CFFT vs. C2C FFT" alt="Real-to-Complex FFT vs. Complex-to-Complex FFT">
+
+
 ## Profiling
 
 Navigate to the cloned repo:

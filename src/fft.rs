@@ -1,5 +1,5 @@
 //! Implementation of Real valued FFT
-use crate::{fft_32, fft_64, Direction, twiddles::generate_twiddles};
+use crate::{fft_32, fft_64, twiddles::generate_twiddles, Direction};
 
 #[macro_export]
 macro_rules! impl_r2c_fft {
@@ -9,7 +9,11 @@ macro_rules! impl_r2c_fft {
         /// # Panics
         ///
         /// Panics if `output_re.len() != output_im.len()` and `input_re.len()` == `output_re.len()`
-        pub fn $func_name(input_re: &[$precision], output_re: &mut [$precision], output_im: &mut [$precision]) {
+        pub fn $func_name(
+            input_re: &[$precision],
+            output_re: &mut [$precision],
+            output_im: &mut [$precision],
+        ) {
             assert!(output_re.len() == output_im.len() && input_re.len() == output_re.len());
             let big_n = input_re.len();
 
@@ -71,7 +75,8 @@ macro_rules! impl_r2c_fft {
             z_y_re[0] = w;
             z_y_im[0] = v;
 
-            let (twiddle_re, twiddle_im): (Vec<$precision>, Vec<$precision>) = generate_twiddles(big_n / 2, Direction::Forward);
+            let (twiddle_re, twiddle_im): (Vec<$precision>, Vec<$precision>) =
+                generate_twiddles(big_n / 2, Direction::Forward);
 
             // Zall = np.concatenate([Zx + W*Zy, Zx - W*Zy])
 
@@ -107,13 +112,11 @@ macro_rules! impl_r2c_fft {
                 output_im[i + big_n / 2] = zx_im - wz_im;
             }
         }
-
     };
 }
 
 impl_r2c_fft!(r2c_fft_f32, f32, fft_32);
 impl_r2c_fft!(r2c_fft_f64, f64, fft_64);
-
 
 #[cfg(test)]
 mod tests {
@@ -132,7 +135,8 @@ mod tests {
 
                     $rfft_func(&input_re, &mut output_re, &mut output_im);
 
-                    let mut input_re: Vec<$precision> = (1..=big_n).map(|i| i as $precision).collect();
+                    let mut input_re: Vec<$precision> =
+                        (1..=big_n).map(|i| i as $precision).collect();
                     let mut input_im = vec![0.0; input_re.len()]; // Assume the imaginary part is zero for this example
                     $fft_precision(&mut input_re, &mut input_im, Direction::Forward);
 
