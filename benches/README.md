@@ -106,6 +106,8 @@ cargo bench
 open -a firefox target/criterion/r2c_versus_c2c/report/index.html
 ```
 
+### Results
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/QuState/PhastFT/main/assets/lines.svg" width="400" title="R2CFFT vs. C2C FFT" alt="Real-to-Complex FFT vs. Complex-to-Complex FFT">
 
