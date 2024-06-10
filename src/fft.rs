@@ -1,7 +1,6 @@
 //! Implementation of Real valued FFT
 use crate::{fft_32, fft_64, twiddles::generate_twiddles, Direction};
 
-#[macro_export]
 macro_rules! impl_r2c_fft {
     ($func_name:ident, $precision:ty, $fft_func:ident) => {
         /// Implementation of Real-Valued FFT
