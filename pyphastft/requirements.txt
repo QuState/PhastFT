@@ -1,0 +1,7 @@
+maturin==1.6.0
+pip==24.0
+PyAudio==0.2.14
+pylint==3.2.3
+pyphastft==0.2.1
+PyQt5==5.15.10
+pyqtgraph==0.13.7
