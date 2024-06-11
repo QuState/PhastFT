@@ -12,9 +12,11 @@ macro_rules! impl_r2c_fft {
         ///
         /// # Arguments
         ///
-        /// * `input_re` - A slice containing the real-valued input signal.
-        /// * `output_re` - A mutable slice to store the real parts of the FFT output.
-        /// * `output_im` - A mutable slice to store the imaginary parts of the FFT output.
+        /// `input_re` - A slice containing the real-valued input signal.
+        ///
+        /// `output_re` - A mutable slice to store the real parts of the FFT output.
+        ///
+        /// `output_im` - A mutable slice to store the imaginary parts of the FFT output.
         ///
         /// # Panics
         ///
