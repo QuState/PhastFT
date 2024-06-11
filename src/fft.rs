@@ -3,11 +3,43 @@ use crate::{fft_32, fft_64, twiddles::generate_twiddles, Direction};
 
 macro_rules! impl_r2c_fft {
     ($func_name:ident, $precision:ty, $fft_func:ident) => {
-        /// Implementation of Real-Valued FFT
+        /// Performs a Real-Valued Fast Fourier Transform (FFT)
+        ///
+        /// This function computes the FFT of a real-valued input signal and produces
+        /// complex-valued output. The implementation follows the principles of splitting
+        /// the input into even and odd components and then performing the FFT on these
+        /// components.
+        ///
+        /// # Arguments
+        ///
+        /// * `input_re` - A slice containing the real-valued input signal.
+        /// * `output_re` - A mutable slice to store the real parts of the FFT output.
+        /// * `output_im` - A mutable slice to store the imaginary parts of the FFT output.
         ///
         /// # Panics
         ///
         /// Panics if `output_re.len() != output_im.len()` and `input_re.len()` == `output_re.len()`
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use phastft::fft::{r2c_fft_f32, r2c_fft_f64};
+        ///
+        /// let big_n = 16;
+        /// let input: Vec<f64> = (1..=big_n).map(|x| x as f64).collect();
+        /// let mut output_re = vec![0.0; big_n];
+        /// let mut output_im = vec![0.0; big_n];
+        /// r2c_fft_f64(&input, &mut output_re, &mut output_im);
+        ///
+        /// let input: Vec<f32> = (1..=big_n).map(|x| x as f32).collect();
+        /// let mut output_re: Vec<f32> = vec![0.0; 16];
+        /// let mut output_im: Vec<f32> = vec![0.0; 16];
+        /// r2c_fft_f32(&input, &mut output_re, &mut output_im);
+        /// ```
+        /// # References
+        ///
+        /// This implementation is based on the concepts discussed in
+        /// [Levente Kovács' post](https://kovleventer.com/blog/fft_real/).
         pub fn $func_name(
             input_re: &[$precision],
             output_re: &mut [$precision],
