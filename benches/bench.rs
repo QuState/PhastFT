@@ -1,9 +1,13 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use phastft::{fft::r2c_fft_f64, fft_64, planner::Direction};
+use realfft::num_complex::Complex;
+use realfft::RealFftPlanner;
 use utilities::gen_random_signal;
 
+use phastft::{fft::r2c_fft_f64, fft_64, planner::Direction};
+
 fn criterion_benchmark(c: &mut Criterion) {
-    let sizes = vec![1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20];
+    // let sizes = vec![1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20];
+    let sizes = vec![1 << 18, 1 << 20];
 
     let mut group = c.benchmark_group("r2c_versus_c2c");
     for &size in &sizes {
@@ -37,6 +41,20 @@ fn criterion_benchmark(c: &mut Criterion) {
                     black_box(&mut s_im),
                     Direction::Forward,
                 );
+            });
+        });
+
+        group.bench_with_input(BenchmarkId::new("real_fft", size), &size, |b, &size| {
+            let mut s_re = vec![0.0; size];
+            let mut s_im = vec![0.0; size];
+            gen_random_signal(&mut s_re, &mut s_im);
+            let mut output = vec![Complex::default(); s_re.len() / 2 + 1];
+
+            b.iter(|| {
+                let mut planner = RealFftPlanner::<f64>::new();
+                let fft = planner.plan_fft_forward(s_re.len());
+                fft.process(&mut s_re, &mut output)
+                    .expect("fft.process() failed!");
             });
         });
     }
