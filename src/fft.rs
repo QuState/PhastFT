@@ -1,10 +1,11 @@
 //! Implementation of Real valued FFT
 use std::simd::prelude::f64x8;
 
+use crate::twiddles::{generate_twiddles_simd_32, generate_twiddles_simd_64};
 use crate::{fft_32, fft_64, twiddles::generate_twiddles, Direction};
 
 macro_rules! impl_r2c_fft {
-    ($func_name:ident, $precision:ty, $fft_func:ident) => {
+    ($func_name:ident, $precision:ty, $fft_func:ident, $gen_twiddles_simd:ident) => {
         /// Performs a Real-Valued Fast Fourier Transform (FFT)
         ///
         /// This function computes the FFT of a real-valued input signal and produces
@@ -110,8 +111,11 @@ macro_rules! impl_r2c_fft {
             z_y_re[0] = w;
             z_y_im[0] = v;
 
-            let (twiddle_re, twiddle_im): (Vec<$precision>, Vec<$precision>) =
-                generate_twiddles(big_n / 2, Direction::Forward);
+            let (twiddle_re, twiddle_im): (Vec<$precision>, Vec<$precision>) = if big_n / 2 >= 16 {
+                $gen_twiddles_simd(big_n / 2, Direction::Forward)
+            } else {
+                generate_twiddles(big_n / 2, Direction::Forward)
+            };
 
             // Zall = np.concatenate([Zx + W*Zy, Zx - W*Zy])
             let (output_re_first_half, output_re_second_half) = output_re.split_at_mut(big_n / 2);
@@ -152,8 +156,8 @@ macro_rules! impl_r2c_fft {
     };
 }
 
-impl_r2c_fft!(r2c_fft_f32, f32, fft_32);
-impl_r2c_fft!(r2c_fft_f64, f64, fft_64);
+impl_r2c_fft!(r2c_fft_f32, f32, fft_32, generate_twiddles_simd_32);
+impl_r2c_fft!(r2c_fft_f64, f64, fft_64, generate_twiddles_simd_64);
 
 /// Performs a Real-Valued, Inverse, Fast Fourier Transform (FFT)
 ///
