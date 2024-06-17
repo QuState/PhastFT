@@ -59,20 +59,10 @@ macro_rules! impl_r2c_fft {
             // Z = np.fft.fft(z)
             $fft_func(&mut z_even, &mut z_odd, Direction::Forward);
 
-            // let mut z_x_re = vec![0.0; big_n / 2];
-            // let mut z_x_im = vec![0.0; big_n / 2];
-            // let mut z_y_re = vec![0.0; big_n / 2];
-            // let mut z_y_im = vec![0.0; big_n / 2];
-
-            let mut z_x_re = Vec::with_capacity(z_even.len());
-            let mut z_x_im = Vec::with_capacity(z_even.len());
-            let mut z_y_re = Vec::with_capacity(z_even.len());
-            let mut z_y_im = Vec::with_capacity(z_even.len());
-
-            z_x_re.push(0.0);
-            z_x_im.push(0.0);
-            z_y_re.push(0.0);
-            z_y_im.push(0.0);
+            let mut z_x_re = vec![0.0; big_n / 2];
+            let mut z_x_im = vec![0.0; big_n / 2];
+            let mut z_y_re = vec![0.0; big_n / 2];
+            let mut z_y_im = vec![0.0; big_n / 2];
 
             // Zminconj = np.roll(np.flip(Z), 1).conj()
             // Zx =  0.5  * (Z + Zminconj)
@@ -83,22 +73,28 @@ macro_rules! impl_r2c_fft {
                 .zip(z_odd.iter().skip(1))
                 .zip(z_even.iter().skip(1).rev())
                 .zip(z_odd.iter().skip(1).rev())
-                .for_each(|(((z_e, z_o), z_e_mc), z_o_mc)| {
-                    let a = *z_e;
-                    let b = *z_o;
-                    let c = *z_e_mc;
-                    let d = -(*z_o_mc);
+                .zip(z_x_re[1..].iter_mut())
+                .zip(z_x_im[1..].iter_mut())
+                .zip(z_y_re[1..].iter_mut())
+                .zip(z_y_im[1..].iter_mut())
+                .for_each(
+                    |(((((((z_e, z_o), z_e_mc), z_o_mc), zx_re), zx_im), zy_re), zy_im)| {
+                        let a = *z_e;
+                        let b = *z_o;
+                        let c = *z_e_mc;
+                        let d = -(*z_o_mc);
 
-                    let t = 0.5 * (a + c);
-                    let u = 0.5 * (b + d);
-                    let v = -0.5 * (a - c);
-                    let w = 0.5 * (b - d);
+                        let t = 0.5 * (a + c);
+                        let u = 0.5 * (b + d);
+                        let v = -0.5 * (a - c);
+                        let w = 0.5 * (b - d);
 
-                    z_x_re.push(t);
-                    z_x_im.push(u);
-                    z_y_re.push(w);
-                    z_y_im.push(v);
-                });
+                        *zx_re = t;
+                        *zx_im = u;
+                        *zy_re = w;
+                        *zy_im = v;
+                    },
+                );
 
             let a = z_even[0];
             let b = z_odd[0];
