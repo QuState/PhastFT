@@ -6,8 +6,7 @@ use utilities::gen_random_signal;
 use phastft::{fft::r2c_fft_f64, fft_64, planner::Direction};
 
 fn criterion_benchmark(c: &mut Criterion) {
-    // let sizes = vec![1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20];
-    let sizes = vec![1 << 18, 1 << 20];
+    let sizes = vec![1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20];
 
     let mut group = c.benchmark_group("r2c_versus_c2c");
     for &size in &sizes {

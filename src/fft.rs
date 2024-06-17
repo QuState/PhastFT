@@ -67,12 +67,11 @@ macro_rules! impl_r2c_fft {
             // Zminconj = np.roll(np.flip(Z), 1).conj()
             // Zx =  0.5  * (Z + Zminconj)
             // Zy = -0.5j * (Z - Zminconj)
-            z_even
+            z_even[1..]
                 .iter()
-                .skip(1)
-                .zip(z_odd.iter().skip(1))
-                .zip(z_even.iter().skip(1).rev())
-                .zip(z_odd.iter().skip(1).rev())
+                .zip(z_odd[1..].iter())
+                .zip(z_even[1..].iter().rev())
+                .zip(z_odd[1..].iter().rev())
                 .zip(z_x_re[1..].iter_mut())
                 .zip(z_x_im[1..].iter_mut())
                 .zip(z_y_re[1..].iter_mut())
