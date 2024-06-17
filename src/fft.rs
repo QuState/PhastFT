@@ -36,8 +36,8 @@ macro_rules! impl_r2c_fft {
         /// r2c_fft_f64(&input, &mut output_re, &mut output_im);
         ///
         /// let input: Vec<f32> = (1..=big_n).map(|x| x as f32).collect();
-        /// let mut output_re: Vec<f32> = vec![0.0; 16];
-        /// let mut output_im: Vec<f32> = vec![0.0; 16];
+        /// let mut output_re: Vec<f32> = vec![0.0; big_n];
+        /// let mut output_im: Vec<f32> = vec![0.0; big_n];
         /// r2c_fft_f32(&input, &mut output_re, &mut output_im);
         /// ```
         /// # References
@@ -58,6 +58,11 @@ macro_rules! impl_r2c_fft {
 
             // Z = np.fft.fft(z)
             $fft_func(&mut z_even, &mut z_odd, Direction::Forward);
+
+            // let mut z_x_re = vec![0.0; big_n / 2];
+            // let mut z_x_im = vec![0.0; big_n / 2];
+            // let mut z_y_re = vec![0.0; big_n / 2];
+            // let mut z_y_im = vec![0.0; big_n / 2];
 
             let mut z_x_re = Vec::with_capacity(z_even.len());
             let mut z_x_im = Vec::with_capacity(z_even.len());
@@ -115,37 +120,45 @@ macro_rules! impl_r2c_fft {
 
             // Zall = np.concatenate([Zx + W*Zy, Zx - W*Zy])
 
-            for i in 0..big_n / 2 {
-                let zx_re = z_x_re[i];
-                let zx_im = z_x_im[i];
-                let zy_re = z_y_re[i];
-                let zy_im = z_y_im[i];
-                let w_re = twiddle_re[i];
-                let w_im = twiddle_im[i];
+            z_x_re
+                .iter()
+                .zip(z_x_im.iter())
+                .zip(z_y_re.iter())
+                .zip(z_y_im.iter())
+                .zip(twiddle_re.iter())
+                .zip(twiddle_im.iter())
+                .zip(output_re[..big_n / 2].iter_mut())
+                .zip(output_im[..big_n / 2].iter_mut())
+                .for_each(
+                    |(((((((zx_re, zx_im), zy_re), zy_im), w_re), w_im), o_re), o_im)| {
+                        let wz_re = w_re * zy_re - w_im * zy_im;
+                        let wz_im = w_re * zy_im + w_im * zy_re;
 
-                let wz_re = w_re * zy_re - w_im * zy_im;
-                let wz_im = w_re * zy_im + w_im * zy_re;
+                        // Zx + W * Zy
+                        *o_re = zx_re + wz_re;
+                        *o_im = zx_im + wz_im;
+                    },
+                );
 
-                // Zx + W * Zy
-                output_re[i] = zx_re + wz_re;
-                output_im[i] = zx_im + wz_im;
-            }
+            z_x_re
+                .iter()
+                .zip(z_x_im.iter())
+                .zip(z_y_re.iter())
+                .zip(z_y_im.iter())
+                .zip(twiddle_re.iter())
+                .zip(twiddle_im.iter())
+                .zip(output_re[big_n / 2..].iter_mut())
+                .zip(output_im[big_n / 2..].iter_mut())
+                .for_each(
+                    |(((((((zx_re, zx_im), zy_re), zy_im), w_re), w_im), o_re), o_im)| {
+                        let wz_re = w_re * zy_re - w_im * zy_im;
+                        let wz_im = w_re * zy_im + w_im * zy_re;
 
-            for i in 0..big_n / 2 {
-                let zx_re = z_x_re[i];
-                let zx_im = z_x_im[i];
-                let zy_re = z_y_re[i];
-                let zy_im = z_y_im[i];
-                let w_re = twiddle_re[i];
-                let w_im = twiddle_im[i];
-
-                let wz_re = w_re * zy_re - w_im * zy_im;
-                let wz_im = w_re * zy_im + w_im * zy_re;
-
-                // Zx - W * Zy
-                output_re[i + big_n / 2] = zx_re - wz_re;
-                output_im[i + big_n / 2] = zx_im - wz_im;
-            }
+                        // Zx + W * Zy
+                        *o_re = zx_re - wz_re;
+                        *o_im = zx_im - wz_im;
+                    },
+                );
         }
     };
 }
