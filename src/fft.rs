@@ -114,6 +114,8 @@ macro_rules! impl_r2c_fft {
                 generate_twiddles(big_n / 2, Direction::Forward);
 
             // Zall = np.concatenate([Zx + W*Zy, Zx - W*Zy])
+            let (output_re_first_half, output_re_second_half) = output_re.split_at_mut(big_n / 2);
+            let (output_im_first_half, output_im_second_half) = output_im.split_at_mut(big_n / 2);
 
             z_x_re
                 .iter()
@@ -122,36 +124,28 @@ macro_rules! impl_r2c_fft {
                 .zip(z_y_im.iter())
                 .zip(twiddle_re.iter())
                 .zip(twiddle_im.iter())
-                .zip(output_re[..big_n / 2].iter_mut())
-                .zip(output_im[..big_n / 2].iter_mut())
+                .zip(output_re_first_half)
+                .zip(output_im_first_half)
+                .zip(output_re_second_half)
+                .zip(output_im_second_half)
                 .for_each(
-                    |(((((((zx_re, zx_im), zy_re), zy_im), w_re), w_im), o_re), o_im)| {
+                    |(
+                        (
+                            (((((((zx_re, zx_im), zy_re), zy_im), w_re), w_im), o_re_fh), o_im_fh),
+                            o_re_sh,
+                        ),
+                        o_im_sh,
+                    )| {
                         let wz_re = w_re * zy_re - w_im * zy_im;
                         let wz_im = w_re * zy_im + w_im * zy_re;
 
                         // Zx + W * Zy
-                        *o_re = zx_re + wz_re;
-                        *o_im = zx_im + wz_im;
-                    },
-                );
+                        *o_re_fh = zx_re + wz_re;
+                        *o_im_fh = zx_im + wz_im;
 
-            z_x_re
-                .iter()
-                .zip(z_x_im.iter())
-                .zip(z_y_re.iter())
-                .zip(z_y_im.iter())
-                .zip(twiddle_re.iter())
-                .zip(twiddle_im.iter())
-                .zip(output_re[big_n / 2..].iter_mut())
-                .zip(output_im[big_n / 2..].iter_mut())
-                .for_each(
-                    |(((((((zx_re, zx_im), zy_re), zy_im), w_re), w_im), o_re), o_im)| {
-                        let wz_re = w_re * zy_re - w_im * zy_im;
-                        let wz_im = w_re * zy_im + w_im * zy_re;
-
-                        // Zx + W * Zy
-                        *o_re = zx_re - wz_re;
-                        *o_im = zx_im - wz_im;
+                        // Zx - W * Zy
+                        *o_re_sh = zx_re - wz_re;
+                        *o_im_sh = zx_im - wz_im;
                     },
                 );
         }
