@@ -167,7 +167,7 @@ fn deinterleave_portable_simd_deintlv<T: Copy + Default + SimdElement>(
 fn benchmark_deinterleave(c: &mut Criterion) {
     for s in 4..28 {
         let size = 1 << s;
-        let input: Vec<f32> = (0..size).map(|x| x as f32).collect();
+        let input: Vec<f64> = (0..size).map(|x| x as f64).collect();
 
         let mut group = c.benchmark_group(format!("deinterleave_{}", size));
 
