@@ -61,6 +61,15 @@ use phastft::utils::deinterleave_naive;
 //     group.finish();
 // }
 
+#[multiversion::multiversion(
+    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+    "x86_64+avx2+fma", // x86_64-v3
+    "x86_64+sse4.2", // x86_64-v2
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx2+fma",
+    "x86+sse4.2",
+    "x86+sse2",
+    ))]
 fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 4;
 
@@ -86,6 +95,15 @@ fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
     (out_odd, out_even)
 }
 
+#[multiversion::multiversion(
+    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+    "x86_64+avx2+fma", // x86_64-v3
+    "x86_64+sse4.2", // x86_64-v2
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx2+fma",
+    "x86+sse4.2",
+    "x86+sse2",
+    ))]
 fn deinterleave_simd_swizzle<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 8;
     const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
@@ -112,6 +130,15 @@ fn deinterleave_simd_swizzle<T: Copy + Default + SimdElement>(input: &[T]) -> (V
     (out_odd, out_even)
 }
 
+#[multiversion::multiversion(
+    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+    "x86_64+avx2+fma", // x86_64-v3
+    "x86_64+sse4.2", // x86_64-v2
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx2+fma",
+    "x86+sse4.2",
+    "x86+sse2",
+    ))]
 fn deinterleave_portable_simd_deintlv<T: Copy + Default + SimdElement>(
     input: &[T],
 ) -> (Vec<T>, Vec<T>) {
