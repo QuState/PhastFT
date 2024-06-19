@@ -130,40 +130,6 @@ fn deinterleave_simd_swizzle<T: Copy + Default + SimdElement>(input: &[T]) -> (V
     (out_odd, out_even)
 }
 
-#[multiversion::multiversion(
-    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
-    "x86_64+avx2+fma", // x86_64-v3
-    "x86_64+sse4.2", // x86_64-v2
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
-    "x86+avx2+fma",
-    "x86+sse4.2",
-    "x86+sse2",
-    ))]
-fn deinterleave_portable_simd_deintlv<T: Copy + Default + SimdElement>(
-    input: &[T],
-) -> (Vec<T>, Vec<T>) {
-    let n = input.len();
-    let mut evens = vec![T::default(); n / 2];
-    let mut odds = vec![T::default(); n / 2];
-    const CHUNK_SIZE: usize = 8;
-
-    for ((chunk, chunk_re), chunk_im) in input
-        .chunks_exact(CHUNK_SIZE * 2)
-        .zip(evens.chunks_exact_mut(CHUNK_SIZE))
-        .zip(odds.chunks_exact_mut(CHUNK_SIZE))
-    {
-        let (first_half, second_half) = chunk.split_at(8);
-
-        let a: Simd<T, CHUNK_SIZE> = Simd::from_slice(first_half);
-        let b: Simd<T, CHUNK_SIZE> = Simd::from_slice(second_half);
-        let (re_deinterleaved, im_deinterleaved) = a.deinterleave(b);
-
-        chunk_re.copy_from_slice(&re_deinterleaved.to_array());
-        chunk_im.copy_from_slice(&im_deinterleaved.to_array());
-    }
-    (evens, odds)
-}
-
 fn benchmark_deinterleave(c: &mut Criterion) {
     for s in 4..28 {
         let size = 1 << s;
@@ -175,20 +141,16 @@ fn benchmark_deinterleave(c: &mut Criterion) {
             b.iter(|| deinterleave_naive(black_box(input)))
         });
 
-        group.bench_with_input(BenchmarkId::new("simple", size), &input, |b, input| {
-            b.iter(|| deinterleave(black_box(input)))
-        });
-
         group.bench_with_input(
-            BenchmarkId::new("simd swizzle", size),
+            BenchmarkId::new("autovec deinterleave", size),
             &input,
-            |b, input| b.iter(|| deinterleave_simd_swizzle(black_box(input))),
+            |b, input| b.iter(|| deinterleave(black_box(input))),
         );
 
         group.bench_with_input(
-            BenchmarkId::new("portable simd", size),
+            BenchmarkId::new("simd swizzle deinterleave", size),
             &input,
-            |b, input| b.iter(|| deinterleave_portable_simd_deintlv(black_box(input))),
+            |b, input| b.iter(|| deinterleave_simd_swizzle(black_box(input))),
         );
 
         group.finish();
