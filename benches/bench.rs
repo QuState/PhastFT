@@ -2,7 +2,7 @@
 
 use std::simd::{simd_swizzle, Simd, SimdElement};
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use phastft::utils::deinterleave_naive;
 
@@ -164,25 +164,36 @@ fn deinterleave_portable_simd_deintlv<T: Copy + Default + SimdElement>(
     (evens, odds)
 }
 
-fn interleave_benchmark(c: &mut Criterion) {
-    let input: Vec<f64> = (0..(1 << 20)).map(|x| x as f64).collect();
+fn benchmark_deinterleave(c: &mut Criterion) {
+    for s in 4..28 {
+        let size = 1 << s;
+        let input: Vec<f32> = (0..size).map(|x| x as f32).collect();
 
-    c.bench_function("deinterleave_naive", |b| {
-        b.iter(|| deinterleave_naive(black_box(&input)))
-    });
+        let mut group = c.benchmark_group(format!("deinterleave_{}", size));
 
-    c.bench_function("deinterleave_simple", |b| {
-        b.iter(|| deinterleave(black_box(&input)))
-    });
+        group.bench_with_input(BenchmarkId::new("naive", size), &input, |b, input| {
+            b.iter(|| deinterleave_naive(black_box(input)))
+        });
 
-    c.bench_function("deinterleave_simd_swizzle", |b| {
-        b.iter(|| deinterleave_simd_swizzle(black_box(&input)))
-    });
+        group.bench_with_input(BenchmarkId::new("simple", size), &input, |b, input| {
+            b.iter(|| deinterleave(black_box(input)))
+        });
 
-    c.bench_function("deinterleave_portable_simd_deinterleave", |b| {
-        b.iter(|| deinterleave_portable_simd_deintlv(black_box(&input)))
-    });
+        group.bench_with_input(
+            BenchmarkId::new("simd swizzle", size),
+            &input,
+            |b, input| b.iter(|| deinterleave_simd_swizzle(black_box(input))),
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("portable simd", size),
+            &input,
+            |b, input| b.iter(|| deinterleave_portable_simd_deintlv(black_box(input))),
+        );
+
+        group.finish();
+    }
 }
 
-criterion_group!(benches, interleave_benchmark);
+criterion_group!(benches, benchmark_deinterleave);
 criterion_main!(benches);
