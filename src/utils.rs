@@ -11,19 +11,19 @@ use std::simd::{prelude::Simd, simd_swizzle, SimdElement};
 ))]
 pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 4;
+    const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
 
     let out_len = input.len() / 2;
     let mut out_odd = vec![T::default(); out_len];
     let mut out_even = vec![T::default(); out_len];
 
     input
-        .chunks_exact(CHUNK_SIZE * 2)
+        .chunks_exact(DOUBLE_CHUNK)
         .zip(out_odd.chunks_exact_mut(CHUNK_SIZE))
         .zip(out_even.chunks_exact_mut(CHUNK_SIZE))
         .for_each(|((in_chunk, odds), evens)| {
-            let in_first: Simd<T, CHUNK_SIZE> = Simd::from_array(in_chunk[..CHUNK_SIZE].try_into().unwrap());
-            let in_second: Simd<T, CHUNK_SIZE> = Simd::from_array(in_chunk[CHUNK_SIZE..].try_into().unwrap());
-            let result = simd_swizzle!(in_first, in_second, [0, 2, 4, 6, 1, 3, 5, 7]);
+            let in_simd: Simd<T, DOUBLE_CHUNK> = Simd::from_array(in_chunk.try_into().unwrap());
+            let result = simd_swizzle!(in_simd, [0, 2, 4, 6, 1, 3, 5, 7]);
             let result_arr = result.to_array();
             odds.copy_from_slice(&result_arr[..CHUNK_SIZE]);
             evens.copy_from_slice(&result_arr[CHUNK_SIZE..]);
