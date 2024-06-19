@@ -1,3 +1,5 @@
+//! Utility functions such as interleave/deinterleave
+
 use std::simd::{prelude::Simd, simd_swizzle, SimdElement};
 
 #[multiversion::multiversion(
@@ -36,6 +38,6 @@ pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec
 
 /// Slow but obviously correct implementation of deinterleaving,
 /// to be used in tests
-fn deinterleave_naive<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
+pub fn deinterleave_naive<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
     input.chunks_exact(2).map(|c| (c[0], c[1])).unzip()
 }

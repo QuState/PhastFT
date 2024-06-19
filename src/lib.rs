@@ -22,7 +22,7 @@ mod kernels;
 pub mod options;
 pub mod planner;
 mod twiddles;
-mod utils;
+pub mod utils;
 
 macro_rules! impl_fft_for {
     ($func_name:ident, $precision:ty, $planner:ty, $opts_and_plan:ident) => {
