@@ -1,4 +1,4 @@
-use std::simd::prelude::Simd;
+use std::simd::{prelude::Simd, simd_swizzle, SimdElement};
 
 #[multiversion::multiversion(
     targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
@@ -9,7 +9,7 @@ use std::simd::prelude::Simd;
             "x86+sse4.2",
             "x86+sse2",
 ))]
-pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
+pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 4;
 
     let out_len = input.len() / 2;
@@ -21,14 +21,12 @@ pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
         .zip(out_odd.chunks_exact_mut(CHUNK_SIZE))
         .zip(out_even.chunks_exact_mut(CHUNK_SIZE))
         .for_each(|((in_chunk, odds), evens)| {
-            odds[0] = in_chunk[0];
-            evens[0] = in_chunk[1];
-            odds[1] = in_chunk[2];
-            evens[1] = in_chunk[3];
-            odds[2] = in_chunk[4];
-            evens[2] = in_chunk[5];
-            odds[3] = in_chunk[6];
-            evens[3] = in_chunk[7];
+            let in_first: Simd<T, CHUNK_SIZE> = Simd::from_array(in_chunk[..CHUNK_SIZE].try_into().unwrap());
+            let in_second: Simd<T, CHUNK_SIZE> = Simd::from_array(in_chunk[CHUNK_SIZE..].try_into().unwrap());
+            let result = simd_swizzle!(in_first, in_second, [0, 2, 4, 6, 1, 3, 5, 7]);
+            let result_arr = result.to_array();
+            odds.copy_from_slice(&result_arr[..CHUNK_SIZE]);
+            evens.copy_from_slice(&result_arr[CHUNK_SIZE..]);
         });
 
     // TODO: handle remainder
