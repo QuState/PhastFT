@@ -105,7 +105,7 @@ fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
     "x86+sse2",
     ))]
 fn deinterleave_simd_swizzle<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec<T>, Vec<T>) {
-    const CHUNK_SIZE: usize = 8;
+    const CHUNK_SIZE: usize = 4;
     const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
 
     let out_len = input.len() / 2;
@@ -118,10 +118,7 @@ fn deinterleave_simd_swizzle<T: Copy + Default + SimdElement>(input: &[T]) -> (V
         .zip(out_even.chunks_exact_mut(CHUNK_SIZE))
         .for_each(|((in_chunk, odds), evens)| {
             let in_simd: Simd<T, DOUBLE_CHUNK> = Simd::from_array(in_chunk.try_into().unwrap());
-            let result = simd_swizzle!(
-                in_simd,
-                [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15]
-            );
+            let result = simd_swizzle!(in_simd, [0, 2, 4, 6, 1, 3, 5, 7]);
             let result_arr = result.to_array();
             odds.copy_from_slice(&result_arr[..CHUNK_SIZE]);
             evens.copy_from_slice(&result_arr[CHUNK_SIZE..]);
@@ -130,31 +127,98 @@ fn deinterleave_simd_swizzle<T: Copy + Default + SimdElement>(input: &[T]) -> (V
     (out_odd, out_even)
 }
 
+// We don't multiversion for AVX-512 here and keep the chunk size below AVX-512
+// because we haven't seen any gains from it in benchmarks.
+// This might be due to us running benchmarks on Zen4 which implements AVX-512
+// on top of 256-bit wide execution units.
+//
+// If benchmarks on "real" AVX-512 show improvement on AVX-512
+// without degrading AVX2 machines due to larger chunk size,
+// the AVX-512 specialization should be re-enabled.
+#[multiversion::multiversion(
+    targets(
+    "x86_64+avx2+fma", // x86_64-v3
+    "x86_64+sse4.2", // x86_64-v2
+    "x86+avx2+fma",
+    "x86+sse4.2",
+    "x86+sse2",
+    ))]
+/// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
+pub(crate) fn deinterleave_from_pr<T: Copy + Default + SimdElement>(
+    input: &[T],
+) -> (Vec<T>, Vec<T>) {
+    const CHUNK_SIZE: usize = 4;
+    const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
+
+    let out_len = input.len() / 2;
+    // We've benchmarked, and it turns out that this approach with zeroed memory
+    // is faster than using uninit memory and bumping the length once in a while!
+    let mut out_odd = vec![T::default(); out_len];
+    let mut out_even = vec![T::default(); out_len];
+
+    input
+        .chunks_exact(DOUBLE_CHUNK)
+        .zip(out_odd.chunks_exact_mut(CHUNK_SIZE))
+        .zip(out_even.chunks_exact_mut(CHUNK_SIZE))
+        .for_each(|((in_chunk, odds), evens)| {
+            let in_simd: Simd<T, DOUBLE_CHUNK> = Simd::from_array(in_chunk.try_into().unwrap());
+            // This generates *slightly* faster code than just assigning values by index.
+            // You'd think simd::deinterleave would be appropriate, but it does something different!
+            let result = simd_swizzle!(in_simd, [0, 2, 4, 6, 1, 3, 5, 7]);
+            let result_arr = result.to_array();
+            odds.copy_from_slice(&result_arr[..CHUNK_SIZE]);
+            evens.copy_from_slice(&result_arr[CHUNK_SIZE..]);
+        });
+
+    // Process the remainder, too small for the vectorized loop
+    let input_rem = input.chunks_exact(DOUBLE_CHUNK).remainder();
+    let odds_rem = out_odd.chunks_exact_mut(CHUNK_SIZE).into_remainder();
+    let evens_rem = out_even.chunks_exact_mut(CHUNK_SIZE).into_remainder();
+    input_rem
+        .chunks_exact(2)
+        .zip(odds_rem.iter_mut())
+        .zip(evens_rem.iter_mut())
+        .for_each(|((inp, odd), even)| {
+            *odd = inp[0];
+            *even = inp[1];
+        });
+
+    (out_odd, out_even)
+}
+
 fn benchmark_deinterleave(c: &mut Criterion) {
-    for s in 4..28 {
+    let mut group = c.benchmark_group(format!("deinterleave"));
+
+    for s in (4..=28).step_by(4) {
         let size = 1 << s;
         let input: Vec<f64> = (0..size).map(|x| x as f64).collect();
 
-        let mut group = c.benchmark_group(format!("deinterleave_{}", size));
-
-        group.bench_with_input(BenchmarkId::new("naive", size), &input, |b, input| {
-            b.iter(|| deinterleave_naive(black_box(input)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("Naive deinterleave", size),
+            &input,
+            |b, input| b.iter(|| deinterleave_naive(black_box(input))),
+        );
 
         group.bench_with_input(
-            BenchmarkId::new("autovec deinterleave", size),
+            BenchmarkId::new("Autovectorized deinterleave", size),
             &input,
             |b, input| b.iter(|| deinterleave(black_box(input))),
         );
 
         group.bench_with_input(
-            BenchmarkId::new("simd swizzle deinterleave", size),
+            BenchmarkId::new("Simd Swizzle deinterleave", size),
             &input,
             |b, input| b.iter(|| deinterleave_simd_swizzle(black_box(input))),
         );
 
-        group.finish();
+        group.bench_with_input(
+            BenchmarkId::new("PR deinterleave", size),
+            &input,
+            |b, input| b.iter(|| deinterleave_simd_swizzle(black_box(input))),
+        );
     }
+
+    group.finish();
 }
 
 criterion_group!(benches, benchmark_deinterleave);
