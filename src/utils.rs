@@ -59,19 +59,18 @@ pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec
     (out_odd, out_even)
 }
 
-/// Slow but obviously correct implementation of deinterleaving,
-/// to be used in tests
-#[allow(dead_code)]
-pub fn deinterleave_naive<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
-    input.chunks_exact(2).map(|c| (c[0], c[1])).unzip()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::deinterleave;
 
     fn gen_test_vec(len: usize) -> Vec<usize> {
-        (0..len).collect()
+        (0..len).into_iter().collect()
+    }
+
+    /// Slow but obviously correct implementation of deinterleaving,
+    /// to be used in tests
+    fn deinterleave_naive<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
+        input.chunks_exact(2).map(|c| (c[0], c[1])).unzip()
     }
 
     #[test]
