@@ -15,7 +15,7 @@ then
     exit 1
 fi
 
-if ! cargo test
+if ! cargo test --all-features
 then
     echo "There are some test issues."
     exit 1
