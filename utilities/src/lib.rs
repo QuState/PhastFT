@@ -22,6 +22,36 @@ pub fn assert_float_closeness<T: Float + Display>(actual: T, expected: T, epsilo
     }
 }
 
+pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
+    assert!(reals.len() == imags.len() && !reals.is_empty());
+    let mut rng = thread_rng();
+    let between = Uniform::from(0.0..1.0);
+    let angle_dist = Uniform::from(0.0..2.0 * (PI as f32));
+    let num_amps = reals.len();
+
+    let mut probs: Vec<_> = (0..num_amps).map(|_| between.sample(&mut rng)).collect();
+
+    let total: f32 = probs.iter().sum();
+    let total_recip = total.recip();
+
+    probs.iter_mut().for_each(|p| *p *= total_recip);
+
+    let angles = (0..num_amps).map(|_| angle_dist.sample(&mut rng));
+
+    probs
+        .iter()
+        .zip(angles)
+        .enumerate()
+        .for_each(|(i, (p, a))| {
+            let p_sqrt = p.sqrt();
+            let (sin_a, cos_a) = a.sin_cos();
+            let re = p_sqrt * cos_a;
+            let im = p_sqrt * sin_a;
+            reals[i] = re;
+            imags[i] = im;
+        });
+}
+
 /// Generate a random, complex, signal in the provided buffers
 ///
 /// # Panics
