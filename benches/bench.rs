@@ -43,9 +43,10 @@ fn benchmark_forward_f32(c: &mut Criterion) {
     for n in LENGTHS.iter() {
         let len = 1 << n;
         let id = format!("FFT Forward f32 {} elements", len);
+        let planner = Planner32::new(len, Direction::Forward);
+
         c.bench_function(&id, |b| {
             let (mut reals, mut imags) = generate_numbers(len);
-            let planner = Planner32::new(len, Direction::Forward);
             b.iter(|| {
                 black_box(fft_32_with_opts_and_plan(
                     &mut reals, &mut imags, &options, &planner,
@@ -61,9 +62,10 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
     for n in LENGTHS.iter() {
         let len = 1 << n;
         let id = format!("FFT Inverse f32 {} elements", len);
+        let planner = Planner32::new(len, Direction::Reverse);
+
         c.bench_function(&id, |b| {
             let (mut reals, mut imags) = generate_numbers(len);
-            let planner = Planner32::new(len, Direction::Reverse);
             b.iter(|| {
                 black_box(fft_32_with_opts_and_plan(
                     &mut reals, &mut imags, &options, &planner,
@@ -79,9 +81,10 @@ fn benchmark_forward_f64(c: &mut Criterion) {
     for n in LENGTHS.iter() {
         let len = 1 << n;
         let id = format!("FFT Forward f64 {} elements", len);
+        let planner = Planner64::new(len, Direction::Forward);
+
         c.bench_function(&id, |b| {
             let (mut reals, mut imags) = generate_numbers(len);
-            let planner = Planner64::new(len, Direction::Forward);
             b.iter(|| {
                 black_box(fft_64_with_opts_and_plan(
                     &mut reals, &mut imags, &options, &planner,
@@ -97,9 +100,10 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
     for n in LENGTHS.iter() {
         let len = 1 << n;
         let id = format!("FFT Inverse f64 {} elements", len);
+        let planner = Planner64::new(len, Direction::Reverse);
+
         c.bench_function(&id, |b| {
             let (mut reals, mut imags) = generate_numbers(len);
-            let planner = Planner64::new(len, Direction::Reverse);
             b.iter(|| {
                 black_box(fft_64_with_opts_and_plan(
                     &mut reals, &mut imags, &options, &planner,
