@@ -97,8 +97,9 @@ macro_rules! impl_fft_with_opts_and_plan_for {
             assert!(reals.len() == imags.len() && reals.len().is_power_of_two());
             let n: usize = reals.len().ilog2() as usize;
 
-            let mut twiddles_re = planner.twiddles_re.clone();
-            let mut twiddles_im = planner.twiddles_im.clone();
+            // Use references to avoid unnecessary clones
+            let twiddles_re = &planner.twiddles_re;
+            let twiddles_im = &planner.twiddles_im;
 
             // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance
             // between pairs
@@ -113,18 +114,21 @@ macro_rules! impl_fft_with_opts_and_plan_for {
                 _ => (),
             }
 
+            let mut filtered_twiddles_re = twiddles_re.clone();
+            let mut filtered_twiddles_im = twiddles_im.clone();
+
             for t in (0..n).rev() {
                 let dist = 1 << t;
                 let chunk_size = dist << 1;
 
                 if chunk_size > 4 {
                     if t < n - 1 {
-                        (twiddles_re, twiddles_im) = filter_twiddles(&twiddles_re, &twiddles_im);
+                        (filtered_twiddles_re, filtered_twiddles_im) = filter_twiddles(&filtered_twiddles_re, &filtered_twiddles_im);
                     }
                     if chunk_size >= $lanes * 2 {
-                        $simd_butterfly_kernel(reals, imags, &twiddles_re, &twiddles_im, dist);
+                        $simd_butterfly_kernel(reals, imags, &filtered_twiddles_re, &filtered_twiddles_im, dist);
                     } else {
-                        fft_chunk_n(reals, imags, &twiddles_re, &twiddles_im, dist);
+                        fft_chunk_n(reals, imags, &filtered_twiddles_re, &filtered_twiddles_im, dist);
                     }
                 } else if chunk_size == 2 {
                     fft_chunk_2(reals, imags);
