@@ -1,14 +1,22 @@
 use std::env;
 use std::str::FromStr;
 
-use phastft::fft_64;
-use phastft::planner::Direction;
+use utilities::gen_random_signal;
 
-fn benchmark_fft(num_qubits: usize) {
-    let n = 1 << num_qubits;
-    let mut reals: Vec<f64> = (1..=n).map(|i| i as f64).collect();
-    let mut imags: Vec<f64> = (1..=n).map(|i| i as f64).collect();
-    fft_64(&mut reals, &mut imags, Direction::Forward);
+use phastft::fft_64_with_opts_and_plan;
+use phastft::options::Options;
+use phastft::planner::{Direction, Planner64};
+
+fn benchmark_fft_64(n: usize) {
+    let big_n = 1 << n;
+    let mut reals = vec![0.0; big_n];
+    let mut imags = vec![0.0; big_n];
+    gen_random_signal(&mut reals, &mut imags);
+
+    let planner = Planner64::new(reals.len(), Direction::Forward);
+    let opts = Options::guess_options(reals.len());
+
+    fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
 }
 
 fn main() {
@@ -16,5 +24,6 @@ fn main() {
     assert_eq!(args.len(), 2, "Usage {} <n>", args[0]);
 
     let n = usize::from_str(&args[1]).unwrap();
-    benchmark_fft(n);
+
+    benchmark_fft_64(n);
 }

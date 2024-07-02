@@ -15,8 +15,14 @@ num-traits = "0.2.18"
 multiversion = "0.7"
 
 [dev-dependencies]
-utilities = { path = "utilities" }
+criterion = "0.5.1"
 fftw = "0.8.0"
+rand = "0.8.5"
+utilities = { path = "utilities" }
+
+[[bench]]
+name = "bench"
+harness = false
 
 [profile.release]
 codegen-units = 1

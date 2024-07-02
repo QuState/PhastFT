@@ -25,6 +25,8 @@ macro_rules! impl_planner_for {
             pub twiddles_re: Vec<$precision>,
             /// The imaginary components of the twiddle factors
             pub twiddles_im: Vec<$precision>,
+            /// The direction of the FFT associated with this `Planner`
+            pub direction: Direction,
         }
         impl $struct_name {
             /// Create a `Planner` for an FFT of size `num_points`.
@@ -35,12 +37,18 @@ macro_rules! impl_planner_for {
             /// # Panics
             ///
             /// Panics if `num_points < 1` or if `num_points` is __not__ a power of 2.
-            pub fn new(num_points: usize, _direction: Direction) -> Self {
+            pub fn new(num_points: usize, direction: Direction) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
+                let dir = match direction {
+                    Direction::Forward => Direction::Forward,
+                    Direction::Reverse => Direction::Reverse,
+                };
+
                 if num_points <= 4 {
                     return Self {
                         twiddles_re: vec![],
                         twiddles_im: vec![],
+                        direction: dir,
                     };
                 }
 
@@ -57,6 +65,7 @@ macro_rules! impl_planner_for {
                 Self {
                     twiddles_re,
                     twiddles_im,
+                    direction: dir,
                 }
             }
 

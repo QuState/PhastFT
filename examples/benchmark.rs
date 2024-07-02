@@ -3,8 +3,9 @@ use std::str::FromStr;
 
 use utilities::gen_random_signal;
 
-use phastft::fft_64;
-use phastft::planner::Direction;
+use phastft::fft_64_with_opts_and_plan;
+use phastft::options::Options;
+use phastft::planner::{Direction, Planner64};
 
 fn benchmark_fft_64(n: usize) {
     let big_n = 1 << n;
@@ -12,8 +13,11 @@ fn benchmark_fft_64(n: usize) {
     let mut imags = vec![0.0; big_n];
     gen_random_signal(&mut reals, &mut imags);
 
+    let planner = Planner64::new(reals.len(), Direction::Forward);
+    let opts = Options::guess_options(reals.len());
+
     let now = std::time::Instant::now();
-    fft_64(&mut reals, &mut imags, Direction::Forward);
+    fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
     let elapsed = now.elapsed().as_micros();
     println!("{elapsed}");
 }
