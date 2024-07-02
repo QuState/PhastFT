@@ -184,6 +184,15 @@ macro_rules! generate_twiddles_simd {
 generate_twiddles_simd!(generate_twiddles_simd_64, f64, 8, f64x8);
 generate_twiddles_simd!(generate_twiddles_simd_32, f32, 8, f32x8);
 
+#[multiversion::multiversion(
+                            targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+                                    "x86_64+avx2+fma", // x86_64-v3
+                                    "x86_64+sse4.2", // x86_64-v2
+                                    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                    "x86+avx2+fma",
+                                    "x86+sse4.2",
+                                    "x86+sse2",
+))]
 #[inline]
 pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &[T], twiddles_im: &[T]) -> (Vec<T>, Vec<T>) {
     assert_eq!(twiddles_re.len(), twiddles_im.len());
