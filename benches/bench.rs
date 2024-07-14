@@ -1,91 +1,159 @@
-#![feature(portable_simd, avx512_target_feature)]
-
-use std::simd::{f32x16, f64x8};
-
-use bytemuck::cast_slice;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use num_complex::Complex;
+use num_traits::Float;
+use phastft::{
+    fft_32_with_opts_and_plan, fft_64_with_opts_and_plan,
+    options::Options,
+    planner::{Direction, Planner32, Planner64},
+};
+use rand::{
+    distributions::{Distribution, Standard},
+    thread_rng, Rng,
+};
+use utilities::rustfft::num_complex::Complex;
+use utilities::rustfft::FftPlanner;
 
-use phastft::separate_re_im_f64;
+const LENGTHS: &[usize] = &[
+    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+];
 
-macro_rules! impl_separate_re_im_with_capacity {
-    ($func_name:ident, $precision:ty, $lanes:literal, $simd_vec:ty) => {
-        /// Utility function to separate interleaved format signals (i.e., Vector of Complex Number Structs)
-        /// into separate vectors for the corresponding real and imaginary components.
-        #[multiversion::multiversion(
-                                    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
-                                            "x86_64+avx2+fma", // x86_64-v3
-                                            "x86_64+sse4.2", // x86_64-v2
-                                            "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
-                                            "x86+avx2+fma",
-                                            "x86+sse4.2",
-                                            "x86+sse2",
-                                        ))]
-        pub fn $func_name(
-            signal: &[Complex<$precision>],
-        ) -> (Vec<$precision>, Vec<$precision>) {
-            let n = signal.len();
-            let mut reals = Vec::with_capacity(n);
-            let mut imags = Vec::with_capacity(n);
+fn generate_numbers<T: Float>(n: usize) -> (Vec<T>, Vec<T>)
+where
+    Standard: Distribution<T>,
+{
+    let mut rng = thread_rng();
 
-            let complex_t: &[$precision] = cast_slice(signal);
-            const CHUNK_SIZE: usize = $lanes * 2;
+    let samples: Vec<T> = (&mut rng).sample_iter(Standard).take(2 * n).collect();
 
-            for chunk in complex_t
-                .chunks_exact(CHUNK_SIZE)
-            {
-                let (first_half, second_half) = chunk.split_at($lanes);
+    let mut reals = vec![T::zero(); n];
+    let mut imags = vec![T::zero(); n];
 
-                let a = <$simd_vec>::from_slice(&first_half);
-                let b = <$simd_vec>::from_slice(&second_half);
-                let (re_deinterleaved, im_deinterleaved) = a.deinterleave(b);
+    for ((z_re, z_im), rand_chunk) in reals
+        .iter_mut()
+        .zip(imags.iter_mut())
+        .zip(samples.chunks_exact(2))
+    {
+        *z_re = rand_chunk[0];
+        *z_im = rand_chunk[1];
+    }
 
-                reals.extend_from_slice(&re_deinterleaved.to_array());
-                imags.extend_from_slice(&im_deinterleaved.to_array());
-            }
-
-            let remainder = complex_t.chunks_exact(CHUNK_SIZE).remainder();
-            if !remainder.is_empty() {
-                for chunk in remainder.chunks_exact(2) {
-                    reals.push(chunk[0]);
-                    imags.push(chunk[1]);
-                }
-            }
-
-            (reals, imags)
-        }
-    };
+    (reals, imags)
 }
 
-#[cfg(feature = "complex-nums")]
-impl_separate_re_im_with_capacity!(separate_re_im_f32_with_cap, f32, 16, f32x16);
+fn generate_complex_numbers<T: Float + Default>(n: usize) -> Vec<Complex<T>>
+where
+    Standard: Distribution<T>,
+{
+    let mut rng = thread_rng();
 
-#[cfg(feature = "complex-nums")]
-impl_separate_re_im_with_capacity!(separate_re_im_f64_with_cap, f64, 8, f64x8);
+    let samples: Vec<T> = (&mut rng).sample_iter(Standard).take(2 * n).collect();
 
-fn criterion_benchmark(c: &mut Criterion) {
-    let sizes = vec![1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20];
+    let mut signal = vec![Complex::default(); n];
 
-    let mut group = c.benchmark_group("separate_re_im");
-    for size in sizes.into_iter() {
-        let signal: Vec<_> = (0..size)
-            .map(|x| Complex::new(x as f64, (x * 2) as f64))
-            .collect();
+    for (z, rand_chunk) in signal.iter_mut().zip(samples.chunks_exact(2)) {
+        z.re = rand_chunk[0];
+        z.im = rand_chunk[1];
+    }
 
-        group.throughput(Throughput::Elements(size));
+    signal
+}
 
-        group.bench_with_input(
-            BenchmarkId::new("with_zeroed_vecs", size),
-            &signal,
-            |b, s| b.iter(|| separate_re_im_f64(black_box(s))),
-        );
+fn benchmark_forward_f32(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Forward f32");
 
-        group.bench_with_input(BenchmarkId::new("with_capacity", size), &signal, |b, s| {
-            b.iter(|| separate_re_im_f64_with_cap(black_box(s)));
+    for n in LENGTHS.iter() {
+        let len = 1 << n;
+        group.throughput(Throughput::Elements(len as u64));
+
+        let id = "PhastFT FFT Forward";
+        let options = Options::guess_options(len);
+        let planner = Planner32::new(len, Direction::Forward);
+        let (mut reals, mut imags) = generate_numbers(len);
+
+        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &len| {
+            b.iter(|| {
+                fft_32_with_opts_and_plan(
+                    black_box(&mut reals),
+                    black_box(&mut imags),
+                    black_box(&options),
+                    black_box(&planner),
+                );
+            });
+        });
+
+        let id = "RustFFT FFT Forward";
+        let mut planner = FftPlanner::<f32>::new();
+        let fft = planner.plan_fft_forward(len);
+        let mut signal = generate_complex_numbers(len);
+
+        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &len| {
+            b.iter(|| fft.process(black_box(&mut signal)));
         });
     }
     group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark);
+fn benchmark_inverse_f32(c: &mut Criterion) {
+    let options = Options::default();
+
+    for n in LENGTHS.iter() {
+        let len = 1 << n;
+        let id = format!("FFT Inverse f32 {} elements", len);
+        let planner = Planner32::new(len, Direction::Reverse);
+
+        c.bench_function(&id, |b| {
+            let (mut reals, mut imags) = generate_numbers(len);
+            b.iter(|| {
+                black_box(fft_32_with_opts_and_plan(
+                    &mut reals, &mut imags, &options, &planner,
+                ));
+            });
+        });
+    }
+}
+
+fn benchmark_forward_f64(c: &mut Criterion) {
+    let options = Options::default();
+
+    for n in LENGTHS.iter() {
+        let len = 1 << n;
+        let id = format!("FFT Forward f64 {} elements", len);
+        let planner = Planner64::new(len, Direction::Forward);
+
+        c.bench_function(&id, |b| {
+            let (mut reals, mut imags) = generate_numbers(len);
+            b.iter(|| {
+                black_box(fft_64_with_opts_and_plan(
+                    &mut reals, &mut imags, &options, &planner,
+                ));
+            });
+        });
+    }
+}
+
+fn benchmark_inverse_f64(c: &mut Criterion) {
+    let options = Options::default();
+
+    for n in LENGTHS.iter() {
+        let len = 1 << n;
+        let id = format!("FFT Inverse f64 {} elements", len);
+        let planner = Planner64::new(len, Direction::Reverse);
+
+        c.bench_function(&id, |b| {
+            let (mut reals, mut imags) = generate_numbers(len);
+            b.iter(|| {
+                black_box(fft_64_with_opts_and_plan(
+                    &mut reals, &mut imags, &options, &planner,
+                ));
+            });
+        });
+    }
+}
+
+criterion_group!(
+    benches,
+    benchmark_forward_f32,
+    benchmark_inverse_f32,
+    benchmark_forward_f64,
+    benchmark_inverse_f64
+);
 criterion_main!(benches);

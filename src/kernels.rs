@@ -4,6 +4,14 @@ use num_traits::Float;
 
 macro_rules! fft_butterfly_n_simd {
     ($func_name:ident, $precision:ty, $lanes:literal, $simd_vector:ty) => {
+        #[multiversion::multiversion(targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+                                                     "x86_64+avx2+fma", // x86_64-v3
+                                                     "x86_64+sse4.2", // x86_64-v2
+                                                     "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                                     "x86+avx2+fma",
+                                                     "x86+sse4.2",
+                                                     "x86+sse2",
+                ))]
         #[inline]
         pub fn $func_name(
             reals: &mut [$precision],
@@ -52,6 +60,14 @@ macro_rules! fft_butterfly_n_simd {
 fft_butterfly_n_simd!(fft_64_chunk_n_simd, f64, 8, f64x8);
 fft_butterfly_n_simd!(fft_32_chunk_n_simd, f32, 16, f32x16);
 
+#[multiversion::multiversion(targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+                                     "x86_64+avx2+fma", // x86_64-v3
+                                     "x86_64+sse4.2", // x86_64-v2
+                                     "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                     "x86+avx2+fma",
+                                     "x86+sse4.2",
+                                     "x86+sse2",
+))]
 #[inline]
 pub(crate) fn fft_chunk_n<T: Float>(
     reals: &mut [T],
@@ -93,6 +109,14 @@ pub(crate) fn fft_chunk_n<T: Float>(
 }
 
 /// `chunk_size == 4`, so hard code twiddle factors
+#[multiversion::multiversion(targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+                                     "x86_64+avx2+fma", // x86_64-v3
+                                     "x86_64+sse4.2", // x86_64-v2
+                                     "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                     "x86+avx2+fma",
+                                     "x86+sse4.2",
+                                     "x86+sse2",
+))]
 #[inline]
 pub(crate) fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
     let dist = 2;
@@ -128,6 +152,14 @@ pub(crate) fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
 }
 
 /// `chunk_size == 2`, so skip phase
+#[multiversion::multiversion(targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+                                     "x86_64+avx2+fma", // x86_64-v3
+                                     "x86_64+sse4.2", // x86_64-v2
+                                     "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                     "x86+avx2+fma",
+                                     "x86+sse4.2",
+                                     "x86+sse2",
+))]
 #[inline]
 pub(crate) fn fft_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     reals

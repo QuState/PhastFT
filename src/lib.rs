@@ -60,7 +60,7 @@ macro_rules! impl_fft_for {
                 imags.len()
             );
 
-            let mut planner = <$planner>::new(reals.len(), Direction::Forward);
+            let planner = <$planner>::new(reals.len(), direction);
             assert!(
                 planner.num_twiddles().is_power_of_two()
                     && planner.num_twiddles() == reals.len() / 2
@@ -68,27 +68,7 @@ macro_rules! impl_fft_for {
 
             let opts = Options::guess_options(reals.len());
 
-            match direction {
-                Direction::Reverse => {
-                    for z_im in imags.iter_mut() {
-                        *z_im = -*z_im;
-                    }
-                }
-                _ => (),
-            }
-
-            $opts_and_plan(reals, imags, &opts, &mut planner);
-
-            match direction {
-                Direction::Reverse => {
-                    let scaling_factor = (reals.len() as $precision).recip();
-                    for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
-                        *z_re *= scaling_factor;
-                        *z_im *= -scaling_factor;
-                    }
-                }
-                _ => (),
-            }
+            $opts_and_plan(reals, imags, &opts, &planner);
         }
     };
 }
@@ -148,36 +128,66 @@ macro_rules! impl_fft_with_opts_and_plan_for {
             reals: &mut [$precision],
             imags: &mut [$precision],
             opts: &Options,
-            planner: &mut $planner,
+            planner: &$planner,
         ) {
             assert!(reals.len() == imags.len() && reals.len().is_power_of_two());
             let n: usize = reals.len().ilog2() as usize;
 
-            let twiddles_re = &mut planner.twiddles_re;
-            let twiddles_im = &mut planner.twiddles_im;
+            // Use references to avoid unnecessary clones
+            let twiddles_re = &planner.twiddles_re;
+            let twiddles_im = &planner.twiddles_im;
 
             // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance
             // between pairs
             assert!(twiddles_re.len() == reals.len() / 2 && twiddles_im.len() == imags.len() / 2);
 
-            for t in (0..n).rev() {
+            match planner.direction {
+                Direction::Reverse => {
+                    for z_im in imags.iter_mut() {
+                        *z_im = -*z_im;
+                    }
+                }
+                _ => (),
+            }
+
+            // 0th stage is special due to no need to filter twiddle factor
+            let dist = 1 << (n - 1);
+            let chunk_size = dist << 1;
+
+            if chunk_size > 4 {
+                if chunk_size >= $lanes * 2 {
+                    $simd_butterfly_kernel(reals, imags, twiddles_re, twiddles_im, dist);
+                } else {
+                    fft_chunk_n(reals, imags, twiddles_re, twiddles_im, dist);
+                }
+            }
+            else if chunk_size == 4 {
+                fft_chunk_4(reals, imags);
+            }
+            else if chunk_size == 2 {
+                fft_chunk_2(reals, imags);
+            }
+
+            let (mut filtered_twiddles_re, mut filtered_twiddles_im) = filter_twiddles(twiddles_re, twiddles_im);
+
+            for t in (0..n - 1).rev() {
                 let dist = 1 << t;
                 let chunk_size = dist << 1;
 
                 if chunk_size > 4 {
-                    if t < n - 1 {
-                        filter_twiddles(twiddles_re, twiddles_im);
-                    }
                     if chunk_size >= $lanes * 2 {
-                        $simd_butterfly_kernel(reals, imags, twiddles_re, twiddles_im, dist);
+                        $simd_butterfly_kernel(reals, imags, &filtered_twiddles_re, &filtered_twiddles_im, dist);
                     } else {
-                        fft_chunk_n(reals, imags, twiddles_re, twiddles_im, dist);
+                        fft_chunk_n(reals, imags, &filtered_twiddles_re, &filtered_twiddles_im, dist);
                     }
-                } else if chunk_size == 2 {
-                    fft_chunk_2(reals, imags);
-                } else if chunk_size == 4 {
+                }
+                else if chunk_size == 4 {
                     fft_chunk_4(reals, imags);
                 }
+                else if chunk_size == 2 {
+                    fft_chunk_2(reals, imags);
+                }
+                (filtered_twiddles_re, filtered_twiddles_im) = filter_twiddles(&filtered_twiddles_re, &filtered_twiddles_im);
             }
 
             if opts.multithreaded_bit_reversal {
@@ -188,6 +198,17 @@ macro_rules! impl_fft_with_opts_and_plan_for {
             } else {
                 cobra_apply(reals, n);
                 cobra_apply(imags, n);
+            }
+
+            match planner.direction {
+                Direction::Reverse => {
+                    let scaling_factor = (reals.len() as $precision).recip();
+                    for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
+                        *z_re *= scaling_factor;
+                        *z_im *= -scaling_factor;
+                    }
+                }
+                _ => (),
             }
         }
     };
@@ -295,7 +316,7 @@ mod tests {
 
     use utilities::rustfft::num_complex::Complex;
     use utilities::rustfft::FftPlanner;
-    use utilities::{assert_float_closeness, gen_random_signal};
+    use utilities::{assert_float_closeness, gen_random_signal, gen_random_signal_f32};
 
     use super::*;
 
@@ -478,6 +499,67 @@ mod tests {
             {
                 assert_float_closeness(res_re, orig_re, 1e-6);
                 assert_float_closeness(res_im, orig_im, 1e-6);
+            }
+        }
+    }
+
+    #[test]
+    fn fft_64_with_opts_and_plan_vs_fft_64() {
+        let num_points = 4096;
+
+        let mut reals = vec![0.0; num_points];
+        let mut imags = vec![0.0; num_points];
+        gen_random_signal(&mut reals, &mut imags);
+
+        let mut re = reals.clone();
+        let mut im = imags.clone();
+
+        let mut planner = Planner64::new(num_points, Direction::Forward);
+        let opts = Options::guess_options(reals.len());
+        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+
+        fft_64(&mut re, &mut im, Direction::Forward);
+
+        reals
+            .iter()
+            .zip(imags.iter())
+            .zip(re.iter())
+            .zip(im.iter())
+            .for_each(|(((r, i), z_re), z_im)| {
+                assert_float_closeness(*r, *z_re, 1e-6);
+                assert_float_closeness(*i, *z_im, 1e-6);
+            });
+    }
+
+    #[test]
+    fn fft_32_with_opts_and_plan_vs_fft_64() {
+        let dirs = [Direction::Forward, Direction::Reverse];
+
+        for direction in dirs {
+            for n in 4..14 {
+                let num_points = 1 << n;
+                let mut reals = vec![0.0; num_points];
+                let mut imags = vec![0.0; num_points];
+                gen_random_signal_f32(&mut reals, &mut imags);
+
+                let mut re = reals.clone();
+                let mut im = imags.clone();
+
+                let mut planner = Planner32::new(num_points, direction);
+                let opts = Options::guess_options(reals.len());
+                fft_32_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+
+                fft_32(&mut re, &mut im, direction);
+
+                reals
+                    .iter()
+                    .zip(imags.iter())
+                    .zip(re.iter())
+                    .zip(im.iter())
+                    .for_each(|(((r, i), z_re), z_im)| {
+                        assert_float_closeness(*r, *z_re, 1e-6);
+                        assert_float_closeness(*i, *z_im, 1e-6);
+                    });
             }
         }
     }
