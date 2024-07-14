@@ -15,7 +15,8 @@ pub struct Options {
 }
 
 impl Options {
-    pub(crate) fn guess_options(input_size: usize) -> Options {
+    /// Attempt to guess the best settings to use for optimal FFT
+    pub fn guess_options(input_size: usize) -> Options {
         let mut options = Options::default();
         let n: usize = input_size.ilog2() as usize;
         options.multithreaded_bit_reversal = n >= 22;
