@@ -34,7 +34,7 @@ fn benchmark_fftw(n: usize) {
         &mut nums,
     )
     .unwrap();
-    let elapsed = now.elapsed().as_micros();
+    let elapsed = now.elapsed().as_nanos();
     println!("{elapsed}");
 }
 

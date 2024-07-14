@@ -28,7 +28,7 @@ fn benchmark_rustfft(n: usize) {
 
     let now = std::time::Instant::now();
     fft.process(&mut signal);
-    let elapsed = now.elapsed().as_micros();
+    let elapsed = now.elapsed().as_nanos();
     println!("{elapsed}");
 }
 
