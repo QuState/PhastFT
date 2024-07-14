@@ -8,7 +8,7 @@
     clippy::suspicious
 )]
 #![forbid(unsafe_code)]
-#![feature(array_chunks, portable_simd, avx512_target_feature)]
+#![feature(portable_simd, avx512_target_feature)]
 
 #[cfg(feature = "complex-nums")]
 use std::simd::{f32x16, f64x8};

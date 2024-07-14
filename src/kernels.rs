@@ -123,8 +123,8 @@ pub(crate) fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
     const CHUNK_SIZE: usize = DIST << 1;
 
     reals
-        .array_chunks_mut::<CHUNK_SIZE>()
-        .zip(imags.array_chunks_mut::<CHUNK_SIZE>())
+        .chunks_exact_mut(CHUNK_SIZE)
+        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -163,8 +163,8 @@ pub(crate) fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
 #[inline]
 pub(crate) fn fft_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     reals
-        .array_chunks_mut::<2>()
-        .zip(imags.array_chunks_mut::<2>())
+        .chunks_exact_mut(2)
+        .zip(imags.chunks_exact_mut(2))
         .for_each(|(reals_chunk, imags_chunk)| {
             let z0_re = reals_chunk[0];
             let z0_im = imags_chunk[0];
