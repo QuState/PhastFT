@@ -114,27 +114,44 @@ macro_rules! impl_fft_with_opts_and_plan_for {
                 _ => (),
             }
 
-            let mut filtered_twiddles_re = twiddles_re.clone();
-            let mut filtered_twiddles_im = twiddles_im.clone();
+            // 0th stage is special due to no need to filter twiddle factor
+            let dist = 1 << (n - 1);
+            let chunk_size = dist << 1;
 
-            for t in (0..n).rev() {
+            if chunk_size > 4 {
+                if chunk_size >= $lanes * 2 {
+                    $simd_butterfly_kernel(reals, imags, twiddles_re, twiddles_im, dist);
+                } else {
+                    fft_chunk_n(reals, imags, twiddles_re, twiddles_im, dist);
+                }
+            }
+            else if chunk_size == 4 {
+                fft_chunk_4(reals, imags);
+            }
+            else if chunk_size == 2 {
+                fft_chunk_2(reals, imags);
+            }
+
+            let (mut filtered_twiddles_re, mut filtered_twiddles_im) = filter_twiddles(twiddles_re, twiddles_im);
+
+            for t in (0..n - 1).rev() {
                 let dist = 1 << t;
                 let chunk_size = dist << 1;
 
                 if chunk_size > 4 {
-                    if t < n - 1 {
-                        (filtered_twiddles_re, filtered_twiddles_im) = filter_twiddles(&filtered_twiddles_re, &filtered_twiddles_im);
-                    }
                     if chunk_size >= $lanes * 2 {
                         $simd_butterfly_kernel(reals, imags, &filtered_twiddles_re, &filtered_twiddles_im, dist);
                     } else {
                         fft_chunk_n(reals, imags, &filtered_twiddles_re, &filtered_twiddles_im, dist);
                     }
-                } else if chunk_size == 2 {
-                    fft_chunk_2(reals, imags);
-                } else if chunk_size == 4 {
+                }
+                else if chunk_size == 4 {
                     fft_chunk_4(reals, imags);
                 }
+                else if chunk_size == 2 {
+                    fft_chunk_2(reals, imags);
+                }
+                (filtered_twiddles_re, filtered_twiddles_im) = filter_twiddles(&filtered_twiddles_re, &filtered_twiddles_im);
             }
 
             if opts.multithreaded_bit_reversal {

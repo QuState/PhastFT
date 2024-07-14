@@ -217,6 +217,34 @@ mod tests {
 
     use super::*;
 
+    // TODO(saveliy): use
+    #[test]
+    fn twiddles_cos_only() {
+        let n = 4;
+        let big_n = 1 << n;
+
+        let dist = big_n >> 1;
+
+        let (fwd_twiddles_re, fwd_twiddles_im) = if dist >= 8 * 2 {
+            generate_twiddles_simd_64(dist, Direction::Forward)
+        } else {
+            generate_twiddles(dist, Direction::Forward)
+        };
+
+        assert!(fwd_twiddles_re.len() == dist && fwd_twiddles_im.len() == dist);
+
+        for i in 0..dist {
+            let w_re = fwd_twiddles_re[i];
+            let expected_w_im = fwd_twiddles_im[i];
+
+            let actual_w_im = -fwd_twiddles_re[(i + dist / 2) % dist];
+            //assert_float_closeness(actual_w_im, expected_w_im, 1e-6);
+            print!("actual: {actual_w_im} expected: {expected_w_im}\n");
+        }
+        println!("{:?}", fwd_twiddles_re);
+        println!("{:?}", fwd_twiddles_im);
+    }
+
     #[test]
     fn twiddles_4() {
         const N: usize = 4;
