@@ -13,8 +13,7 @@ use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 
 const LENGTHS: &[usize] = &[
-    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-];
+    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
 
 fn generate_numbers<T: Float>(n: usize) -> (Vec<T>, Vec<T>)
 where
@@ -112,22 +111,37 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
 }
 
 fn benchmark_forward_f64(c: &mut Criterion) {
-    let options = Options::default();
+    let mut group = c.benchmark_group("Forward f64");
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
-        let id = format!("FFT Forward f64 {} elements", len);
+        let id = "PhastFT FFT Forward";
+        let options = Options::guess_options(len);
         let planner = Planner64::new(len, Direction::Forward);
+        let (mut reals, mut imags) = generate_numbers(len);
+        group.throughput(Throughput::Elements(len as u64));
 
-        c.bench_function(&id, |b| {
-            let (mut reals, mut imags) = generate_numbers(len);
+        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &len| {
             b.iter(|| {
-                black_box(fft_64_with_opts_and_plan(
-                    &mut reals, &mut imags, &options, &planner,
-                ));
+                fft_64_with_opts_and_plan(
+                    black_box(&mut reals),
+                    black_box(&mut imags),
+                    black_box(&options),
+                    black_box(&planner),
+                );
             });
         });
+
+        let id = "RustFFT FFT Forward";
+        let mut planner = FftPlanner::<f64>::new();
+        let fft = planner.plan_fft_forward(len);
+        let mut signal = generate_complex_numbers(len);
+
+        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &len| {
+            b.iter(|| fft.process(black_box(&mut signal)));
+        });
     }
+    group.finish();
 }
 
 fn benchmark_inverse_f64(c: &mut Criterion) {
@@ -151,9 +165,9 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    benchmark_forward_f32,
-    benchmark_inverse_f32,
+    // benchmark_forward_f32,
+    // benchmark_inverse_f32,
     benchmark_forward_f64,
-    benchmark_inverse_f64
+    // benchmark_inverse_f64
 );
 criterion_main!(benches);

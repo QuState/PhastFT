@@ -119,15 +119,15 @@ pub(crate) fn fft_chunk_n<T: Float>(
 ))]
 #[inline]
 pub(crate) fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
-    let dist = 2;
-    let chunk_size = dist << 1;
+    const DIST: usize = 2;
+    const CHUNK_SIZE: usize = DIST << 1;
 
     reals
-        .chunks_exact_mut(chunk_size)
-        .zip(imags.chunks_exact_mut(chunk_size))
+        .array_chunks_mut::<CHUNK_SIZE>()
+        .zip(imags.array_chunks_mut::<CHUNK_SIZE>())
         .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
             let real_c0 = reals_s0[0];
             let real_c1 = reals_s1[0];
@@ -163,8 +163,8 @@ pub(crate) fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
 #[inline]
 pub(crate) fn fft_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     reals
-        .chunks_exact_mut(2)
-        .zip(imags.chunks_exact_mut(2))
+        .array_chunks_mut::<2>()
+        .zip(imags.array_chunks_mut::<2>())
         .for_each(|(reals_chunk, imags_chunk)| {
             let z0_re = reals_chunk[0];
             let z0_im = imags_chunk[0];
