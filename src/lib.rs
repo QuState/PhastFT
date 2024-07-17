@@ -9,6 +9,7 @@
 )]
 #![forbid(unsafe_code)]
 #![feature(portable_simd, avx512_target_feature)]
+#![feature(doc_cfg)]
 
 #[cfg(feature = "complex-nums")]
 use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
