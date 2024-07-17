@@ -239,7 +239,7 @@ mod tests {
 
             let actual_w_im = -fwd_twiddles_re[(i + dist / 2) % dist];
             //assert_float_closeness(actual_w_im, expected_w_im, 1e-6);
-            print!("actual: {actual_w_im} expected: {expected_w_im}\n");
+            println!("actual: {actual_w_im} expected: {expected_w_im}");
         }
         println!("{:?}", fwd_twiddles_re);
         println!("{:?}", fwd_twiddles_im);

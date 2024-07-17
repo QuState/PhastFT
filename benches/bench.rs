@@ -69,7 +69,7 @@ fn benchmark_forward_f32(c: &mut Criterion) {
         let planner = Planner32::new(len, Direction::Forward);
         let (mut reals, mut imags) = generate_numbers(len);
 
-        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &len| {
+        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &_len| {
             b.iter(|| {
                 fft_32_with_opts_and_plan(
                     black_box(&mut reals),
@@ -85,7 +85,7 @@ fn benchmark_forward_f32(c: &mut Criterion) {
         let fft = planner.plan_fft_forward(len);
         let mut signal = generate_complex_numbers(len);
 
-        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &len| {
+        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &_len| {
             b.iter(|| fft.process(black_box(&mut signal)));
         });
     }
@@ -103,9 +103,12 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
         c.bench_function(&id, |b| {
             let (mut reals, mut imags) = generate_numbers(len);
             b.iter(|| {
-                black_box(fft_32_with_opts_and_plan(
-                    &mut reals, &mut imags, &options, &planner,
-                ));
+                fft_32_with_opts_and_plan(
+                    black_box(&mut reals),
+                    black_box(&mut imags),
+                    black_box(&options),
+                    black_box(&planner),
+                );
             });
         });
     }
@@ -122,7 +125,7 @@ fn benchmark_forward_f64(c: &mut Criterion) {
         let (mut reals, mut imags) = generate_numbers(len);
         group.throughput(Throughput::Elements(len as u64));
 
-        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &len| {
+        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &_len| {
             b.iter(|| {
                 fft_64_with_opts_and_plan(
                     black_box(&mut reals),
@@ -138,7 +141,7 @@ fn benchmark_forward_f64(c: &mut Criterion) {
         let fft = planner.plan_fft_forward(len);
         let mut signal = generate_complex_numbers(len);
 
-        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &len| {
+        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &_len| {
             b.iter(|| fft.process(black_box(&mut signal)));
         });
     }
@@ -156,9 +159,12 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
         c.bench_function(&id, |b| {
             let (mut reals, mut imags) = generate_numbers(len);
             b.iter(|| {
-                black_box(fft_64_with_opts_and_plan(
-                    &mut reals, &mut imags, &options, &planner,
-                ));
+                fft_64_with_opts_and_plan(
+                    black_box(&mut reals),
+                    black_box(&mut imags),
+                    black_box(&options),
+                    black_box(&planner),
+                );
             });
         });
     }
@@ -166,9 +172,9 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    // benchmark_forward_f32,
-    // benchmark_inverse_f32,
+    benchmark_forward_f32,
+    benchmark_inverse_f32,
     benchmark_forward_f64,
-    // benchmark_inverse_f64
+    benchmark_inverse_f64
 );
 criterion_main!(benches);

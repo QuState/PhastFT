@@ -11,14 +11,9 @@
 #![feature(portable_simd, avx512_target_feature)]
 
 #[cfg(feature = "complex-nums")]
-use std::simd::{f32x16, f64x8};
-
-#[cfg(feature = "complex-nums")]
-use bytemuck::cast_slice;
+use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 #[cfg(feature = "complex-nums")]
 use num_complex::Complex;
-#[cfg(feature = "complex-nums")]
-use num_traits::Float;
 
 use crate::cobra::cobra_apply;
 use crate::kernels::{
@@ -96,9 +91,9 @@ macro_rules! impl_fft_interleaved_for {
 }
 
 #[cfg(feature = "complex-nums")]
-impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32, separate_re_im_f32);
+impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32, deinterleave_complex32);
 #[cfg(feature = "complex-nums")]
-impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64, separate_re_im_f64);
+impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64, deinterleave_complex64);
 
 macro_rules! impl_fft_with_opts_and_plan_for {
     ($func_name:ident, $precision:ty, $planner:ty, $simd_butterfly_kernel:ident, $lanes:literal) => {
@@ -239,25 +234,6 @@ mod tests {
     use utilities::{assert_float_closeness, gen_random_signal, gen_random_signal_f32};
 
     use super::*;
-
-    #[cfg(feature = "complex-nums")]
-    #[test]
-    fn test_separate_and_combine_re_im() {
-        use utils::deinterleave;
-
-        let complex_vec: Vec<_> = vec![
-            Complex::new(1.0, 2.0),
-            Complex::new(3.0, 4.0),
-            Complex::new(5.0, 6.0),
-            Complex::new(7.0, 8.0),
-        ];
-
-        let (reals, imags) = deinterleave(&complex_vec);
-
-        let recombined_vec = combine_re_im(&reals, &imags);
-
-        assert_eq!(complex_vec, recombined_vec);
-    }
 
     macro_rules! non_power_of_2_planner {
         ($test_name:ident, $planner:ty) => {
@@ -436,9 +412,9 @@ mod tests {
         let mut re = reals.clone();
         let mut im = imags.clone();
 
-        let mut planner = Planner64::new(num_points, Direction::Forward);
+        let planner = Planner64::new(num_points, Direction::Forward);
         let opts = Options::guess_options(reals.len());
-        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
 
         fft_64(&mut re, &mut im, Direction::Forward);
 
@@ -467,9 +443,9 @@ mod tests {
                 let mut re = reals.clone();
                 let mut im = imags.clone();
 
-                let mut planner = Planner32::new(num_points, direction);
+                let planner = Planner32::new(num_points, direction);
                 let opts = Options::guess_options(reals.len());
-                fft_32_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+                fft_32_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
 
                 fft_32(&mut re, &mut im, direction);
 
