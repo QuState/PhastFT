@@ -17,7 +17,7 @@ use rustfft::num_traits::Float;
 pub fn assert_float_closeness<T: Float + Display>(actual: T, expected: T, epsilon: T) {
     if (actual - expected).abs() >= epsilon {
         panic!(
-            "Assertion failed: {actual} too far from expected value {expected} (with epsilon {epsilon})",
+            "Assertion failed: actual value {actual} too far from expected value {expected} (with epsilon {epsilon})",
         );
     }
 }

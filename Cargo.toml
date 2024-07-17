@@ -23,6 +23,7 @@ complex-nums = ["dep:num-complex", "dep:bytemuck"]
 [dev-dependencies]
 criterion = "0.5.1"
 fftw = "0.8.0"
+realfft = "3.3.0"
 rand = "0.8.5"
 utilities = { path = "utilities" }
 
