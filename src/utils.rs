@@ -59,6 +59,23 @@ pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec
     (out_odd, out_even)
 }
 
+/// Utility function to combine separate vectors of real and imaginary components
+/// into a single vector of Complex Number Structs.
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()`.
+#[cfg(feature = "complex-nums")]
+pub(crate) fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
+    assert_eq!(reals.len(), imags.len());
+
+    reals
+        .iter()
+        .zip(imags.iter())
+        .map(|(z_re, z_im)| Complex::new(*z_re, *z_im))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::deinterleave;
