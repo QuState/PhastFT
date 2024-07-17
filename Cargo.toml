@@ -10,6 +10,9 @@ keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
 categories = ["algorithms", "compression", "science"]
 exclude = ["assets", "scripts", "benches"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 num-traits = "0.2.18"
 multiversion = "0.7"
