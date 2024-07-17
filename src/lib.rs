@@ -90,10 +90,10 @@ macro_rules! impl_fft_interleaved_for {
     };
 }
 
-#[cfg_attr(ddocsrs, doc(cfg(feature = "complex-nums")))]
+#[doc(cfg(feature = "complex-nums"))]
 #[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32, deinterleave_complex32);
-#[cfg_attr(docsrs, doc(cfg(feature = "complex-nums")))]
+#[doc(cfg(feature = "complex-nums"))]
 #[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64, deinterleave_complex64);
 
