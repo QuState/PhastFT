@@ -1,12 +1,19 @@
 #![doc = include_str!("../README.md")]
-#![warn(clippy::complexity)]
-#![warn(missing_docs)]
-#![warn(clippy::style)]
-#![warn(clippy::correctness)]
-#![warn(clippy::suspicious)]
-#![warn(clippy::perf)]
+#![warn(
+    missing_docs,
+    clippy::complexity,
+    clippy::perf,
+    clippy::style,
+    clippy::correctness,
+    clippy::suspicious
+)]
 #![forbid(unsafe_code)]
 #![feature(portable_simd, avx512_target_feature)]
+
+#[cfg(feature = "complex-nums")]
+use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
+#[cfg(feature = "complex-nums")]
+use num_complex::Complex;
 
 use crate::cobra::cobra_apply;
 use crate::kernels::{
@@ -63,6 +70,30 @@ macro_rules! impl_fft_for {
 
 impl_fft_for!(fft_64, f64, Planner64, fft_64_with_opts_and_plan);
 impl_fft_for!(fft_32, f32, Planner32, fft_32_with_opts_and_plan);
+
+#[cfg(feature = "complex-nums")]
+macro_rules! impl_fft_interleaved_for {
+    ($func_name:ident, $precision:ty, $fft_func:ident, $deinterleaving_func: ident) => {
+        /// FFT Interleaved -- this is an alternative to [`fft_64`]/[`fft_32`] in the case where
+        /// the input data is a array of [`Complex`].
+        ///
+        /// The input should be provided in normal order, and then the modified input is
+        /// bit-reversed.
+        ///
+        /// ## References
+        /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
+        pub fn $func_name(signal: &mut [Complex<$precision>], direction: Direction) {
+            let (mut reals, mut imags) = $deinterleaving_func(signal);
+            $fft_func(&mut reals, &mut imags, direction);
+            signal.copy_from_slice(&combine_re_im(&reals, &imags))
+        }
+    };
+}
+
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32, deinterleave_complex32);
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64, deinterleave_complex64);
 
 macro_rules! impl_fft_with_opts_and_plan_for {
     ($func_name:ident, $precision:ty, $planner:ty, $simd_butterfly_kernel:ident, $lanes:literal) => {
@@ -300,6 +331,46 @@ mod tests {
     test_fft_correctness!(fft_correctness_32, f32, fft_32, 4, 9);
     test_fft_correctness!(fft_correctness_64, f64, fft_64, 4, 17);
 
+    #[cfg(feature = "complex-nums")]
+    #[test]
+    fn fft_interleaved_correctness() {
+        let n = 10;
+        let big_n = 1 << n;
+        let mut actual_signal: Vec<_> = (1..=big_n).map(|i| Complex::new(i as f64, 0.0)).collect();
+        let mut expected_reals: Vec<_> = (1..=big_n).map(|i| i as f64).collect();
+        let mut expected_imags = vec![0.0; big_n];
+
+        fft_64_interleaved(&mut actual_signal, Direction::Forward);
+        fft_64(&mut expected_reals, &mut expected_imags, Direction::Forward);
+
+        actual_signal
+            .iter()
+            .zip(expected_reals)
+            .zip(expected_imags)
+            .for_each(|((z, z_re), z_im)| {
+                assert_float_closeness(z.re, z_re, 1e-10);
+                assert_float_closeness(z.im, z_im, 1e-10);
+            });
+
+        let n = 10;
+        let big_n = 1 << n;
+        let mut actual_signal: Vec<_> = (1..=big_n).map(|i| Complex::new(i as f32, 0.0)).collect();
+        let mut expected_reals: Vec<_> = (1..=big_n).map(|i| i as f32).collect();
+        let mut expected_imags = vec![0.0; big_n];
+
+        fft_32_interleaved(&mut actual_signal, Direction::Forward);
+        fft_32(&mut expected_reals, &mut expected_imags, Direction::Forward);
+
+        actual_signal
+            .iter()
+            .zip(expected_reals)
+            .zip(expected_imags)
+            .for_each(|((z, z_re), z_im)| {
+                assert_float_closeness(z.re, z_re, 1e-10);
+                assert_float_closeness(z.im, z_im, 1e-10);
+            });
+    }
+
     #[test]
     fn fft_round_trip() {
         for i in 4..23 {
@@ -341,9 +412,9 @@ mod tests {
         let mut re = reals.clone();
         let mut im = imags.clone();
 
-        let mut planner = Planner64::new(num_points, Direction::Forward);
+        let planner = Planner64::new(num_points, Direction::Forward);
         let opts = Options::guess_options(reals.len());
-        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
 
         fft_64(&mut re, &mut im, Direction::Forward);
 
@@ -372,9 +443,9 @@ mod tests {
                 let mut re = reals.clone();
                 let mut im = imags.clone();
 
-                let mut planner = Planner32::new(num_points, direction);
+                let planner = Planner32::new(num_points, direction);
                 let opts = Options::guess_options(reals.len());
-                fft_32_with_opts_and_plan(&mut reals, &mut imags, &opts, &mut planner);
+                fft_32_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
 
                 fft_32(&mut re, &mut im, direction);
 

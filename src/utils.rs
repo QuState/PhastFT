@@ -1,5 +1,14 @@
 //! Utility functions such as interleave/deinterleave
 
+#[cfg(feature = "complex-nums")]
+use num_complex::Complex;
+
+#[cfg(feature = "complex-nums")]
+use num_traits::Float;
+
+#[cfg(feature = "complex-nums")]
+use bytemuck::cast_slice;
+
 use std::simd::{prelude::Simd, simd_swizzle, SimdElement};
 
 // We don't multiversion for AVX-512 here and keep the chunk size below AVX-512
@@ -59,12 +68,53 @@ pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec
     (out_odd, out_even)
 }
 
+/// Utility function to separate a slice of [`Complex64``]
+/// into a single vector of Complex Number Structs.
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()`.
+#[cfg(feature = "complex-nums")]
+pub(crate) fn deinterleave_complex64(signal: &[Complex<f64>]) -> (Vec<f64>, Vec<f64>) {
+    let complex_t: &[f64] = cast_slice(signal);
+    deinterleave(complex_t)
+}
+
+/// Utility function to separate a slice of [`Complex32``]
+/// into a single vector of Complex Number Structs.
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()`.
+#[cfg(feature = "complex-nums")]
+pub(crate) fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
+    let complex_t: &[f32] = cast_slice(signal);
+    deinterleave(complex_t)
+}
+
+/// Utility function to combine separate vectors of real and imaginary components
+/// into a single vector of Complex Number Structs.
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()`.
+#[cfg(feature = "complex-nums")]
+pub(crate) fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
+    assert_eq!(reals.len(), imags.len());
+
+    reals
+        .iter()
+        .zip(imags.iter())
+        .map(|(z_re, z_im)| Complex::new(*z_re, *z_im))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::deinterleave;
+    use super::*;
 
     fn gen_test_vec(len: usize) -> Vec<usize> {
-        (0..len).into_iter().collect()
+        (0..len).collect()
     }
 
     /// Slow but obviously correct implementation of deinterleaving,
@@ -82,5 +132,22 @@ mod tests {
             assert_eq!(naive_a, opt_a);
             assert_eq!(naive_b, opt_b);
         }
+    }
+
+    #[cfg(feature = "complex-nums")]
+    #[test]
+    fn test_separate_and_combine_re_im() {
+        let complex_vec: Vec<_> = vec![
+            Complex::new(1.0, 2.0),
+            Complex::new(3.0, 4.0),
+            Complex::new(5.0, 6.0),
+            Complex::new(7.0, 8.0),
+        ];
+
+        let (reals, imags) = deinterleave_complex64(&complex_vec);
+
+        let recombined_vec = combine_re_im(&reals, &imags);
+
+        assert_eq!(complex_vec, recombined_vec);
     }
 }

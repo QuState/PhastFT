@@ -18,7 +18,7 @@ fn benchmark_fft_64(n: usize) {
 
     let now = std::time::Instant::now();
     fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
-    let elapsed = now.elapsed().as_micros();
+    let elapsed = now.elapsed().as_nanos();
     println!("{elapsed}");
 }
 
