@@ -4,6 +4,9 @@ use num_traits::{Float, FloatConst, One, Zero};
 
 use crate::planner::Direction;
 
+/// This isn't really used except for testing.
+/// It may be better to use this in the case where the input size is very large,
+/// as to free up the cache.
 pub(crate) struct Twiddles<T: Float> {
     st: T,
     ct: T,
@@ -181,8 +184,17 @@ macro_rules! generate_twiddles_simd {
 generate_twiddles_simd!(generate_twiddles_simd_64, f64, 8, f64x8);
 generate_twiddles_simd!(generate_twiddles_simd_32, f32, 8, f32x8);
 
+#[multiversion::multiversion(
+                            targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+                                    "x86_64+avx2+fma", // x86_64-v3
+                                    "x86_64+sse4.2", // x86_64-v2
+                                    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                    "x86+avx2+fma",
+                                    "x86+sse4.2",
+                                    "x86+sse2",
+))]
 #[inline]
-pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &mut Vec<T>, twiddles_im: &mut Vec<T>) {
+pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &[T], twiddles_im: &[T]) -> (Vec<T>, Vec<T>) {
     assert_eq!(twiddles_re.len(), twiddles_im.len());
     let dist = twiddles_re.len();
 
@@ -194,8 +206,7 @@ pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &mut Vec<T>, twiddles_im: &
             && filtered_twiddles_re.len() == dist / 2
     );
 
-    let _ = std::mem::replace(twiddles_re, filtered_twiddles_re);
-    let _ = std::mem::replace(twiddles_im, filtered_twiddles_im);
+    (filtered_twiddles_re, filtered_twiddles_im)
 }
 
 #[cfg(test)]
@@ -205,6 +216,34 @@ mod tests {
     use utilities::assert_float_closeness;
 
     use super::*;
+
+    // TODO(saveliy): try to use only real twiddle factors since sin is just a phase shift of cos
+    #[test]
+    fn twiddles_cos_only() {
+        let n = 4;
+        let big_n = 1 << n;
+
+        let dist = big_n >> 1;
+
+        let (fwd_twiddles_re, fwd_twiddles_im) = if dist >= 8 * 2 {
+            generate_twiddles_simd_64(dist, Direction::Forward)
+        } else {
+            generate_twiddles(dist, Direction::Forward)
+        };
+
+        assert!(fwd_twiddles_re.len() == dist && fwd_twiddles_im.len() == dist);
+
+        for i in 0..dist {
+            let _w_re = fwd_twiddles_re[i];
+            let expected_w_im = fwd_twiddles_im[i];
+
+            let actual_w_im = -fwd_twiddles_re[(i + dist / 2) % dist];
+            //assert_float_closeness(actual_w_im, expected_w_im, 1e-6);
+            println!("actual: {actual_w_im} expected: {expected_w_im}");
+        }
+        println!("{:?}", fwd_twiddles_re);
+        println!("{:?}", fwd_twiddles_im);
+    }
 
     #[test]
     fn twiddles_4() {
@@ -275,13 +314,15 @@ mod tests {
 
         let mut twiddles_iter = Twiddles::new(dist);
 
-        let (mut twiddles_re, mut twiddles_im) = generate_twiddles(dist, Direction::Forward);
+        let (twiddles_re, twiddles_im) = generate_twiddles(dist, Direction::Forward);
 
         for i in 0..dist {
-            let (tw_re, tw_im) = twiddles_iter.next().unwrap();
-            assert_float_closeness(twiddles_re[i], tw_re, 1e-6);
-            assert_float_closeness(twiddles_im[i], tw_im, 1e-6);
+            let (w_re, w_im) = twiddles_iter.next().unwrap();
+            assert_float_closeness(twiddles_re[i], w_re, 1e-6);
+            assert_float_closeness(twiddles_im[i], w_im, 1e-6);
         }
+
+        let (mut tw_re, mut tw_im) = (twiddles_re.clone(), twiddles_im.clone());
 
         for t in (0..n - 1).rev() {
             let dist = 1 << t;
@@ -289,14 +330,14 @@ mod tests {
 
             // Don't re-compute all the twiddles.
             // Just filter them out by taking every other twiddle factor
-            filter_twiddles(&mut twiddles_re, &mut twiddles_im);
+            (tw_re, tw_im) = filter_twiddles(&tw_re, &tw_im);
 
-            assert!(twiddles_re.len() == dist && twiddles_im.len() == dist);
+            assert!(tw_re.len() == dist && tw_im.len() == dist);
 
             for i in 0..dist {
-                let (tw_re, tw_im) = twiddles_iter.next().unwrap();
-                assert_float_closeness(twiddles_re[i], tw_re, 1e-6);
-                assert_float_closeness(twiddles_im[i], tw_im, 1e-6);
+                let (w_re, w_im) = twiddles_iter.next().unwrap();
+                assert_float_closeness(tw_re[i], w_re, 1e-6);
+                assert_float_closeness(tw_im[i], w_im, 1e-6);
             }
         }
     }

@@ -13,12 +13,19 @@ exclude = ["assets", "scripts", "benches"]
 [dependencies]
 num-traits = "0.2.18"
 multiversion = "0.7"
+num-complex = { version = "0.4.6", features = ["bytemuck"], optional = true }
+bytemuck = { version = "1.16.0", optional = true }
+
+[features]
+default = []
+complex-nums = ["dep:num-complex", "dep:bytemuck"]
 
 [dev-dependencies]
-utilities = { path = "utilities" }
-fftw = "0.8.0"
 criterion = "0.5.1"
+fftw = "0.8.0"
 realfft = "3.3.0"
+rand = "0.8.5"
+utilities = { path = "utilities" }
 
 [[bench]]
 name = "bench"
@@ -33,3 +40,5 @@ panic = "abort"
 inherits = "release"
 debug = true
 
+[package.metadata.docs.rs]
+all-features = true

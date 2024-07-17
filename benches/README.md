@@ -4,24 +4,15 @@
 
 ### Setup Environment
 
-1. Install [FFTW3](http://www.fftw.org/download.html)[^1]
+1. Clone the `PhastFT` git repository [^2].
 
-   It may be possible to install `fftw3` using a package manager.
-
-   ##### debian
-   ```bash
-   sudo apt install libfftw3-dev
-   ```
-
-2. Clone the `PhastFT` git repository [^2].
-
-3. Create virtual env
+2. Create virtual env
 
 ```bash
 cd ~/PhastFT/benches && python3 -m venv .env && source .env/bin/activate
 ```
 
-4. Install python dependencies[^1]
+3. Install python dependencies[^1]
 
 ```bash
 pip install -r requirements.txt
@@ -29,10 +20,10 @@ cd ~/PhastFT/pyphastft
 pip install .
 ```
 
-5. Run the `FFTW3` vs. `RustFFT` vs. `PhastFT` benchmark for all inputs of size `2^n`, where `n \in [4, 30].`
+5. Run the `FFTW3-RB` vs. `RustFFT` vs. `PhastFT` benchmarks`
 
 ```bash
-./benchmark.sh 4 29
+python run_benches.py
 ```
 
 6. Plot the results
@@ -123,13 +114,6 @@ On linux, open access to performance monitoring, and observability operations fo
 
 ```bash
 echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
-```
-
-Add debug to `Cargo.toml` under `profile.release`:
-
-```bash
-[profile.release]
-debug = true
 ```
 
 Finally, run:

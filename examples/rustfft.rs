@@ -9,8 +9,8 @@ use utilities::{
 fn benchmark_rustfft(n: usize) {
     let big_n = 1 << n;
 
-    let mut reals = vec![0.0; big_n];
-    let mut imags = vec![0.0; big_n];
+    let mut reals = vec![0.0f64; big_n];
+    let mut imags = vec![0.0f64; big_n];
 
     gen_random_signal(&mut reals, &mut imags);
     let mut signal = vec![Complex64::default(); big_n];
@@ -23,11 +23,12 @@ fn benchmark_rustfft(n: usize) {
             z.im = im;
         });
 
-    let now = std::time::Instant::now();
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(signal.len());
+
+    let now = std::time::Instant::now();
     fft.process(&mut signal);
-    let elapsed = now.elapsed().as_micros();
+    let elapsed = now.elapsed().as_nanos();
     println!("{elapsed}");
 }
 
