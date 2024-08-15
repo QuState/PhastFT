@@ -32,7 +32,7 @@ fn benchmark_r2c_vs_c2c(c: &mut Criterion) {
                 let mut output_re = vec![0.0; size];
                 let mut output_im = vec![0.0; size];
                 r2c_fft_f64(
-                    black_box(&mut s_re),
+                    black_box(&s_re),
                     black_box(&mut output_re),
                     black_box(&mut output_im),
                 );
