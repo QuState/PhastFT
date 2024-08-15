@@ -5,7 +5,8 @@ use utilities::gen_random_signal;
 
 use num_traits::Float;
 use phastft::{
-    fft_32_with_opts_and_plan, fft_64_with_opts_and_plan,
+    fft::r2c_fft_f64,
+    fft_32_with_opts_and_plan, fft_64, fft_64_with_opts_and_plan,
     options::Options,
     planner::{Direction, Planner32, Planner64},
 };
@@ -13,10 +14,7 @@ use rand::{
     distributions::{Distribution, Standard},
     thread_rng, Rng,
 };
-use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
-
-use phastft::{fft::r2c_fft_f64, fft_64, planner::Direction};
 
 fn benchmark_r2c_vs_c2c(c: &mut Criterion) {
     let sizes = vec![1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20];
@@ -69,8 +67,8 @@ fn benchmark_r2c_vs_c2c(c: &mut Criterion) {
                     .expect("fft.process() failed!");
             });
         });
-  }
-
+    }
+}
 
 const LENGTHS: &[usize] = &[
     6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
@@ -230,12 +228,13 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
     }
 }
 
-criterion_group!(
-    benches,
-    benchmark_forward_f32,
-    benchmark_inverse_f32,
-    benchmark_forward_f64,
-    benchmark_inverse_f64
-    benchmark_r2c_vs_c2c
-);
+fn critertion_benchmark(c: &mut Criterion) {
+    benchmark_forward_f32(c);
+    benchmark_inverse_f32(c);
+    benchmark_forward_f64(c);
+    benchmark_inverse_f64(c);
+    benchmark_r2c_vs_c2c(c);
+}
+
+criterion_group!(benches, critertion_benchmark,);
 criterion_main!(benches);
