@@ -3,7 +3,8 @@ use std::simd::prelude::f64x8;
 
 use crate::planner::{Planner32, Planner64};
 use crate::{
-    fft_32_with_opts_and_plan, fft_64, fft_64_with_opts_and_plan, twiddles::generate_twiddles,
+    fft_32_with_opts_and_plan, fft_64, fft_64_with_opts_and_plan,
+    twiddles::{generate_twiddles, Twiddles},
     Direction, Options,
 };
 
@@ -60,19 +61,21 @@ macro_rules! impl_r2c_fft {
             let (mut z_even, mut z_odd): (Vec<_>, Vec<_>) =
                 input_re.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
 
-            let mut planner = <$planner>::new(big_n, Direction::Forward);
+            // let mut planner = <$planner>::new(big_n, Direction::Forward);
 
             // save these for the untanngling step
-            let twiddle_re = planner.twiddles_re;
-            let twiddle_im = planner.twiddles_im;
+            // let twiddle_re = planner.twiddles_re;
+            // let twiddle_im = planner.twiddles_im;
+            let stride = big_n / 2;
+            let twiddles_iter = Twiddles::<$precision>::new(stride);
 
-            planner = <$planner>::new(big_n / 2, Direction::Forward);
+            let planner = <$planner>::new(big_n / 2, Direction::Forward);
 
             // We only need (N / 2) / 2 twiddle factors for the actual FFT call, so we filter
             // filter_twiddles(&mut planner.twiddles_re, &mut planner.twiddles_im);
 
             let opts = Options::guess_options(z_even.len());
-            $fft_w_opts_and_plan(&mut z_even, &mut z_odd, &opts, &mut planner);
+            $fft_w_opts_and_plan(&mut z_even, &mut z_odd, &opts, &planner);
 
             // Z = np.fft.fft(z)
             let mut z_x_re = vec![0.0; big_n / 2];
@@ -135,19 +138,18 @@ macro_rules! impl_r2c_fft {
                 .zip(z_x_im.iter())
                 .zip(z_y_re.iter())
                 .zip(z_y_im.iter())
-                .zip(twiddle_re.iter())
-                .zip(twiddle_im.iter())
                 .zip(output_re_first_half)
                 .zip(output_im_first_half)
                 .zip(output_re_second_half)
                 .zip(output_im_second_half)
+                .zip(twiddles_iter)
                 .for_each(
                     |(
                         (
-                            (((((((zx_re, zx_im), zy_re), zy_im), w_re), w_im), o_re_fh), o_im_fh),
-                            o_re_sh,
+                            ((((((zx_re, zx_im), zy_re), zy_im), o_re_fh), o_im_fh), o_re_sh),
+                            o_im_sh,
                         ),
-                        o_im_sh,
+                        (w_re, w_im),
                     )| {
                         let wz_re = w_re * zy_re - w_im * zy_im;
                         let wz_im = w_re * zy_im + w_im * zy_re;
