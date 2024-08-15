@@ -2,7 +2,6 @@
 use std::simd::prelude::f64x8;
 
 use crate::planner::{Planner32, Planner64};
-use crate::twiddles::filter_twiddles;
 use crate::{
     fft_32_with_opts_and_plan, fft_64, fft_64_with_opts_and_plan, twiddles::generate_twiddles,
     Direction, Options,
@@ -64,11 +63,13 @@ macro_rules! impl_r2c_fft {
             let mut planner = <$planner>::new(big_n, Direction::Forward);
 
             // save these for the untanngling step
-            let twiddle_re = planner.twiddles_re.clone();
-            let twiddle_im = planner.twiddles_im.clone();
+            let twiddle_re = planner.twiddles_re;
+            let twiddle_im = planner.twiddles_im;
+
+            planner = <$planner>::new(big_n / 2, Direction::Forward);
 
             // We only need (N / 2) / 2 twiddle factors for the actual FFT call, so we filter
-            filter_twiddles(&mut planner.twiddles_re, &mut planner.twiddles_im);
+            // filter_twiddles(&mut planner.twiddles_re, &mut planner.twiddles_im);
 
             let opts = Options::guess_options(z_even.len());
             $fft_w_opts_and_plan(&mut z_even, &mut z_odd, &opts, &mut planner);
