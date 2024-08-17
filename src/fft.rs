@@ -5,6 +5,7 @@ use crate::planner::{Planner32, Planner64};
 use crate::{
     fft_32_with_opts_and_plan, fft_64, fft_64_with_opts_and_plan,
     twiddles::{generate_twiddles, Twiddles},
+    utils::deinterleave,
     Direction, Options,
 };
 
@@ -58,8 +59,8 @@ macro_rules! impl_r2c_fft {
             let big_n = input_re.len();
 
             // Splitting odd and even
-            let (mut z_even, mut z_odd): (Vec<_>, Vec<_>) =
-                input_re.chunks_exact(2).map(|c| (c[0], c[1])).unzip();
+
+            let (mut z_even, mut z_odd): (Vec<_>, Vec<_>) = deinterleave(&input_re);
 
             // let mut planner = <$planner>::new(big_n, Direction::Forward);
 
