@@ -25,6 +25,7 @@ use crate::planner::{Direction, Planner32, Planner64};
 use crate::twiddles::filter_twiddles;
 
 pub mod cobra;
+pub mod fft;
 mod kernels;
 pub mod options;
 pub mod planner;
@@ -91,10 +92,10 @@ macro_rules! impl_fft_interleaved_for {
     };
 }
 
-#[doc(cfg(feature = "complex-nums"))]
+// #[doc(cfg(feature = "complex-nums"))]
 #[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32, deinterleave_complex32);
-#[doc(cfg(feature = "complex-nums"))]
+// #[doc(cfg(feature = "complex-nums"))]
 #[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64, deinterleave_complex64);
 
@@ -128,7 +129,7 @@ macro_rules! impl_fft_with_opts_and_plan_for {
             opts: &Options,
             planner: &$planner,
         ) {
-            assert!(reals.len() == imags.len() && reals.len().is_power_of_two());
+            assert!(reals.len() == imags.len() && reals.len().is_power_of_two(), "reals.len() and imags.len() must be equal, and both should be a power of 2. Actual lengths - reals: {} imags: {}", reals.len(), imags.len());
             let n: usize = reals.len().ilog2() as usize;
 
             // Use references to avoid unnecessary clones
@@ -137,7 +138,7 @@ macro_rules! impl_fft_with_opts_and_plan_for {
 
             // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance
             // between pairs
-            assert!(twiddles_re.len() == reals.len() / 2 && twiddles_im.len() == imags.len() / 2);
+            assert!(twiddles_re.len() == reals.len() / 2 && twiddles_im.len() == imags.len() / 2,"got: {} == {} and {} == {}", twiddles_re.len(), reals.len() / 2, twiddles_im.len(), imags.len() / 2);
 
             match planner.direction {
                 Direction::Reverse => {
