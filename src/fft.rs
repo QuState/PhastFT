@@ -58,18 +58,11 @@ macro_rules! impl_r2c_fft {
             assert!(output_re.len() == output_im.len() && input_re.len() == output_re.len());
             let big_n = input_re.len();
 
-            // Splitting odd and even
-
+            // Split real signal of size `N` into odd (size `N/2`) and even (size `N/2`) via deinterleave
+            // The even part is now the "real" components and the odd part is now the "imaginary" components
             let (mut z_even, mut z_odd): (Vec<_>, Vec<_>) = deinterleave(&input_re);
 
-            // let mut planner = <$planner>::new(big_n, Direction::Forward);
-
-            // save these for the untanngling step
-            // let twiddle_re = planner.twiddles_re;
-            // let twiddle_im = planner.twiddles_im;
             let stride = big_n / 2;
-            let twiddles_iter = Twiddles::<$precision>::new(stride);
-
             let planner = <$planner>::new(big_n / 2, Direction::Forward);
 
             // We only need (N / 2) / 2 twiddle factors for the actual FFT call, so we filter
@@ -133,6 +126,7 @@ macro_rules! impl_r2c_fft {
             // Zall = np.concatenate([Zx + W*Zy, Zx - W*Zy])
             let (output_re_first_half, output_re_second_half) = output_re.split_at_mut(big_n / 2);
             let (output_im_first_half, output_im_second_half) = output_im.split_at_mut(big_n / 2);
+            let twiddles_iter = Twiddles::<$precision>::new(stride);
 
             z_x_re
                 .iter()
