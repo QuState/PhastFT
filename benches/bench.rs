@@ -6,7 +6,7 @@ use utilities::gen_random_signal;
 use num_traits::Float;
 use phastft::{
     fft::r2c_fft_f64,
-    fft_32_with_opts_and_plan, fft_64, fft_64_with_opts_and_plan,
+    fft_32_with_opts_and_plan, fft_64_with_opts_and_plan,
     options::Options,
     planner::{Direction, Planner32, Planner64},
 };
@@ -27,10 +27,10 @@ fn benchmark_r2c_vs_c2c(c: &mut Criterion) {
             let mut s_re = vec![0.0; size];
             let mut s_im = vec![0.0; size];
             gen_random_signal(&mut s_re, &mut s_im);
+            let mut output_re = vec![0.0; size];
+            let mut output_im = vec![0.0; size];
 
             b.iter(|| {
-                let mut output_re = vec![0.0; size];
-                let mut output_im = vec![0.0; size];
                 r2c_fft_f64(
                     black_box(&s_re),
                     black_box(&mut output_re),
@@ -45,11 +45,15 @@ fn benchmark_r2c_vs_c2c(c: &mut Criterion) {
             gen_random_signal(&mut s_re, &mut s_im);
             s_im = vec![0.0; size];
 
+            let options = Options::guess_options(s_re.len());
+            let planner = Planner64::new(s_re.len(), Direction::Reverse);
+
             b.iter(|| {
-                fft_64(
+                fft_64_with_opts_and_plan(
                     black_box(&mut s_re),
                     black_box(&mut s_im),
-                    Direction::Forward,
+                    black_box(&options),
+                    black_box(&planner),
                 );
             });
         });
@@ -59,11 +63,12 @@ fn benchmark_r2c_vs_c2c(c: &mut Criterion) {
             let mut s_im = vec![0.0; size];
             gen_random_signal(&mut s_re, &mut s_im);
             let mut output = vec![Complex::default(); s_re.len() / 2 + 1];
+            let mut planner = RealFftPlanner::<f64>::new();
 
             b.iter(|| {
-                let mut planner = RealFftPlanner::<f64>::new();
-                let fft = planner.plan_fft_forward(s_re.len());
-                fft.process(&mut s_re, &mut output)
+                planner
+                    .plan_fft_forward(s_re.len())
+                    .process(&mut s_re, &mut output)
                     .expect("fft.process() failed!");
             });
         });
