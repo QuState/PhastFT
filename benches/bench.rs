@@ -1,14 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use num_traits::Float;
 use phastft::{
     fft_32_with_opts_and_plan, fft_64_with_opts_and_plan,
     options::Options,
     planner::{Direction, Planner32, Planner64},
 };
-use rand::{
-    distributions::{Distribution, Standard},
-    thread_rng, Rng,
-};
+use rand::{distr::StandardUniform, prelude::Distribution, rng, Rng};
+use std::hint::black_box;
 use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 
@@ -18,11 +16,14 @@ const LENGTHS: &[usize] = &[
 
 fn generate_numbers<T: Float>(n: usize) -> (Vec<T>, Vec<T>)
 where
-    Standard: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
-    let samples: Vec<T> = (&mut rng).sample_iter(Standard).take(2 * n).collect();
+    let samples: Vec<T> = (&mut rng)
+        .sample_iter(StandardUniform)
+        .take(2 * n)
+        .collect();
 
     let mut reals = vec![T::zero(); n];
     let mut imags = vec![T::zero(); n];
@@ -41,11 +42,14 @@ where
 
 fn generate_complex_numbers<T: Float + Default>(n: usize) -> Vec<Complex<T>>
 where
-    Standard: Distribution<T>,
+    StandardUniform: Distribution<T>,
 {
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
-    let samples: Vec<T> = (&mut rng).sample_iter(Standard).take(2 * n).collect();
+    let samples: Vec<T> = (&mut rng)
+        .sample_iter(StandardUniform)
+        .take(2 * n)
+        .collect();
 
     let mut signal = vec![Complex::default(); n];
 

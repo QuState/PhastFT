@@ -11,6 +11,6 @@ name = "pyphastft"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.21.2" }
-numpy = "0.21.0"
+pyo3 = { version = "0.26.0" }
+numpy = "0.26.0"
 phastft = { path = ".." }
