@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use num_traits::Float;
 use phastft::{
     fft_32_with_opts_and_plan, fft_64_with_opts_and_plan,
@@ -6,7 +6,6 @@ use phastft::{
     planner::{Direction, Planner32, Planner64},
 };
 use rand::{distr::StandardUniform, prelude::Distribution, rng, Rng};
-use std::hint::black_box;
 use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 
@@ -71,51 +70,56 @@ fn benchmark_forward_f32(c: &mut Criterion) {
         let id = "PhastFT FFT Forward";
         let options = Options::guess_options(len);
         let planner = Planner32::new(len, Direction::Forward);
-        let (mut reals, mut imags) = generate_numbers(len);
 
-        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &_len| {
-            b.iter(|| {
-                fft_32_with_opts_and_plan(
-                    black_box(&mut reals),
-                    black_box(&mut imags),
-                    black_box(&options),
-                    black_box(&planner),
-                );
-            });
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_numbers::<f32>(len),
+                |(mut reals, mut imags)| {
+                    fft_32_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
+                },
+                BatchSize::SmallInput,
+            );
         });
 
         let id = "RustFFT FFT Forward";
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(len);
-        let mut signal = generate_complex_numbers(len);
 
-        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &_len| {
-            b.iter(|| fft.process(black_box(&mut signal)));
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_complex_numbers::<f32>(len),
+                |mut signal| {
+                    fft.process(&mut signal);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
 }
 
 fn benchmark_inverse_f32(c: &mut Criterion) {
-    let options = Options::default();
+    let mut group = c.benchmark_group("Inverse f32");
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
-        let id = format!("FFT Inverse f32 {} elements", len);
+        group.throughput(Throughput::Elements(len as u64));
+
+        let id = "PhastFT FFT Inverse";
+        let options = Options::guess_options(len);
         let planner = Planner32::new(len, Direction::Reverse);
 
-        c.bench_function(&id, |b| {
-            let (mut reals, mut imags) = generate_numbers(len);
-            b.iter(|| {
-                fft_32_with_opts_and_plan(
-                    black_box(&mut reals),
-                    black_box(&mut imags),
-                    black_box(&options),
-                    black_box(&planner),
-                );
-            });
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_numbers::<f32>(len),
+                |(mut reals, mut imags)| {
+                    fft_32_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
+    group.finish();
 }
 
 fn benchmark_forward_f64(c: &mut Criterion) {
@@ -123,55 +127,61 @@ fn benchmark_forward_f64(c: &mut Criterion) {
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
+        group.throughput(Throughput::Elements(len as u64));
+
         let id = "PhastFT FFT Forward";
         let options = Options::guess_options(len);
         let planner = Planner64::new(len, Direction::Forward);
-        let (mut reals, mut imags) = generate_numbers(len);
-        group.throughput(Throughput::Elements(len as u64));
 
-        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &_len| {
-            b.iter(|| {
-                fft_64_with_opts_and_plan(
-                    black_box(&mut reals),
-                    black_box(&mut imags),
-                    black_box(&options),
-                    black_box(&planner),
-                );
-            });
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_numbers::<f64>(len),
+                |(mut reals, mut imags)| {
+                    fft_64_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
+                },
+                BatchSize::SmallInput,
+            );
         });
 
         let id = "RustFFT FFT Forward";
         let mut planner = FftPlanner::<f64>::new();
         let fft = planner.plan_fft_forward(len);
-        let mut signal = generate_complex_numbers(len);
 
-        group.bench_with_input(BenchmarkId::new(id, len), &len, |b, &_len| {
-            b.iter(|| fft.process(black_box(&mut signal)));
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_complex_numbers::<f64>(len),
+                |mut signal| {
+                    fft.process(&mut signal);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
     group.finish();
 }
 
 fn benchmark_inverse_f64(c: &mut Criterion) {
-    let options = Options::default();
+    let mut group = c.benchmark_group("Inverse f64");
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
-        let id = format!("FFT Inverse f64 {} elements", len);
+        group.throughput(Throughput::Elements(len as u64));
+
+        let id = "PhastFT FFT Inverse";
+        let options = Options::guess_options(len);
         let planner = Planner64::new(len, Direction::Reverse);
 
-        c.bench_function(&id, |b| {
-            let (mut reals, mut imags) = generate_numbers(len);
-            b.iter(|| {
-                fft_64_with_opts_and_plan(
-                    black_box(&mut reals),
-                    black_box(&mut imags),
-                    black_box(&options),
-                    black_box(&planner),
-                );
-            });
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_numbers::<f64>(len),
+                |(mut reals, mut imags)| {
+                    fft_64_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
+                },
+                BatchSize::SmallInput,
+            );
         });
     }
+    group.finish();
 }
 
 criterion_group!(
