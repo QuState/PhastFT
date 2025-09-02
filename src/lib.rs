@@ -8,7 +8,7 @@
     clippy::suspicious
 )]
 #![forbid(unsafe_code)]
-#![feature(portable_simd, avx512_target_feature)]
+#![feature(portable_simd)]
 #![feature(doc_cfg)]
 
 #[cfg(feature = "complex-nums")]
@@ -91,10 +91,8 @@ macro_rules! impl_fft_interleaved_for {
     };
 }
 
-#[doc(cfg(feature = "complex-nums"))]
 #[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32, deinterleave_complex32);
-#[doc(cfg(feature = "complex-nums"))]
 #[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64, deinterleave_complex64);
 
