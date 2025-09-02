@@ -72,7 +72,7 @@ fft_64(&mut reals, &mut imags, Direction::Forward);
 
 ### Python
 
-Follow the instructions at https://rustup.rs/ to install Rust, then switch to the nightly channel with
+Follow the instructions at <https://rustup.rs/> to install Rust, then switch to the nightly channel with
 
 ```bash
 rustup default nightly
@@ -97,8 +97,10 @@ fft(a_re, a_im)
 
 ### Normalization
 
-`phastft` does not normalize outputs. Users can normalize outputs after running a forward FFT followed by an inverse
-FFT by scaling each element by `1/N`, where `N` is the number of data points.
+`phastft` only scales the output of the inverse FFT. Namely, running IFFT(x)
+will scale each element by `1/N`, where `N` is the number of data points, and
+`IFFT(FFT(x)) == x`. If your use case(s) require(s) something different, please
+don't hesitate to create an issue.
 
 ### Output Order
 
