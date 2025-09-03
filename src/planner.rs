@@ -80,6 +80,102 @@ macro_rules! impl_planner_for {
 impl_planner_for!(Planner64, f64, generate_twiddles_simd_64);
 impl_planner_for!(Planner32, f32, generate_twiddles_simd_32);
 
+/// DIT-specific planner for f64 that pre-computes twiddles for all stages
+pub struct PlannerDit64 {
+    /// Twiddles for each stage that needs them (stages with chunk_size > 32)
+    /// Each element contains (twiddles_re, twiddles_im) for that stage
+    pub stage_twiddles: Vec<(Vec<f64>, Vec<f64>)>,
+    /// The direction of the FFT
+    pub direction: Direction,
+    /// The log2 of the FFT size
+    pub log_n: usize,
+}
+
+impl PlannerDit64 {
+    /// Create a DIT planner for an FFT of size `num_points`
+    pub fn new(num_points: usize, direction: Direction) -> Self {
+        assert!(num_points > 0 && num_points.is_power_of_two());
+
+        let log_n = num_points.ilog2() as usize;
+        let mut stage_twiddles = Vec::new();
+
+        // Pre-compute twiddles for each stage that needs them
+        for stage in 0..log_n {
+            let dist = 1 << stage;
+            let chunk_size = dist << 1;
+
+            // Only stages with chunk_size > 64 need twiddles (we have SIMD kernels up to 64)
+            if chunk_size > 64 {
+                let mut twiddles_re = vec![0.0f64; dist];
+                let mut twiddles_im = vec![0.0f64; dist];
+
+                let angle_mult = -2.0 * std::f64::consts::PI / chunk_size as f64;
+                for k in 0..dist {
+                    let angle = angle_mult * k as f64;
+                    twiddles_re[k] = angle.cos();
+                    twiddles_im[k] = angle.sin();
+                }
+
+                stage_twiddles.push((twiddles_re, twiddles_im));
+            }
+        }
+
+        Self {
+            stage_twiddles,
+            direction,
+            log_n,
+        }
+    }
+}
+
+/// DIT-specific planner for f32 that pre-computes twiddles for all stages
+pub struct PlannerDit32 {
+    /// Twiddles for each stage that needs them (stages with chunk_size > 32)
+    /// Each element contains (twiddles_re, twiddles_im) for that stage
+    pub stage_twiddles: Vec<(Vec<f32>, Vec<f32>)>,
+    /// The direction of the FFT
+    pub direction: Direction,
+    /// The log2 of the FFT size
+    pub log_n: usize,
+}
+
+impl PlannerDit32 {
+    /// Create a DIT planner for an FFT of size `num_points`
+    pub fn new(num_points: usize, direction: Direction) -> Self {
+        assert!(num_points > 0 && num_points.is_power_of_two());
+
+        let log_n = num_points.ilog2() as usize;
+        let mut stage_twiddles = Vec::new();
+
+        // Pre-compute twiddles for each stage that needs them
+        for stage in 0..log_n {
+            let dist = 1 << stage;
+            let chunk_size = dist << 1;
+
+            // Only stages with chunk_size > 64 need twiddles (we have SIMD kernels up to 64)
+            if chunk_size > 64 {
+                let mut twiddles_re = vec![0.0f32; dist];
+                let mut twiddles_im = vec![0.0f32; dist];
+
+                let angle_mult = -2.0 * std::f32::consts::PI / chunk_size as f32;
+                for k in 0..dist {
+                    let angle = angle_mult * k as f32;
+                    twiddles_re[k] = angle.cos();
+                    twiddles_im[k] = angle.sin();
+                }
+
+                stage_twiddles.push((twiddles_re, twiddles_im));
+            }
+        }
+
+        Self {
+            stage_twiddles,
+            direction,
+            log_n,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

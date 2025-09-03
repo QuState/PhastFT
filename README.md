@@ -11,6 +11,7 @@ Transform (FFT) library written in pure Rust.
 
 ## Features
 
+- **Two FFT algorithms**: Decimation-in-Frequency (DIF) and Decimation-in-Time (DIT) for different use cases
 - Simple implementation using the Cooley-Tukey FFT algorithm
 - Performance on par with other Rust FFT implementations
 - Zero `unsafe` code
@@ -59,15 +60,31 @@ including [RustFFT](https://crates.io/crates/rustfft/), while using significantl
 ### Rust
 
 ```rust
-use phastft::{
-    planner::Direction,
-    fft_64
-};
+use phastft::{planner::Direction, fft_64};
 
+// Using the default DIF algorithm
 let big_n = 1 << 10;
 let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
 let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
 fft_64(&mut reals, &mut imags, Direction::Forward);
+```
+
+### Using DIT Algorithm
+
+```rust
+use phastft::{fft_64_dit, fft_64_dit_with_planner, planner::{Direction, PlannerDit64}};
+
+// Using DIT algorithm - may have better cache performance for some sizes
+let big_n = 1 << 20;
+let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
+let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
+
+// Simple API
+fft_64_dit(&mut reals, &mut imags, Direction::Forward);
+
+// Or with a reusable planner for better performance with multiple FFTs
+let planner = PlannerDit64::new(big_n, Direction::Forward);
+fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
 ```
 
 ### Python
@@ -102,9 +119,40 @@ will scale each element by `1/N`, where `N` is the number of data points, and
 `IFFT(FFT(x)) == x`. If your use case(s) require(s) something different, please
 don't hesitate to create an issue.
 
-### Output Order
+### Bit Reversal and Output Order
 
-`phastft` always finishes processing input data by running
+PhastFT provides two FFT algorithms with different bit reversal behaviors:
+
+#### DIF (Decimation-in-Frequency) - Default Algorithm
+- **Input**: Normal order
+- **Output**: Bit-reversed order (by default)
+- **Bit Reversal Control**: Can be disabled using `Options::dif_perform_bit_reversal = false`
+
+```rust
+use phastft::{fft_64_with_opts_and_plan, options::Options, planner::{Direction, Planner64}};
+
+let size = 1024;
+let mut reals = vec![0.0f64; size];
+let mut imags = vec![0.0f64; size];
+
+// Skip bit reversal for DIF FFT
+let mut opts = Options::default();
+opts.dif_perform_bit_reversal = false;  // Output stays in decimated order
+let planner = Planner64::new(size, Direction::Forward);
+fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
+```
+
+#### DIT (Decimation-in-Time) - Alternative Algorithm  
+- **Input**: Normal order (bit-reversed internally)
+- **Output**: Normal order
+- **Bit Reversal**: Always performed on input (required for correctness)
+
+The ability to skip bit reversal in DIF is useful when:
+- Chaining multiple FFT operations without intermediate processing
+- You need the output in decimated order for specific algorithms
+- Performance optimization when bit-reversed output is not required
+
+`phastft` finishes processing input data by running
 a [bit-reversal permutation](https://en.wikipedia.org/wiki/Bit-reversal_permutation) on the processed data.
 
 ## Benchmarks
