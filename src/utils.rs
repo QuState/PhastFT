@@ -1,15 +1,14 @@
 //! Utility functions such as interleave/deinterleave
 
-#[cfg(feature = "complex-nums")]
-use num_complex::Complex;
-
-#[cfg(feature = "complex-nums")]
-use num_traits::Float;
+use std::simd::prelude::Simd;
+use std::simd::{simd_swizzle, SimdElement};
 
 #[cfg(feature = "complex-nums")]
 use bytemuck::cast_slice;
-
-use std::simd::{prelude::Simd, simd_swizzle, SimdElement};
+#[cfg(feature = "complex-nums")]
+use num_complex::Complex;
+#[cfg(feature = "complex-nums")]
+use num_traits::Float;
 
 // We don't multiversion for AVX-512 here and keep the chunk size below AVX-512
 // because we haven't seen any gains from it in benchmarks.

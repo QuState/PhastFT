@@ -1,12 +1,14 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use num_traits::Float;
+use phastft::options::Options;
+use phastft::planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64};
 use phastft::{
     fft_32_dit_with_planner_and_opts, fft_32_with_opts_and_plan, fft_64_dit_with_planner_and_opts,
     fft_64_with_opts_and_plan,
-    options::Options,
-    planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64},
 };
-use rand::{distr::StandardUniform, prelude::Distribution, rng, Rng};
+use rand::distr::StandardUniform;
+use rand::prelude::Distribution;
+use rand::{rng, Rng};
 use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 

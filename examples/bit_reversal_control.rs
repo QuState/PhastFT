@@ -1,8 +1,6 @@
-use phastft::{
-    fft_64, fft_64_dit, fft_64_with_opts_and_plan,
-    options::Options,
-    planner::{Direction, Planner64},
-};
+use phastft::options::Options;
+use phastft::planner::{Direction, Planner64};
+use phastft::{fft_64, fft_64_dit, fft_64_with_opts_and_plan};
 
 /// This example demonstrates the bit reversal behavior of DIF and DIT FFT algorithms
 /// and how to control bit reversal in DIF FFT.

@@ -1,10 +1,9 @@
 use std::env;
 use std::str::FromStr;
 
-use utilities::{
-    gen_random_signal,
-    rustfft::{num_complex::Complex64, FftPlanner},
-};
+use utilities::gen_random_signal;
+use utilities::rustfft::num_complex::Complex64;
+use utilities::rustfft::FftPlanner;
 
 fn benchmark_rustfft(n: usize) {
     let big_n = 1 << n;

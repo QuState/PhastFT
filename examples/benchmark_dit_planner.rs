@@ -1,8 +1,8 @@
-use phastft::fft_64_dit;
-use phastft::fft_64_dit_with_planner;
-use phastft::planner::{Direction, PlannerDit64};
 use std::env;
 use std::str::FromStr;
+
+use phastft::planner::{Direction, PlannerDit64};
+use phastft::{fft_64_dit, fft_64_dit_with_planner};
 use utilities::gen_random_signal;
 
 fn benchmark_dit_with_planner(n: usize, iterations: usize) {

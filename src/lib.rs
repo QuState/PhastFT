@@ -12,8 +12,6 @@
 #![feature(doc_cfg)]
 
 #[cfg(feature = "complex-nums")]
-use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
-#[cfg(feature = "complex-nums")]
 use num_complex::Complex;
 
 use crate::cobra::cobra_apply;
@@ -27,6 +25,8 @@ use crate::kernels::{
 use crate::options::Options;
 use crate::planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64};
 use crate::twiddles::filter_twiddles;
+#[cfg(feature = "complex-nums")]
+use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 
 pub mod cobra;
 mod kernels;

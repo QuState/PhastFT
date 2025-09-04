@@ -1,11 +1,10 @@
 use std::env;
 use std::str::FromStr;
 
-use utilities::gen_random_signal;
-
 use phastft::options::Options;
 use phastft::planner::{Direction, Planner64};
 use phastft::{fft_64_dit, fft_64_with_opts_and_plan};
+use utilities::gen_random_signal;
 
 fn benchmark_fft_64(n: usize) {
     let big_n = 1 << n;
