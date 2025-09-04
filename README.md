@@ -70,6 +70,26 @@ let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
 fft_64(&mut reals, &mut imags, Direction::Forward);
 ```
 
+#### Complex Number Support (Interleaved Format)
+
+When the `complex-nums` feature is enabled, you can also use the interleaved format with the `num_complex::Complex` type:
+
+```rust
+use phastft::{
+    planner::Direction,
+    fft_64_interleaved
+};
+use num_complex::Complex;
+
+let big_n = 1 << 10;
+let mut signal: Vec<Complex<f64>> = (1..=big_n)
+    .map(|i| Complex::new(i as f64, i as f64))
+    .collect();
+fft_64_interleaved(&mut signal, Direction::Forward);
+```
+
+Both `fft_32_interleaved` and `fft_64_interleaved` are available for `f32` and `f64` precision respectively.
+
 ### Python
 
 Follow the instructions at <https://rustup.rs/> to install Rust, then switch to the nightly channel with
