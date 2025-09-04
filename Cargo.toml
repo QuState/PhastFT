@@ -1,6 +1,6 @@
 [package]
 name = "phastft"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 authors = ["Saveliy Yusufov", "Shnatsel"]
 license = "MIT OR Apache-2.0"
@@ -14,7 +14,7 @@ exclude = ["assets", "scripts", "benches"]
 num-traits = "0.2.19"
 multiversion = "0.8.0"
 num-complex = { version = "0.4.6", features = ["bytemuck"], optional = true }
-bytemuck = { version = "1.16.0", optional = true }
+bytemuck = { version = "1.23.2", optional = true }
 
 [features]
 default = []

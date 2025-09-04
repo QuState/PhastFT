@@ -87,9 +87,32 @@ let planner = PlannerDit64::new(big_n, Direction::Forward);
 fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
 ```
 
+#### Complex Number Support (Interleaved Format)
+
+When the `complex-nums` feature is enabled, you can also use the interleaved
+format with the `num_complex::Complex` type:
+
+```rust
+use phastft::{
+    planner::Direction,
+    fft_64_interleaved
+};
+use num_complex::Complex;
+
+let big_n = 1 << 10;
+let mut signal: Vec<Complex<f64>> = (1..=big_n)
+    .map(|i| Complex::new(i as f64, i as f64))
+    .collect();
+fft_64_interleaved(&mut signal, Direction::Forward);
+```
+
+Both `fft_32_interleaved` and `fft_64_interleaved` are available for `f32` and
+`f64` precision respectively.
+
 ### Python
 
-Follow the instructions at <https://rustup.rs/> to install Rust, then switch to the nightly channel with
+Follow the instructions at <https://rustup.rs/> to install Rust, then switch to
+the nightly channel with
 
 ```bash
 rustup default nightly
@@ -124,6 +147,7 @@ don't hesitate to create an issue.
 PhastFT provides two FFT algorithms with different bit reversal behaviors:
 
 #### DIF (Decimation-in-Frequency) - Default Algorithm
+
 - **Input**: Normal order
 - **Output**: Bit-reversed order (by default)
 - **Bit Reversal Control**: Can be disabled using `Options::dif_perform_bit_reversal = false`
@@ -143,11 +167,13 @@ fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
 ```
 
 #### DIT (Decimation-in-Time) - Alternative Algorithm  
+
 - **Input**: Normal order (bit-reversed internally)
 - **Output**: Normal order
 - **Bit Reversal**: Always performed on input (required for correctness)
 
 The ability to skip bit reversal in DIF is useful when:
+
 - Chaining multiple FFT operations without intermediate processing
 - You need the output in decimated order for specific algorithms
 - Performance optimization when bit-reversed output is not required
@@ -157,7 +183,8 @@ a [bit-reversal permutation](https://en.wikipedia.org/wiki/Bit-reversal_permutat
 
 ## Benchmarks
 
-PhastFT is benchmarked against several other FFT libraries. Scripts and instructions to reproduce benchmark results and
+PhastFT is benchmarked against several other FFT libraries. Scripts and
+instructions to reproduce benchmark results and
 plots are available [here](https://github.com/QuState/PhastFT/tree/main/benches#readme).
 
 <p align="center">
@@ -172,8 +199,9 @@ plots are available [here](https://github.com/QuState/PhastFT/tree/main/benches#
 
 ## Contributing
 
-Contributions to PhastFT are welcome! If you find any issues or have improvements to suggest, please open an issue or
-submit a pull request. Follow the contribution guidelines outlined in the CONTRIBUTING.md file.
+Contributions to PhastFT are welcome! If you find any issues or have
+improvements to suggest, please open an issue or submit a pull request. Follow
+the contribution guidelines outlined in the CONTRIBUTING.md file.
 
 ## License
 
@@ -181,17 +209,19 @@ PhastFT is licensed under MIT or Apache 2.0 license, at your option.
 
 ## PhastFT vs. RustFFT
 
-[RustFFT](https://crates.io/crates/rustfft/) is another excellent FFT implementation in pure Rust.
-RustFFT and PhastFT make different trade-offs.
+[RustFFT](https://crates.io/crates/rustfft/) is another excellent FFT
+implementation in pure Rust. RustFFT and PhastFT make different trade-offs.
 
 RustFFT made the choice to work on stable Rust compiler at the cost of `unsafe` code,
 while PhastFT contains no `unsafe` blocks but requires a nightly build of Rust compiler
 to access the Portable SIMD API.
 
-RustFFT implements multiple FFT algorithms and tries to pick the best one depending on the workload,
-while PhastFT has a single FFT implementation and still achieves competitive performance.
+RustFFT implements multiple FFT algorithms and tries to pick the best one
+depending on the workload, while PhastFT has a single FFT implementation and
+still achieves competitive performance.
 
-PhastFT uses 2x less memory than RustFFT, which is important for processing large datasets.
+PhastFT uses 2x less memory than RustFFT, which is important for processing
+large datasets.
 
 ## What's with the name?
 
