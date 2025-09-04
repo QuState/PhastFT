@@ -192,6 +192,7 @@ generate_twiddles_simd!(generate_twiddles_simd_32, f32, 8, f32x8);
                                     "x86+avx2+fma",
                                     "x86+sse4.2",
                                     "x86+sse2",
+                                    "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
 ))]
 #[inline]
 pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &[T], twiddles_im: &[T]) -> (Vec<T>, Vec<T>) {

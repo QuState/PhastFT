@@ -1,15 +1,14 @@
 //! Utility functions such as interleave/deinterleave
 
-#[cfg(feature = "complex-nums")]
-use num_complex::Complex;
-
-#[cfg(feature = "complex-nums")]
-use num_traits::Float;
+use std::simd::prelude::Simd;
+use std::simd::{simd_swizzle, SimdElement};
 
 #[cfg(feature = "complex-nums")]
 use bytemuck::cast_slice;
-
-use std::simd::{prelude::Simd, simd_swizzle, SimdElement};
+#[cfg(feature = "complex-nums")]
+use num_complex::Complex;
+#[cfg(feature = "complex-nums")]
+use num_traits::Float;
 
 // We don't multiversion for AVX-512 here and keep the chunk size below AVX-512
 // because we haven't seen any gains from it in benchmarks.
@@ -26,6 +25,7 @@ use std::simd::{prelude::Simd, simd_swizzle, SimdElement};
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
+    "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
     ))]
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
 pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec<T>, Vec<T>) {
