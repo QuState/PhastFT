@@ -88,16 +88,6 @@ pub fn generate_twiddles<T: Float + FloatConst>(
     (twiddles_re, twiddles_im)
 }
 
-/// Generate twiddle factors for DIT FFT
-/// For DIT, we generate twiddles for each stage separately
-pub fn generate_twiddles_dit<T: Float + FloatConst>(
-    stage_size: usize,
-    direction: Direction,
-) -> (Vec<T>, Vec<T>) {
-    // For DIT, twiddles are the same as DIF but applied at different stages
-    generate_twiddles(stage_size, direction)
-}
-
 macro_rules! generate_twiddles_simd {
     ($func_name:ident, $precision:ty, $lanes:literal, $simd_vector:ty) => {
         pub(crate) fn $func_name(

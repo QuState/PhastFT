@@ -1,6 +1,6 @@
 use std::simd::{f32x16, f64x8, StdFloat};
 
-use num_traits::Float;
+use num_traits::{Float, FloatConst};
 
 macro_rules! fft_butterfly_n_simd {
     ($func_name:ident, $precision:ty, $lanes:literal, $simd_vector:ty) => {
@@ -273,7 +273,7 @@ pub(crate) fn fft_dit_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
                                      "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
 ))]
 #[inline]
-pub(crate) fn fft_dit_chunk_8<T: Float>(reals: &mut [T], imags: &mut [T]) {
+pub(crate) fn fft_dit_chunk_8<T: Float + FloatConst>(reals: &mut [T], imags: &mut [T]) {
     const DIST: usize = 4;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -287,7 +287,7 @@ pub(crate) fn fft_dit_chunk_8<T: Float>(reals: &mut [T], imags: &mut [T]) {
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
             // Hardcoded twiddle factor for W_8
-            let sqrt2_2 = T::from(0.7071067811865476).unwrap(); // sqrt(2)/2
+            let sqrt2_2 = T::FRAC_1_SQRT_2(); // sqrt(2)/2
 
             // k=0: W_8^0 = 1
             let in0_re = reals_s0[0];
@@ -350,7 +350,7 @@ pub(crate) fn fft_dit_chunk_8<T: Float>(reals: &mut [T], imags: &mut [T]) {
                                      "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
 ))]
 #[inline]
-pub(crate) fn fft_dit_chunk_16<T: Float>(reals: &mut [T], imags: &mut [T]) {
+pub(crate) fn fft_dit_chunk_16<T: Float + FloatConst>(reals: &mut [T], imags: &mut [T]) {
     const DIST: usize = 8;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -366,7 +366,7 @@ pub(crate) fn fft_dit_chunk_16<T: Float>(reals: &mut [T], imags: &mut [T]) {
             // Hardcoded twiddle factors for W_16
             let cos_pi_8 = T::from(0.9238795325112867).unwrap(); // cos(π/8)
             let sin_pi_8 = T::from(0.3826834323650898).unwrap(); // sin(π/8)
-            let sqrt2_2 = T::from(0.7071067811865476).unwrap(); // sqrt(2)/2
+            let sqrt2_2 = T::FRAC_1_SQRT_2(); // sqrt(2)/2
 
             // k=0: W_16^0 = 1
             let in0_re = reals_s0[0];
@@ -470,7 +470,7 @@ pub(crate) fn fft_dit_chunk_16<T: Float>(reals: &mut [T], imags: &mut [T]) {
                                      "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
 ))]
 #[inline]
-pub(crate) fn fft_dit_chunk_32<T: Float>(reals: &mut [T], imags: &mut [T]) {
+pub(crate) fn fft_dit_chunk_32<T: Float + FloatConst>(reals: &mut [T], imags: &mut [T]) {
     const DIST: usize = 16;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -490,7 +490,7 @@ pub(crate) fn fft_dit_chunk_32<T: Float>(reals: &mut [T], imags: &mut [T]) {
             let sin_pi_8 = T::from(0.3826834323650898).unwrap(); // sin(π/8)
             let cos_3pi_16 = T::from(0.8314696123025452).unwrap(); // cos(3π/16)
             let sin_3pi_16 = T::from(0.5555702330196022).unwrap(); // sin(3π/16)
-            let sqrt2_2 = T::from(0.7071067811865476).unwrap(); // sqrt(2)/2
+            let sqrt2_2 = T::FRAC_1_SQRT_2(); // sqrt(2)/2
             let cos_5pi_16 = T::from(0.5555702330196022).unwrap(); // cos(5π/16)
             let sin_5pi_16 = T::from(0.8314696123025452).unwrap(); // sin(5π/16)
             let cos_3pi_8 = T::from(0.3826834323650898).unwrap(); // cos(3π/8)
