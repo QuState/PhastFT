@@ -172,6 +172,7 @@ pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
                                      "x86+avx2+fma",
                                      "x86+sse4.2",
                                      "x86+sse2",
+                                     "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
 ))]
 pub fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
     if log_n <= 2 * LOG_BLOCK_WIDTH {

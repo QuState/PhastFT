@@ -1,11 +1,14 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use num_traits::Float;
+use phastft::options::Options;
+use phastft::planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64};
 use phastft::{
-    fft_32_with_opts_and_plan, fft_64_with_opts_and_plan,
-    options::Options,
-    planner::{Direction, Planner32, Planner64},
+    fft_32_dit_with_planner_and_opts, fft_32_with_opts_and_plan, fft_64_dit_with_planner_and_opts,
+    fft_64_with_opts_and_plan,
 };
-use rand::{distr::StandardUniform, prelude::Distribution, rng, Rng};
+use rand::distr::StandardUniform;
+use rand::prelude::Distribution;
+use rand::{rng, Rng};
 use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 
@@ -62,12 +65,15 @@ where
 
 fn benchmark_forward_f32(c: &mut Criterion) {
     let mut group = c.benchmark_group("Forward f32");
+    group.plot_config(
+        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
+    );
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
         group.throughput(Throughput::Elements(len as u64));
 
-        let id = "PhastFT FFT Forward";
+        let id = "PhastFT DIF";
         let options = Options::guess_options(len);
         let planner = Planner32::new(len, Direction::Forward);
 
@@ -81,7 +87,26 @@ fn benchmark_forward_f32(c: &mut Criterion) {
             );
         });
 
-        let id = "RustFFT FFT Forward";
+        let id = "PhastFT DIT";
+        let options = Options::guess_options(len);
+        let planner_dit = PlannerDit32::new(len, Direction::Forward);
+
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_numbers::<f32>(len),
+                |(mut reals, mut imags)| {
+                    fft_32_dit_with_planner_and_opts(
+                        &mut reals,
+                        &mut imags,
+                        &planner_dit,
+                        &options,
+                    );
+                },
+                BatchSize::SmallInput,
+            );
+        });
+
+        let id = "RustFFT";
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(len);
 
@@ -100,12 +125,15 @@ fn benchmark_forward_f32(c: &mut Criterion) {
 
 fn benchmark_inverse_f32(c: &mut Criterion) {
     let mut group = c.benchmark_group("Inverse f32");
+    group.plot_config(
+        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
+    );
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
         group.throughput(Throughput::Elements(len as u64));
 
-        let id = "PhastFT FFT Inverse";
+        let id = "PhastFT DIF";
         let options = Options::guess_options(len);
         let planner = Planner32::new(len, Direction::Reverse);
 
@@ -118,18 +146,54 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
                 BatchSize::SmallInput,
             );
         });
+
+        let id = "PhastFT DIT";
+        let options = Options::guess_options(len);
+        let planner_dit = PlannerDit32::new(len, Direction::Reverse);
+
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_numbers::<f32>(len),
+                |(mut reals, mut imags)| {
+                    fft_32_dit_with_planner_and_opts(
+                        &mut reals,
+                        &mut imags,
+                        &planner_dit,
+                        &options,
+                    );
+                },
+                BatchSize::SmallInput,
+            );
+        });
+
+        let id = "RustFFT";
+        let mut planner = FftPlanner::<f32>::new();
+        let fft = planner.plan_fft_inverse(len);
+
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_complex_numbers::<f32>(len),
+                |mut signal| {
+                    fft.process(&mut signal);
+                },
+                BatchSize::SmallInput,
+            );
+        });
     }
     group.finish();
 }
 
 fn benchmark_forward_f64(c: &mut Criterion) {
     let mut group = c.benchmark_group("Forward f64");
+    group.plot_config(
+        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
+    );
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
         group.throughput(Throughput::Elements(len as u64));
 
-        let id = "PhastFT FFT Forward";
+        let id = "PhastFT DIF";
         let options = Options::guess_options(len);
         let planner = Planner64::new(len, Direction::Forward);
 
@@ -143,7 +207,26 @@ fn benchmark_forward_f64(c: &mut Criterion) {
             );
         });
 
-        let id = "RustFFT FFT Forward";
+        let id = "PhastFT DIT";
+        let options = Options::guess_options(len);
+        let planner_dit = PlannerDit64::new(len, Direction::Forward);
+
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_numbers::<f64>(len),
+                |(mut reals, mut imags)| {
+                    fft_64_dit_with_planner_and_opts(
+                        &mut reals,
+                        &mut imags,
+                        &planner_dit,
+                        &options,
+                    );
+                },
+                BatchSize::SmallInput,
+            );
+        });
+
+        let id = "RustFFT";
         let mut planner = FftPlanner::<f64>::new();
         let fft = planner.plan_fft_forward(len);
 
@@ -162,12 +245,15 @@ fn benchmark_forward_f64(c: &mut Criterion) {
 
 fn benchmark_inverse_f64(c: &mut Criterion) {
     let mut group = c.benchmark_group("Inverse f64");
+    group.plot_config(
+        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
+    );
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
         group.throughput(Throughput::Elements(len as u64));
 
-        let id = "PhastFT FFT Inverse";
+        let id = "PhastFT DIF";
         let options = Options::guess_options(len);
         let planner = Planner64::new(len, Direction::Reverse);
 
@@ -176,6 +262,39 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
                 || generate_numbers::<f64>(len),
                 |(mut reals, mut imags)| {
                     fft_64_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
+                },
+                BatchSize::SmallInput,
+            );
+        });
+
+        let id = "PhastFT DIT";
+        let options = Options::guess_options(len);
+        let planner_dit = PlannerDit64::new(len, Direction::Reverse);
+
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_numbers::<f64>(len),
+                |(mut reals, mut imags)| {
+                    fft_64_dit_with_planner_and_opts(
+                        &mut reals,
+                        &mut imags,
+                        &planner_dit,
+                        &options,
+                    );
+                },
+                BatchSize::SmallInput,
+            );
+        });
+
+        let id = "RustFFT";
+        let mut planner = FftPlanner::<f64>::new();
+        let fft = planner.plan_fft_inverse(len);
+
+        group.bench_function(BenchmarkId::new(id, len), |b| {
+            b.iter_batched(
+                || generate_complex_numbers::<f64>(len),
+                |mut signal| {
+                    fft.process(&mut signal);
                 },
                 BatchSize::SmallInput,
             );
@@ -189,6 +308,6 @@ criterion_group!(
     benchmark_forward_f32,
     benchmark_inverse_f32,
     benchmark_forward_f64,
-    benchmark_inverse_f64
+    benchmark_inverse_f64,
 );
 criterion_main!(benches);

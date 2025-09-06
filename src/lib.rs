@@ -12,18 +12,14 @@
 #![feature(doc_cfg)]
 
 #[cfg(feature = "complex-nums")]
-use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
-#[cfg(feature = "complex-nums")]
 use num_complex::Complex;
 
-use crate::cobra::cobra_apply;
-use crate::kernels::{
-    fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_2, fft_chunk_4, fft_chunk_n,
-};
 use crate::options::Options;
-use crate::planner::{Direction, Planner32, Planner64};
-use crate::twiddles::filter_twiddles;
+use crate::planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64};
+#[cfg(feature = "complex-nums")]
+use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 
+mod algorithms;
 pub mod cobra;
 mod kernels;
 pub mod options;
@@ -31,18 +27,31 @@ pub mod planner;
 mod twiddles;
 mod utils;
 
+pub use algorithms::dif::{fft_32_with_opts_and_plan, fft_64_with_opts_and_plan};
+pub use algorithms::dit::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
+
 macro_rules! impl_fft_for {
     ($func_name:ident, $precision:ty, $planner:ty, $opts_and_plan:ident) => {
-        /// FFT -- Decimation in Frequency. This is just the decimation-in-time algorithm, reversed.
-        /// This call to FFT is run, in-place.
-        /// The input should be provided in normal order, and then the modified input is bit-reversed.
+        /// FFT using Decimation-in-Frequency (DIF) algorithm.
+        ///
+        /// This call to FFT is run in-place. Input should be provided in normal order.
+        /// By default, output is bit-reversed (standard FFT output).
+        ///
+        /// To control bit reversal behavior, use [`fft_64_with_opts_and_plan`] or
+        /// [`fft_32_with_opts_and_plan`] with `Options::dif_perform_bit_reversal`.
         ///
         /// # Panics
         ///
         /// Panics if `reals.len() != imags.len()`, or if the input length is _not_ a power of 2.
         ///
+        /// # Bit Reversal
+        ///
+        /// - Input: Normal order
+        /// - Output: Bit-reversed order
+        ///
         /// ## References
-        /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
+        /// https://www.cmlab.csie.ntu.edu.tw/cml/dsp/training/coding/transform/fft.html
+        ///
         pub fn $func_name(
             reals: &mut [$precision],
             imags: &mut [$precision],
@@ -63,8 +72,7 @@ macro_rules! impl_fft_for {
             );
 
             let opts = Options::guess_options(reals.len());
-
-            $opts_and_plan(reals, imags, &opts, &planner);
+            algorithms::dif::$opts_and_plan(reals, imags, &opts, &planner);
         }
     };
 }
@@ -96,136 +104,99 @@ impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32, deinterleave_complex3
 #[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64, deinterleave_complex64);
 
-macro_rules! impl_fft_with_opts_and_plan_for {
-    ($func_name:ident, $precision:ty, $planner:ty, $simd_butterfly_kernel:ident, $lanes:literal) => {
-        /// Same as [fft], but also accepts [`Options`] that control optimization strategies, as well as
-        /// a [`Planner`] in the case that this FFT will need to be run multiple times.
-        ///
-        /// `fft` automatically guesses the best strategy for a given input,
-        /// so you only need to call this if you are tuning performance for a specific hardware platform.
-        ///
-        /// In addition, `fft` automatically creates a planner to be used. In the case that you plan
-        /// on running an FFT many times on inputs of the same size, use this function with the pre-built
-        /// [`Planner`].
-        ///
-        /// # Panics
-        ///
-        /// Panics if `reals.len() != imags.len()`, or if the input length is _not_ a power of 2.
-        #[multiversion::multiversion(
-                                    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
-                                            "x86_64+avx2+fma", // x86_64-v3
-                                            "x86_64+sse4.2", // x86_64-v2
-                                            "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
-                                            "x86+avx2+fma",
-                                            "x86+sse4.2",
-                                            "x86+sse2",
-        ))]
-        pub fn $func_name(
-            reals: &mut [$precision],
-            imags: &mut [$precision],
-            opts: &Options,
-            planner: &$planner,
-        ) {
-            assert!(reals.len() == imags.len() && reals.len().is_power_of_two());
-            let n: usize = reals.len().ilog2() as usize;
+// Wrapper functions for DIT implementations
 
-            // Use references to avoid unnecessary clones
-            let twiddles_re = &planner.twiddles_re;
-            let twiddles_im = &planner.twiddles_im;
-
-            // We shouldn't be able to execute FFT if the # of twiddles isn't equal to the distance
-            // between pairs
-            assert!(twiddles_re.len() == reals.len() / 2 && twiddles_im.len() == imags.len() / 2);
-
-            match planner.direction {
-                Direction::Reverse => {
-                    for z_im in imags.iter_mut() {
-                        *z_im = -*z_im;
-                    }
-                }
-                _ => (),
-            }
-
-            // 0th stage is special due to no need to filter twiddle factor
-            let dist = 1 << (n - 1);
-            let chunk_size = dist << 1;
-
-            if chunk_size > 4 {
-                if chunk_size >= $lanes * 2 {
-                    $simd_butterfly_kernel(reals, imags, twiddles_re, twiddles_im, dist);
-                } else {
-                    fft_chunk_n(reals, imags, twiddles_re, twiddles_im, dist);
-                }
-            }
-            else if chunk_size == 4 {
-                fft_chunk_4(reals, imags);
-            }
-            else if chunk_size == 2 {
-                fft_chunk_2(reals, imags);
-            }
-
-            let (mut filtered_twiddles_re, mut filtered_twiddles_im) = filter_twiddles(twiddles_re, twiddles_im);
-
-            for t in (0..n - 1).rev() {
-                let dist = 1 << t;
-                let chunk_size = dist << 1;
-
-                if chunk_size > 4 {
-                    if chunk_size >= $lanes * 2 {
-                        $simd_butterfly_kernel(reals, imags, &filtered_twiddles_re, &filtered_twiddles_im, dist);
-                    } else {
-                        fft_chunk_n(reals, imags, &filtered_twiddles_re, &filtered_twiddles_im, dist);
-                    }
-                }
-                else if chunk_size == 4 {
-                    fft_chunk_4(reals, imags);
-                }
-                else if chunk_size == 2 {
-                    fft_chunk_2(reals, imags);
-                }
-                (filtered_twiddles_re, filtered_twiddles_im) = filter_twiddles(&filtered_twiddles_re, &filtered_twiddles_im);
-            }
-
-            if opts.multithreaded_bit_reversal {
-                std::thread::scope(|s| {
-                    s.spawn(|| cobra_apply(reals, n));
-                    s.spawn(|| cobra_apply(imags, n));
-                });
-            } else {
-                cobra_apply(reals, n);
-                cobra_apply(imags, n);
-            }
-
-            match planner.direction {
-                Direction::Reverse => {
-                    let scaling_factor = (reals.len() as $precision).recip();
-                    for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
-                        *z_re *= scaling_factor;
-                        *z_im *= -scaling_factor;
-                    }
-                }
-                _ => (),
-            }
-        }
-    };
+/// FFT using Decimation-In-Time (DIT) algorithm for f64 with pre-computed planner
+pub fn fft_64_dit_with_planner(reals: &mut [f64], imags: &mut [f64], planner: &PlannerDit64) {
+    let opts = Options::guess_options(reals.len());
+    algorithms::dit::fft_64_dit_with_planner_and_opts(reals, imags, planner, &opts);
 }
 
-impl_fft_with_opts_and_plan_for!(
-    fft_64_with_opts_and_plan,
-    f64,
-    Planner64,
-    fft_64_chunk_n_simd,
-    8
-);
+/// FFT using Decimation-In-Time (DIT) algorithm for f64.
+///
+/// This is a convenient wrapper that creates a planner automatically.
+/// For better performance when running multiple FFTs of the same size,
+/// consider using [`fft_64_dit_with_planner`].
+///
+/// # Algorithm Overview
+///
+/// The DIT algorithm:
+/// 1. Applies bit-reversal to the input (reordering)
+/// 2. Processes from small butterflies (size 2) to large
+/// 3. Output is in natural order
+///
+/// This is the dual of the DIF algorithm, with opposite data flow.
+///
+/// # Arguments
+///
+/// * `reals` - Real parts of the complex numbers (modified in-place)
+/// * `imags` - Imaginary parts of the complex numbers (modified in-place)  
+/// * `direction` - Forward or inverse transform
+///
+/// # Panics
+///
+/// Panics if the input length is not a power of 2.
+///
+/// # Example
+///
+/// ```
+/// use phastft::{fft_64_dit, planner::Direction};
+///
+/// let mut reals = vec![1.0, 0.0, 0.0, 0.0];
+/// let mut imags = vec![0.0; 4];
+/// fft_64_dit(&mut reals, &mut imags, Direction::Forward);
+/// // Output is in normal order
+/// ```
+pub fn fft_64_dit(reals: &mut [f64], imags: &mut [f64], direction: Direction) {
+    let planner = PlannerDit64::new(reals.len(), direction);
+    fft_64_dit_with_planner(reals, imags, &planner);
+}
 
-impl_fft_with_opts_and_plan_for!(
-    fft_32_with_opts_and_plan,
-    f32,
-    Planner32,
-    fft_32_chunk_n_simd,
-    16
-);
+/// FFT using Decimation-In-Time (DIT) algorithm for f32 with pre-computed planner
+pub fn fft_32_dit_with_planner(reals: &mut [f32], imags: &mut [f32], planner: &PlannerDit32) {
+    let opts = Options::guess_options(reals.len());
+    fft_32_dit_with_planner_and_opts(reals, imags, planner, &opts);
+}
 
+/// FFT using Decimation-In-Time (DIT) algorithm for f32.
+///
+/// This is a convenient wrapper that creates a planner automatically.
+/// For better performance when running multiple FFTs of the same size,
+/// consider using [`fft_32_dit_with_planner`].
+///
+/// # Algorithm Overview
+///
+/// The DIT algorithm:
+/// 1. Applies bit-reversal to the input (reordering)
+/// 2. Processes from small butterflies (size 2) to large
+/// 3. Output is in natural order
+///
+/// This is the dual of the DIF algorithm, with opposite data flow.
+///
+/// # Arguments
+///
+/// * `reals` - Real parts of the complex numbers (modified in-place)
+/// * `imags` - Imaginary parts of the complex numbers (modified in-place)  
+/// * `direction` - Forward or inverse transform
+///
+/// # Panics
+///
+/// Panics if the input length is not a power of 2.
+///
+/// # Example
+///
+/// ```
+/// use phastft::{fft_32_dit, planner::Direction};
+///
+/// let mut reals = vec![1.0, 0.0, 0.0, 0.0];
+/// let mut imags = vec![0.0; 4];
+/// fft_32_dit(&mut reals, &mut imags, Direction::Forward);
+/// // Output is in normal order
+/// ```
+pub fn fft_32_dit(reals: &mut [f32], imags: &mut [f32], direction: Direction) {
+    let planner = PlannerDit32::new(reals.len(), direction);
+    fft_32_dit_with_planner(reals, imags, &planner);
+}
 #[cfg(test)]
 mod tests {
     use std::ops::Range;
@@ -428,6 +399,61 @@ mod tests {
                 assert_float_closeness(*r, *z_re, 1e-6);
                 assert_float_closeness(*i, *z_im, 1e-6);
             });
+    }
+
+    #[test]
+    fn test_dit_fft_correctness() {
+        // Test DIT FFT against DIF FFT
+        for n in 4..12 {
+            let size = 1 << n;
+            let mut reals_dit = vec![0.0f64; size];
+            let mut imags_dit = vec![0.0f64; size];
+            let mut reals_dif = vec![0.0f64; size];
+            let mut imags_dif = vec![0.0f64; size];
+
+            // Generate same random signal for both
+            gen_random_signal(&mut reals_dit, &mut imags_dit);
+            reals_dif.copy_from_slice(&reals_dit);
+            imags_dif.copy_from_slice(&imags_dit);
+
+            // Run DIT FFT
+            fft_64_dit(&mut reals_dit, &mut imags_dit, Direction::Forward);
+
+            // Run DIF FFT
+            fft_64(&mut reals_dif, &mut imags_dif, Direction::Forward);
+
+            // Compare results
+            for i in 0..size {
+                assert_float_closeness(reals_dit[i], reals_dif[i], 1e-10);
+                assert_float_closeness(imags_dit[i], imags_dif[i], 1e-10);
+            }
+        }
+
+        // Test f32 version
+        for n in 4..10 {
+            let size = 1 << n;
+            let mut reals_dit = vec![0.0f32; size];
+            let mut imags_dit = vec![0.0f32; size];
+            let mut reals_dif = vec![0.0f32; size];
+            let mut imags_dif = vec![0.0f32; size];
+
+            // Generate same random signal for both
+            gen_random_signal_f32(&mut reals_dit, &mut imags_dit);
+            reals_dif.copy_from_slice(&reals_dit);
+            imags_dif.copy_from_slice(&imags_dit);
+
+            // Run DIT FFT
+            fft_32_dit(&mut reals_dit, &mut imags_dit, Direction::Forward);
+
+            // Run DIF FFT
+            fft_32(&mut reals_dif, &mut imags_dif, Direction::Forward);
+
+            // Compare results
+            for i in 0..size {
+                assert_float_closeness(reals_dit[i], reals_dif[i], 1e-4);
+                assert_float_closeness(imags_dit[i], imags_dif[i], 1e-4);
+            }
+        }
     }
 
     #[test]
