@@ -20,7 +20,6 @@ use crate::planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64
 use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 
 mod algorithms;
-pub mod cobra;
 mod kernels;
 pub mod options;
 pub mod planner;
@@ -104,8 +103,6 @@ impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32, deinterleave_complex3
 #[cfg(feature = "complex-nums")]
 impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64, deinterleave_complex64);
 
-// Wrapper functions for DIT implementations
-
 /// FFT using Decimation-In-Time (DIT) algorithm for f64 with pre-computed planner
 pub fn fft_64_dit_with_planner(reals: &mut [f64], imags: &mut [f64], planner: &PlannerDit64) {
     let opts = Options::guess_options(reals.len());
@@ -147,6 +144,7 @@ pub fn fft_64_dit_with_planner(reals: &mut [f64], imags: &mut [f64], planner: &P
 /// fft_64_dit(&mut reals, &mut imags, Direction::Forward);
 /// // Output is in normal order
 /// ```
+///
 pub fn fft_64_dit(reals: &mut [f64], imags: &mut [f64], direction: Direction) {
     let planner = PlannerDit64::new(reals.len(), direction);
     fft_64_dit_with_planner(reals, imags, &planner);
@@ -193,10 +191,12 @@ pub fn fft_32_dit_with_planner(reals: &mut [f32], imags: &mut [f32], planner: &P
 /// fft_32_dit(&mut reals, &mut imags, Direction::Forward);
 /// // Output is in normal order
 /// ```
+///
 pub fn fft_32_dit(reals: &mut [f32], imags: &mut [f32], direction: Direction) {
     let planner = PlannerDit32::new(reals.len(), direction);
     fft_32_dit_with_planner(reals, imags, &planner);
 }
+
 #[cfg(test)]
 mod tests {
     use std::ops::Range;

@@ -14,7 +14,7 @@
 //! DIT starts with fine-grained memory access and progressively works with
 //! larger contiguous chunks.
 //!
-use crate::cobra::cobra_apply;
+use crate::algorithms::cobra::cobra_apply;
 use crate::kernels::common::{fft_dit_chunk_2, fft_dit_chunk_4};
 use crate::kernels::dit::{
     fft_dit_32_chunk_n_simd, fft_dit_64_chunk_n_simd, fft_dit_chunk_16_simd_f32,

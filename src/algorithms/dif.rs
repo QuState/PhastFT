@@ -12,7 +12,7 @@
 //! 2. Works up to the last stage, with log(N) stages in total.
 //! 3. Optionally apply bit-reversal at the end
 //!
-use crate::cobra::cobra_apply;
+use crate::algorithms::cobra::cobra_apply;
 use crate::kernels::common::{fft_chunk_2, fft_chunk_4};
 use crate::kernels::dif::{fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_n};
 use crate::options::Options;
