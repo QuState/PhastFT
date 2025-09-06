@@ -113,7 +113,8 @@ impl PlannerDit64 {
                 for k in 0..dist {
                     let angle = angle_mult * k as f64;
                     twiddles_re[k] = angle.cos();
-                    twiddles_im[k] = angle.sin();
+                    // Store negated imaginary part for DIT to enable FMA fusion
+                    twiddles_im[k] = -angle.sin();
                 }
 
                 stage_twiddles.push((twiddles_re, twiddles_im));
@@ -161,7 +162,8 @@ impl PlannerDit32 {
                 for k in 0..dist {
                     let angle = angle_mult * k as f32;
                     twiddles_re[k] = angle.cos();
-                    twiddles_im[k] = angle.sin();
+                    // Store negated imaginary part for DIT to enable FMA fusion
+                    twiddles_im[k] = -angle.sin();
                 }
 
                 stage_twiddles.push((twiddles_re, twiddles_im));
