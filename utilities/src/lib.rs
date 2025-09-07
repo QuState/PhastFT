@@ -3,8 +3,9 @@ pub extern crate rustfft;
 use std::f64::consts::PI;
 use std::fmt::Display;
 
-use rand::distributions::Uniform;
+use rand::distr::Uniform;
 use rand::prelude::*;
+use rand::rng;
 use rustfft::num_traits::Float;
 
 /// Asserts that two floating-point numbers are approximately equal.
@@ -24,9 +25,9 @@ pub fn assert_float_closeness<T: Float + Display>(actual: T, expected: T, epsilo
 
 pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
-    let mut rng = thread_rng();
-    let between = Uniform::from(0.0..1.0);
-    let angle_dist = Uniform::from(0.0..2.0 * (PI as f32));
+    let mut rng = rng();
+    let between = Uniform::try_from(0.0..1.0).unwrap();
+    let angle_dist = Uniform::try_from(0.0..2.0 * (PI as f32)).unwrap();
     let num_amps = reals.len();
 
     let mut probs: Vec<_> = (0..num_amps).map(|_| between.sample(&mut rng)).collect();
@@ -59,9 +60,9 @@ pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
 /// Panics if `reals.len() != imags.len()`
 pub fn gen_random_signal(reals: &mut [f64], imags: &mut [f64]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
-    let mut rng = thread_rng();
-    let between = Uniform::from(0.0..1.0);
-    let angle_dist = Uniform::from(0.0..2.0 * PI);
+    let mut rng = rng();
+    let between = Uniform::try_from(0.0..1.0).unwrap();
+    let angle_dist = Uniform::try_from(0.0..2.0 * PI).unwrap();
     let num_amps = reals.len();
 
     let mut probs: Vec<_> = (0..num_amps).map(|_| between.sample(&mut rng)).collect();
