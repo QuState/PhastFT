@@ -448,7 +448,6 @@ mod tests {
             // Run DIF FFT
             fft_32(&mut reals_dif, &mut imags_dif, Direction::Forward);
 
-            // Compare results
             for i in 0..size {
                 assert_float_closeness(reals_dit[i], reals_dif[i], 1e-4);
                 assert_float_closeness(imags_dit[i], imags_dif[i], 1e-4);
@@ -457,7 +456,54 @@ mod tests {
     }
 
     #[test]
-    fn fft_32_with_opts_and_plan_vs_fft_64() {
+    fn test_dit_fft_64_followed_by_ifft_correctness() {
+        for n in 4..12 {
+            let size = 1 << n;
+            let mut reals_original = vec![0.0f64; size];
+            let mut imags_original = vec![0.0f64; size];
+            let mut reals = vec![0.0f64; size];
+            let mut imags = vec![0.0f64; size];
+
+            gen_random_signal(&mut reals_original, &mut imags_original);
+            reals.copy_from_slice(&reals_original);
+            imags.copy_from_slice(&imags_original);
+
+            fft_64_dit(&mut reals, &mut imags, Direction::Forward);
+
+            fft_64_dit(&mut reals, &mut imags, Direction::Reverse);
+
+            for i in 0..size {
+                assert_float_closeness(reals[i], reals_original[i], 1e-10);
+                assert_float_closeness(imags[i], imags_original[i], 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn test_dit_fft_32_followed_by_ifft_correctness() {
+        for n in 4..12 {
+            let size = 1 << n;
+            let mut reals_original = vec![0.0f32; size];
+            let mut imags_original = vec![0.0f32; size];
+            let mut reals = vec![0.0f32; size];
+            let mut imags = vec![0.0f32; size];
+
+            gen_random_signal_f32(&mut reals_original, &mut imags_original);
+            reals.copy_from_slice(&reals_original);
+            imags.copy_from_slice(&imags_original);
+
+            fft_32_dit(&mut reals, &mut imags, Direction::Forward);
+            fft_32_dit(&mut reals, &mut imags, Direction::Reverse);
+
+            for i in 0..size {
+                assert_float_closeness(reals[i], reals_original[i], 1e-7);
+                assert_float_closeness(imags[i], imags_original[i], 1e-7);
+            }
+        }
+    }
+
+    #[test]
+    fn fft_32_with_opts_and_plan_vs_fft_32() {
         let dirs = [Direction::Forward, Direction::Reverse];
 
         for direction in dirs {
