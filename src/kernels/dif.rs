@@ -3,9 +3,8 @@
 //! This module contains SIMD-optimized butterfly kernels specifically for
 //! the Decimation-in-Frequency algorithm.
 
-use std::simd::{f32x16, f64x8};
-
 use num_traits::Float;
+use wide::{f32x16, f64x8};
 
 /// SIMD-optimized DIF butterfly for f64
 #[multiversion::multiversion(targets(
@@ -45,20 +44,20 @@ pub fn fft_64_chunk_n_simd(
                 .zip(twiddles_re.chunks_exact(LANES))
                 .zip(twiddles_im.chunks_exact(LANES))
                 .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
-                    let real_c0 = f64x8::from_slice(re_s0);
-                    let real_c1 = f64x8::from_slice(re_s1);
-                    let imag_c0 = f64x8::from_slice(im_s0);
-                    let imag_c1 = f64x8::from_slice(im_s1);
+                    let real_c0 = f64x8::new(re_s0[0..8].try_into().unwrap());
+                    let real_c1 = f64x8::new(re_s1[0..8].try_into().unwrap());
+                    let imag_c0 = f64x8::new(im_s0[0..8].try_into().unwrap());
+                    let imag_c1 = f64x8::new(im_s1[0..8].try_into().unwrap());
 
-                    let tw_re = f64x8::from_slice(w_re);
-                    let tw_im = f64x8::from_slice(w_im);
+                    let tw_re = f64x8::new(w_re[0..8].try_into().unwrap());
+                    let tw_im = f64x8::new(w_im[0..8].try_into().unwrap());
 
-                    re_s0.copy_from_slice((real_c0 + real_c1).as_array());
-                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array());
+                    re_s0.copy_from_slice((real_c0 + real_c1).as_array_ref());
+                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array_ref());
                     let v_re = real_c0 - real_c1;
                     let v_im = imag_c0 - imag_c1;
-                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array());
-                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array());
+                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array_ref());
+                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array_ref());
                 });
         });
 }
@@ -101,20 +100,20 @@ pub fn fft_32_chunk_n_simd(
                 .zip(twiddles_re.chunks_exact(LANES))
                 .zip(twiddles_im.chunks_exact(LANES))
                 .for_each(|(((((re_s0, re_s1), im_s0), im_s1), w_re), w_im)| {
-                    let real_c0 = f32x16::from_slice(re_s0);
-                    let real_c1 = f32x16::from_slice(re_s1);
-                    let imag_c0 = f32x16::from_slice(im_s0);
-                    let imag_c1 = f32x16::from_slice(im_s1);
+                    let real_c0 = f32x16::new(re_s0[0..16].try_into().unwrap());
+                    let real_c1 = f32x16::new(re_s1[0..16].try_into().unwrap());
+                    let imag_c0 = f32x16::new(im_s0[0..16].try_into().unwrap());
+                    let imag_c1 = f32x16::new(im_s1[0..16].try_into().unwrap());
 
-                    let tw_re = f32x16::from_slice(w_re);
-                    let tw_im = f32x16::from_slice(w_im);
+                    let tw_re = f32x16::new(w_re[0..16].try_into().unwrap());
+                    let tw_im = f32x16::new(w_im[0..16].try_into().unwrap());
 
-                    re_s0.copy_from_slice((real_c0 + real_c1).as_array());
-                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array());
+                    re_s0.copy_from_slice((real_c0 + real_c1).as_array_ref());
+                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array_ref());
                     let v_re = real_c0 - real_c1;
                     let v_im = imag_c0 - imag_c1;
-                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array());
-                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array());
+                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array_ref());
+                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array_ref());
                 });
         });
 }

@@ -18,14 +18,13 @@ Transform (FFT) library written in pure Rust.
 - Takes advantage of latest CPU features up to and including `AVX-512`, but performs well even without them
 - Selects the fastest implementation at runtime. No need for `-C target-cpu=native`!
 - Optional parallelization of some steps to 2 threads (with even more planned)
-- 2x lower memory usage than [RustFFT](https://crates.io/crates/rustfft/)
+- Up to 5x lower memory usage than [RustFFT](https://crates.io/crates/rustfft/)
 - Python bindings (via [PyO3](https://github.com/PyO3/pyo3))
 
 ## Limitations
 
 - Only supports input with a length of `2^n` (i.e., a power of 2) -- input should be padded with zeros to the next power
   of 2
-- Requires nightly Rust compiler due to use of portable SIMD
 
 ## Planned features
 
@@ -111,15 +110,9 @@ Both `fft_32_interleaved` and `fft_64_interleaved` are available for `f32` and
 
 ### Python
 
-Follow the instructions at <https://rustup.rs/> to install Rust, then switch to
-the nightly channel with
-
-```bash
-rustup default nightly
-```
+Follow the instructions at <https://rustup.rs/> to install Rust.
 
 Then you can install PhastFT itself:
-
 ```bash
 pip install numpy
 pip install git+https://github.com/QuState/PhastFT#subdirectory=pyphastft
@@ -220,7 +213,7 @@ RustFFT implements multiple FFT algorithms and tries to pick the best one
 depending on the workload, while PhastFT has a single FFT implementation and
 still achieves competitive performance.
 
-PhastFT uses 2x less memory than RustFFT, which is important for processing
+PhastFT uses up to 5x less memory than RustFFT, which is important for processing
 large datasets.
 
 ## What's with the name?

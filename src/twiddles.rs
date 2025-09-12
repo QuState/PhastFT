@@ -1,6 +1,5 @@
-use std::simd::{f32x8, f64x8};
-
 use num_traits::{Float, FloatConst, One, Zero};
+use wide::{f32x8, f64x8};
 
 use crate::planner::Direction;
 
@@ -118,10 +117,13 @@ macro_rules! generate_twiddles_simd {
             };
 
             let apply_symmetry_re = |input: &[$precision], output: &mut [$precision]| {
-                let first_re = <$simd_vector>::from_slice(input);
+                let arr: [$precision; CHUNK_SIZE] = input[0..CHUNK_SIZE].try_into().unwrap();
+                let first_re = <$simd_vector>::new(arr);
                 let minus_one = <$simd_vector>::splat(-1.0);
-                let negated = (first_re * minus_one).reverse();
-                output.copy_from_slice(negated.as_array());
+                let negated = first_re * minus_one;
+                let mut arr = negated.to_array();
+                arr.reverse();
+                output.copy_from_slice(&arr);
             };
 
             let apply_symmetry_im = |input: &[$precision], output: &mut [$precision]| {

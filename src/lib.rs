@@ -8,8 +8,15 @@
     clippy::suspicious
 )]
 #![forbid(unsafe_code)]
-#![feature(portable_simd)]
-#![feature(doc_cfg)]
+
+/// Helper macro to create array references from slices
+#[macro_export]
+macro_rules! array_ref {
+    ($slice:expr, $offset:expr, $len:expr) => {{
+        let slice = &$slice[$offset..$offset + $len];
+        slice.try_into().expect("slice with incorrect length")
+    }};
+}
 
 #[cfg(feature = "complex-nums")]
 use num_complex::Complex;

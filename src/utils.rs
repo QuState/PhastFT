@@ -1,8 +1,5 @@
 //! Utility functions such as interleave/deinterleave
 
-use std::simd::prelude::Simd;
-use std::simd::{simd_swizzle, SimdElement};
-
 #[cfg(feature = "complex-nums")]
 use bytemuck::cast_slice;
 #[cfg(feature = "complex-nums")]
@@ -10,14 +7,8 @@ use num_complex::Complex;
 #[cfg(feature = "complex-nums")]
 use num_traits::Float;
 
-// We don't multiversion for AVX-512 here and keep the chunk size below AVX-512
-// because we haven't seen any gains from it in benchmarks.
-// This might be due to us running benchmarks on Zen4 which implements AVX-512
-// on top of 256-bit wide execution units.
-//
-// If benchmarks on "real" AVX-512 show improvement on AVX-512
-// without degrading AVX2 machines due to larger chunk size,
-// the AVX-512 specialization should be re-enabled.
+// Note: Since wide doesn't have simd_swizzle equivalent, we use an optimized scalar approach
+// The compiler should still be able to vectorize this pattern when beneficial
 #[multiversion::multiversion(
     targets(
     "x86_64+avx2+fma", // x86_64-v3
@@ -28,7 +19,7 @@ use num_traits::Float;
     "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
     ))]
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
-pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec<T>, Vec<T>) {
+pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 4;
     const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
 
@@ -43,13 +34,15 @@ pub(crate) fn deinterleave<T: Copy + Default + SimdElement>(input: &[T]) -> (Vec
         .zip(out_odd.chunks_exact_mut(CHUNK_SIZE))
         .zip(out_even.chunks_exact_mut(CHUNK_SIZE))
         .for_each(|((in_chunk, odds), evens)| {
-            let in_simd: Simd<T, DOUBLE_CHUNK> = Simd::from_array(in_chunk.try_into().unwrap());
-            // This generates *slightly* faster code than just assigning values by index.
-            // You'd think simd::deinterleave would be appropriate, but it does something different!
-            let result = simd_swizzle!(in_simd, [0, 2, 4, 6, 1, 3, 5, 7]);
-            let result_arr = result.to_array();
-            odds.copy_from_slice(&result_arr[..CHUNK_SIZE]);
-            evens.copy_from_slice(&result_arr[CHUNK_SIZE..]);
+            // Manual deinterleaving that compiler can often vectorize
+            odds[0] = in_chunk[0];
+            odds[1] = in_chunk[2];
+            odds[2] = in_chunk[4];
+            odds[3] = in_chunk[6];
+            evens[0] = in_chunk[1];
+            evens[1] = in_chunk[3];
+            evens[2] = in_chunk[5];
+            evens[3] = in_chunk[7];
         });
 
     // Process the remainder, too small for the vectorized loop
