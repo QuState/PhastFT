@@ -11,7 +11,7 @@ Transform (FFT) library written in pure Rust.
 
 ## Features
 
-- **Two FFT algorithms**: Decimation-in-Frequency (DIF) and Decimation-in-Time (DIT) for different use cases
+- Two FFT algorithms: Decimation-in-Frequency (DIF) and Decimation-in-Time (DIT) for different use cases
 - Simple implementation using the Cooley-Tukey FFT algorithm
 - Performance on par with other Rust FFT implementations
 - Zero `unsafe` code
@@ -39,7 +39,7 @@ years or so).
 
 The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses**.
 
-We picked an efficient, general-purpose FFT algorithm. Our implementation can make use of latest CPU features such as
+We picked an efficient and well-known FFT algorithm. Our implementation can make use of latest CPU features such as
 `AVX-512`, but performs well even without them.
 
 Our key insight for speeding up memory accesses is that FFT is equivalent to applying gates to all qubits in `[0, n)`.
@@ -141,9 +141,15 @@ PhastFT provides two FFT algorithms with different bit reversal behaviors:
 
 #### DIF (Decimation-in-Frequency) - Default Algorithm
 
-- **Input**: Normal order
-- **Output**: Bit-reversed order (by default)
-- **Bit Reversal Control**: Can be disabled using `Options::dif_perform_bit_reversal = false`
+- Input: Normal order
+- Output: Bit-reversed order (by default)
+- Bit Reversal: Can be disabled using `Options::dif_perform_bit_reversal = false`
+
+The ability to skip bit reversal in the DIF FFT is useful in cases such as:
+
+- Bit-reversed output is not required, potentially leading to significantly better run-times.
+- You need the output in decimated order for specific algorithms
+- Simulating the QFT
 
 ```rust
 use phastft::{fft_64_with_opts_and_plan, options::Options, planner::{Direction, Planner64}};
@@ -159,20 +165,11 @@ let planner = Planner64::new(size, Direction::Forward);
 fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
 ```
 
-#### DIT (Decimation-in-Time) - Alternative Algorithm  
+#### DIT (Decimation-in-Time)  
 
-- **Input**: Normal order (bit-reversed internally)
-- **Output**: Normal order
-- **Bit Reversal**: Always performed on input (required for correctness)
-
-The ability to skip bit reversal in DIF is useful when:
-
-- Chaining multiple FFT operations without intermediate processing
-- You need the output in decimated order for specific algorithms
-- Performance optimization when bit-reversed output is not required
-
-`phastft` finishes processing input data by running
-a [bit-reversal permutation](https://en.wikipedia.org/wiki/Bit-reversal_permutation) on the processed data.
+- Input: Normal order (bit-reversed internally)
+- Output: Normal order
+- Bit Reversal: Always performed on input (required for correctness)
 
 ## Benchmarks
 
@@ -205,16 +202,11 @@ PhastFT is licensed under MIT or Apache 2.0 license, at your option.
 [RustFFT](https://crates.io/crates/rustfft/) is another excellent FFT
 implementation in pure Rust. RustFFT and PhastFT make different trade-offs.
 
-RustFFT made the choice to work on stable Rust compiler at the cost of `unsafe` code,
-while PhastFT contains no `unsafe` blocks but requires a nightly build of Rust compiler
-to access the Portable SIMD API.
+RustFFT contains no `unsafe` code, while PhastFT contains no `unsafe` blocks
+by leveraging [wide](https://docs.rs/wide/latest/wide/) and `multiversion`.
 
-RustFFT implements multiple FFT algorithms and tries to pick the best one
-depending on the workload, while PhastFT has a single FFT implementation and
-still achieves competitive performance.
-
-PhastFT uses up to 5x less memory than RustFFT, which is important for processing
-large datasets.
+PhastFT uses up to 5x [less memory](https://github.com/astral4/fft-benchmark)
+than RustFFT, which is important for processing large datasets.
 
 ## What's with the name?
 
