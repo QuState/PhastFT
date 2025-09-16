@@ -34,20 +34,12 @@ pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
     let mut forward = halfn; // variable initialisations
     let mut rev = 1;
 
-    let mut i = quartn;
+    let mut i: usize = quartn;
     while i > 0 {
         // start of bit reversed permutation loop, N/4 iterations
-
         // Gray code generator for even values:
 
-        nodd = !i; // counting ones is easier
-
-        let mut zeros = 0;
-        while (nodd & 1) == 1 {
-            nodd >>= 1;
-            zeros += 1;
-        }
-
+        let zeros = i.trailing_zeros();
         forward ^= 2 << zeros; // toggle one bit of forward
         rev ^= quartn >> zeros; // toggle one bit of rev
 
