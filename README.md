@@ -202,7 +202,7 @@ PhastFT is licensed under MIT or Apache 2.0 license, at your option.
 [RustFFT](https://crates.io/crates/rustfft/) is another excellent FFT
 implementation in pure Rust. RustFFT and PhastFT make different trade-offs.
 
-RustFFT contains no `unsafe` code, while PhastFT contains no `unsafe` blocks
+RustFFT contains `unsafe` code, while PhastFT contains no `unsafe` blocks
 by leveraging [wide](https://docs.rs/wide/latest/wide/) and `multiversion`.
 
 PhastFT uses up to 5x [less memory](https://github.com/astral4/fft-benchmark)
