@@ -15,10 +15,10 @@
 //! larger contiguous chunks.
 //!
 use crate::algorithms::cobra::cobra_apply;
-use crate::kernels::common::{fft_dit_chunk_2, fft_dit_chunk_4};
 use crate::kernels::dit::{
     fft_dit_32_chunk_n_simd, fft_dit_64_chunk_n_simd, fft_dit_chunk_16_simd_f32,
-    fft_dit_chunk_16_simd_f64, fft_dit_chunk_32_simd_f32, fft_dit_chunk_32_simd_f64,
+    fft_dit_chunk_16_simd_f64, fft_dit_chunk_2, fft_dit_chunk_32_simd_f32,
+    fft_dit_chunk_32_simd_f64, fft_dit_chunk_4_simd_f32, fft_dit_chunk_4_simd_f64,
     fft_dit_chunk_64_simd_f32, fft_dit_chunk_64_simd_f64, fft_dit_chunk_8_simd_f32,
     fft_dit_chunk_8_simd_f64,
 };
@@ -83,7 +83,7 @@ pub fn fft_64_dit_with_planner_and_opts(
         if chunk_size == 2 {
             fft_dit_chunk_2(reals, imags);
         } else if chunk_size == 4 {
-            fft_dit_chunk_4(reals, imags);
+            fft_dit_chunk_4_simd_f64(reals, imags);
         } else if chunk_size == 8 {
             fft_dit_chunk_8_simd_f64(reals, imags);
         } else if chunk_size == 16 {
@@ -154,7 +154,7 @@ pub fn fft_32_dit_with_planner_and_opts(
         if chunk_size == 2 {
             fft_dit_chunk_2(reals, imags);
         } else if chunk_size == 4 {
-            fft_dit_chunk_4(reals, imags);
+            fft_dit_chunk_4_simd_f32(reals, imags);
         } else if chunk_size == 8 {
             fft_dit_chunk_8_simd_f32(reals, imags);
         } else if chunk_size == 16 {

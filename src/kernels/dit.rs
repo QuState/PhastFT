@@ -1,13 +1,126 @@
 //! DIT-specific FFT Kernels
 //!
-//! This module contains SIMD-optimized butterfly kernels specifically for
-//! the Decimation-in-Time algorithm.
+//! FFT kernels for the Decimation-in-Time algorithm.
 //!
 use core::f32;
 
+use num_traits::Float;
 use wide::{f32x16, f32x4, f32x8, f64x4, f64x8};
 
-/// SIMD-optimized DIT butterfly for chunk_size == 8 (f64)
+use crate::kernels::common::fft_chunk_2;
+
+/// DIT butterfly for chunk_size == 2
+/// Identical to DIF version (no twiddles at size 2)
+#[inline]
+pub fn fft_dit_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
+    fft_chunk_2(reals, imags);
+}
+
+/// DIT butterfly for chunk_size == 4 (f64)
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx2+fma",
+    "x86_64+sse4.2",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx2+fma",
+    "x86+sse4.2",
+    "x86+sse2",
+    "aarch64+neon",
+))]
+#[inline]
+pub fn fft_dit_chunk_4_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
+    const DIST: usize = 2;
+    const CHUNK_SIZE: usize = DIST << 1;
+
+    let two = 2.0_f64;
+
+    reals
+        .chunks_exact_mut(CHUNK_SIZE)
+        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+        .for_each(|(reals_chunk, imags_chunk)| {
+            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+
+            // First pair (W_4^0 = 1)
+            let in0_re = reals_s0[0];
+            let in1_re = reals_s1[0];
+            let in0_im = imags_s0[0];
+            let in1_im = imags_s1[0];
+
+            reals_s0[0] = in0_re + in1_re;
+            imags_s0[0] = in0_im + in1_im;
+            // out1 = 2*in0 - out0
+            reals_s1[0] = in0_re.mul_add(two, -reals_s0[0]);
+            imags_s1[0] = in0_im.mul_add(two, -imags_s0[0]);
+
+            // Second pair (W_4^1 = -i)
+            let in0_re = reals_s0[1];
+            let in1_re = reals_s1[1];
+            let in0_im = imags_s0[1];
+            let in1_im = imags_s1[1];
+
+            // W_4^1 = -i
+            reals_s0[1] = in0_re + in1_im;
+            imags_s0[1] = in0_im - in1_re;
+            // out1 = 2*in0 - out0
+            reals_s1[1] = in0_re.mul_add(two, -reals_s0[1]);
+            imags_s1[1] = in0_im.mul_add(two, -imags_s0[1]);
+        });
+}
+
+/// DIT butterfly for chunk_size == 4 (f32)
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx2+fma",
+    "x86_64+sse4.2",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx2+fma",
+    "x86+sse4.2",
+    "x86+sse2",
+    "aarch64+neon",
+))]
+#[inline]
+pub fn fft_dit_chunk_4_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
+    const DIST: usize = 2;
+    const CHUNK_SIZE: usize = DIST << 1;
+
+    let two = 2.0_f32;
+
+    reals
+        .chunks_exact_mut(CHUNK_SIZE)
+        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+        .for_each(|(reals_chunk, imags_chunk)| {
+            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+
+            // First pair (W_4^0 = 1)
+            let in0_re = reals_s0[0];
+            let in1_re = reals_s1[0];
+            let in0_im = imags_s0[0];
+            let in1_im = imags_s1[0];
+
+            reals_s0[0] = in0_re + in1_re;
+            imags_s0[0] = in0_im + in1_im;
+            // out1 = 2*in0 - out0
+            reals_s1[0] = in0_re.mul_add(two, -reals_s0[0]);
+            imags_s1[0] = in0_im.mul_add(two, -imags_s0[0]);
+
+            // Second pair (W_4^1 = -i)
+            let in0_re = reals_s0[1];
+            let in1_re = reals_s1[1];
+            let in0_im = imags_s0[1];
+            let in1_im = imags_s1[1];
+
+            // W_4^1 = -i
+            reals_s0[1] = in0_re + in1_im;
+            imags_s0[1] = in0_im - in1_re;
+            // out1 = 2*in0 - out0
+            reals_s1[1] = in0_re.mul_add(two, -reals_s0[1]);
+            imags_s1[1] = in0_im.mul_add(two, -imags_s0[1]);
+        });
+}
+
+/// DIT butterfly for chunk_size == 8 (f64) with SIMD
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -44,20 +157,18 @@ pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // Load all 4 elements at once
             let in0_re = f64x4::new(reals_s0[0..4].try_into().unwrap());
             let in1_re = f64x4::new(reals_s1[0..4].try_into().unwrap());
             let in0_im = f64x4::new(imags_s0[0..4].try_into().unwrap());
             let in1_im = f64x4::new(imags_s1[0..4].try_into().unwrap());
 
-            // Apply twiddle factors using FMA
             let twiddle_re_part = sqrt2_2.mul_sub(in1_re, sqrt2_2_im * in1_im);
             let twiddle_im_part = sqrt2_2.mul_add(in1_im, sqrt2_2_im * in1_re);
 
             let out0_re = in0_re + twiddle_re_part;
             let out0_im = in0_im + twiddle_im_part;
 
-            // Compute out1 = 2*in0 - out0
+            // out1 = 2*in0 - out0
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
@@ -68,7 +179,7 @@ pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         });
 }
 
-/// SIMD-optimized DIT butterfly for chunk_size == 8 (f32)
+/// DIT butterfly for chunk_size == 8 (f32) with SIMD
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -105,20 +216,18 @@ pub fn fft_dit_chunk_8_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // Load all 4 elements at once
             let in0_re = f32x4::new(reals_s0[0..4].try_into().unwrap());
             let in1_re = f32x4::new(reals_s1[0..4].try_into().unwrap());
             let in0_im = f32x4::new(imags_s0[0..4].try_into().unwrap());
             let in1_im = f32x4::new(imags_s1[0..4].try_into().unwrap());
 
-            // Apply twiddle factors using FMA
             let twiddle_re_part = sqrt2_2.mul_sub(in1_re, sqrt2_2_im * in1_im);
             let twiddle_im_part = sqrt2_2.mul_add(in1_im, sqrt2_2_im * in1_re);
 
             let out0_re = in0_re + twiddle_re_part;
             let out0_im = in0_im + twiddle_im_part;
 
-            // Compute out1 = 2*in0 - out0
+            // out1 = 2*in0 - out0
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
@@ -129,7 +238,7 @@ pub fn fft_dit_chunk_8_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
         });
 }
 
-/// SIMD-optimized DIT butterfly for chunk_size == 16 (f64)  
+/// DIT butterfly for chunk_size == 16 (f64)  
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -183,14 +292,13 @@ pub fn fft_dit_chunk_16_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
             let in0_im = f64x8::new(imags_s0[0..8].try_into().unwrap());
             let in1_im = f64x8::new(imags_s1[0..8].try_into().unwrap());
 
-            // Apply twiddle factors using FMA
             let twiddle_re_part = twiddle_re.mul_sub(in1_re, twiddle_im * in1_im);
             let twiddle_im_part = twiddle_re.mul_add(in1_im, twiddle_im * in1_re);
 
             let out0_re = in0_re + twiddle_re_part;
             let out0_im = in0_im + twiddle_im_part;
 
-            // Compute out1 = 2*in0 - out0
+            // out1 = 2*in0 - out0
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
@@ -201,7 +309,7 @@ pub fn fft_dit_chunk_16_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         });
 }
 
-/// SIMD-optimized DIT butterfly for chunk_size == 16 (f32)
+/// DIT butterfly for chunk_size == 16 (f32)
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -255,14 +363,13 @@ pub fn fft_dit_chunk_16_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
             let in0_im = f32x8::new(imags_s0[0..8].try_into().unwrap());
             let in1_im = f32x8::new(imags_s1[0..8].try_into().unwrap());
 
-            // Apply twiddle factors using FMA
             let twiddle_re_part = twiddle_re.mul_sub(in1_re, twiddle_im * in1_im);
             let twiddle_im_part = twiddle_re.mul_add(in1_im, twiddle_im * in1_re);
 
             let out0_re = in0_re + twiddle_re_part;
             let out0_im = in0_im + twiddle_im_part;
 
-            // Compute out1 = 2*in0 - out0
+            // out1 = 2*in0 - out0
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
@@ -272,7 +379,7 @@ pub fn fft_dit_chunk_16_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
             imags_s1.copy_from_slice(out1_im.as_array_ref());
         });
 }
-/// SIMD-optimized DIT butterfly for chunk_size == 32 (f64)
+/// DIT butterfly for chunk_size == 32 (f64)
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -389,7 +496,7 @@ pub fn fft_dit_chunk_32_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         });
 }
 
-/// SIMD-optimized DIT butterfly for chunk_size == 32 (f32)
+/// DIT butterfly for chunk_size == 32 (f32)
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -475,7 +582,7 @@ pub fn fft_dit_chunk_32_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
         });
 }
 
-/// SIMD-optimized DIT butterfly for chunk_size == 64 (f64)
+/// DIT butterfly for chunk_size == 64 (f64)
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -671,7 +778,7 @@ pub fn fft_dit_chunk_64_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         });
 }
 
-/// SIMD-optimized DIT butterfly for chunk_size == 64 (f32)
+/// DIT butterfly for chunk_size == 64 (f32)
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -815,7 +922,7 @@ pub fn fft_dit_chunk_64_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
         });
 }
 
-/// General SIMD-optimized DIT butterfly for f64
+/// General DIT butterfly for f64
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
@@ -881,7 +988,7 @@ pub fn fft_dit_64_chunk_n_simd(
         });
 }
 
-/// General SIMD-optimized DIT butterfly for f32
+/// General DIT butterfly for f32
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
     "x86_64+avx2+fma",
