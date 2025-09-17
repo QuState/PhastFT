@@ -7,9 +7,11 @@ Contributions are welcome, and they are greatly appreciated!
 ```bash
 git clone git@github.com:<username>/phastft.git
 ```
-3. [Install Rust](https://www.rust-lang.org/tools/install) and setup [nightly](https://rust-lang.github.io/rustup/concepts/channels.html) Rust
+3. [Install Rust](https://www.rust-lang.org/tools/install)
 
-4. Setup the git hooks by in your local repo:
+4. Setup the git hooks by in your local repo. Note that the hooks rely on
+   `cargo nextest`. Feel free to switch that back to `cargo test ...` if you
+    don't use/want `cargo nextest`.
 ```bash
 cd PhastFT
 git config core.hooksPath ./hooks 
