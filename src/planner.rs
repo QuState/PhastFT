@@ -39,16 +39,12 @@ macro_rules! impl_planner_for {
             /// Panics if `num_points < 1` or if `num_points` is __not__ a power of 2.
             pub fn new(num_points: usize, direction: Direction) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
-                let dir = match direction {
-                    Direction::Forward => Direction::Forward,
-                    Direction::Reverse => Direction::Reverse,
-                };
 
                 if num_points <= 4 {
                     return Self {
                         twiddles_re: vec![],
                         twiddles_im: vec![],
-                        direction: dir,
+                        direction,
                     };
                 }
 
@@ -65,7 +61,7 @@ macro_rules! impl_planner_for {
                 Self {
                     twiddles_re,
                     twiddles_im,
-                    direction: dir,
+                    direction,
                 }
             }
 

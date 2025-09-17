@@ -9,15 +9,6 @@
 )]
 #![forbid(unsafe_code)]
 
-/// Helper macro to create array references from slices
-#[macro_export]
-macro_rules! array_ref {
-    ($slice:expr, $offset:expr, $len:expr) => {{
-        let slice = &$slice[$offset..$offset + $len];
-        slice.try_into().expect("slice with incorrect length")
-    }};
-}
-
 #[cfg(feature = "complex-nums")]
 use num_complex::Complex;
 
@@ -56,7 +47,7 @@ macro_rules! impl_fft_for {
         /// - Output: Bit-reversed order
         ///
         /// ## References
-        /// https://www.cmlab.csie.ntu.edu.tw/cml/dsp/training/coding/transform/fft.html
+        /// <https://www.cmlab.csie.ntu.edu.tw/cml/dsp/training/coding/transform/fft.html>
         ///
         pub fn $func_name(
             reals: &mut [$precision],
@@ -94,6 +85,9 @@ macro_rules! impl_fft_interleaved_for {
         ///
         /// The input should be provided in normal order, and then the modified input is
         /// bit-reversed.
+        ///
+        /// **Note**: This function currently allocates temporary buffers for deinterleaving.
+        /// For maximum performance with minimal allocations, use the separate real/imaginary APIs.
         ///
         /// ## References
         /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
