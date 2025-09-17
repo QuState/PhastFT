@@ -171,6 +171,16 @@ fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
 - Output: Normal order
 - Bit Reversal: Always performed on input (required for correctness)
 
+## Performance Notes
+
+**Use DIT for speed.** The DIT algorithm is faster than DIF in most cases due to better memory access patterns. The performance gap is largest for FFTs that fit in L1/L2 cache (up to ~2^17 elements). For huge transforms that blow past cache, both algorithms perform similarly.
+
+**Reuse planners.** If you're doing multiple FFTs of the same size, create the planner once and reuse it.
+
+**Threading.** The library automatically uses 2 threads for bit reversal on inputs ≥ 2^22 elements. This threshold was determined empirically.
+
+**Complex numbers.** The separate real/imaginary array API is faster than the interleaved complex API, which currently allocates temporary buffers.
+
 ## Benchmarks
 
 PhastFT is benchmarked against several other FFT libraries. Scripts and
