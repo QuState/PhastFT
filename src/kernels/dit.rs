@@ -1014,9 +1014,7 @@ pub fn fft_dit_32_chunk_n_simd(
                     // Exactly 6 FMAs for DIT butterfly:
                     // tw_im contains negative values (standard twiddle convention)
                     // out0.re = (in0.re + tw_re*in1.re) - tw_im*in1.im
-                    // Since tw_im is negative, -tw_im is positive
-                    let neg_tw_im = -tw_im;
-                    let out0_re = neg_tw_im.mul_add(in1_im, tw_re.mul_add(in1_re, in0_re));
+                    let out0_re = tw_im.mul_neg_add(in1_im, tw_re.mul_add(in1_re, in0_re));
                     // out0.im = (in0.im + tw_re*in1.im) + tw_im*in1.re
                     let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
