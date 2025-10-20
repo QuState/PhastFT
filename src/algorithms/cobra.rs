@@ -1076,10 +1076,10 @@ pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
 /// [2] Christian Knauth, Boran Adas, Daniel Whitfield, Xuesong Wang, Lydia Ickler, Tim Conrad, Oliver Serang:
 /// Practically efficient methods for performing bit-reversed permutation in C++11 on the x86-64 architecture
 /// [3] <https://bitbucket.org/orserang/bit-reversal-methods/src/master/src_and_bin/src/algorithms/COBRAShuffle.hpp>
-#[multiversion::multiversion(targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+#[multiversion::multiversion(targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
                                      "x86_64+avx2+fma", // x86_64-v3
                                      "x86_64+sse4.2", // x86_64-v2
-                                     "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+                                     "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
                                      "x86+avx2+fma",
                                      "x86+sse4.2",
                                      "x86+sse2",

@@ -35,10 +35,10 @@ use crate::twiddles::filter_twiddles;
 ///
 /// Panics if input length is not a power of 2 or if real and imaginary arrays have different lengths
 #[multiversion::multiversion(
-    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl", // x86_64-v4
+    targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
             "x86_64+avx2+fma", // x86_64-v3
             "x86_64+sse4.2", // x86_64-v2
-            "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+            "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
             "x86+avx2+fma",
             "x86+sse4.2",
             "x86+sse2",
@@ -144,10 +144,10 @@ pub fn fft_64_with_opts_and_plan(
 ///
 /// This is the core DIF implementation for single-precision floating point.
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",

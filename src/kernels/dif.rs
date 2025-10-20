@@ -8,10 +8,10 @@ use wide::{f32x16, f64x8};
 
 /// SIMD-optimized DIF butterfly for f64
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -64,10 +64,10 @@ pub fn fft_64_chunk_n_simd(
 
 /// SIMD-optimized DIF butterfly for f32
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -120,10 +120,10 @@ pub fn fft_32_chunk_n_simd(
 
 /// General-purpose DIF butterfly for arbitrary chunk sizes
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
