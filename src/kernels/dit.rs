@@ -18,10 +18,10 @@ pub fn fft_dit_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
 
 /// DIT butterfly for chunk_size == 4 (f64)
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -70,10 +70,10 @@ pub fn fft_dit_chunk_4_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
 
 /// DIT butterfly for chunk_size == 4 (f32)
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -122,10 +122,10 @@ pub fn fft_dit_chunk_4_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
 
 /// DIT butterfly for chunk_size == 8 (f64) with SIMD
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -180,10 +180,10 @@ pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
 
 /// DIT butterfly for chunk_size == 8 (f32) with SIMD
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -238,10 +238,10 @@ pub fn fft_dit_chunk_8_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
 
 /// DIT butterfly for chunk_size == 16 (f64)  
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -306,10 +306,10 @@ pub fn fft_dit_chunk_16_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
 
 /// DIT butterfly for chunk_size == 16 (f32)
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -373,10 +373,10 @@ pub fn fft_dit_chunk_16_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
 }
 /// DIT butterfly for chunk_size == 32 (f64)
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -488,10 +488,10 @@ pub fn fft_dit_chunk_32_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
 
 /// DIT butterfly for chunk_size == 32 (f32)
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -571,10 +571,10 @@ pub fn fft_dit_chunk_32_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
 
 /// DIT butterfly for chunk_size == 64 (f64)
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -761,10 +761,10 @@ pub fn fft_dit_chunk_64_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
 
 /// DIT butterfly for chunk_size == 64 (f32)
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -902,10 +902,10 @@ pub fn fft_dit_chunk_64_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
 
 /// General DIT butterfly for f64
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -966,10 +966,10 @@ pub fn fft_dit_64_chunk_n_simd(
 
 /// General DIT butterfly for f32
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",

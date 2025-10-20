@@ -7,10 +7,10 @@ use num_traits::Float;
 /// Simple butterfly for chunk_size == 2
 /// This is the same for both, the DIF and DIT algorithms
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
@@ -36,10 +36,10 @@ pub fn fft_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
 
 /// DIF butterfly for chunk_size == 4 with hard-coded twiddle factors
 #[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86_64+avx2+fma",
     "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
