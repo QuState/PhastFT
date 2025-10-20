@@ -52,12 +52,12 @@ pub fn fft_64_chunk_n_simd(
                     let tw_re = f64x8::new(w_re[0..8].try_into().unwrap());
                     let tw_im = f64x8::new(w_im[0..8].try_into().unwrap());
 
-                    re_s0.copy_from_slice((real_c0 + real_c1).as_array_ref());
-                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array_ref());
+                    re_s0.copy_from_slice((real_c0 + real_c1).as_array());
+                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array());
                     let v_re = real_c0 - real_c1;
                     let v_im = imag_c0 - imag_c1;
-                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array_ref());
-                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array_ref());
+                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array());
+                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array());
                 });
         });
 }
@@ -108,12 +108,12 @@ pub fn fft_32_chunk_n_simd(
                     let tw_re = f32x16::new(w_re[0..16].try_into().unwrap());
                     let tw_im = f32x16::new(w_im[0..16].try_into().unwrap());
 
-                    re_s0.copy_from_slice((real_c0 + real_c1).as_array_ref());
-                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array_ref());
+                    re_s0.copy_from_slice((real_c0 + real_c1).as_array());
+                    im_s0.copy_from_slice((imag_c0 + imag_c1).as_array());
                     let v_re = real_c0 - real_c1;
                     let v_im = imag_c0 - imag_c1;
-                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array_ref());
-                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array_ref());
+                    re_s1.copy_from_slice((v_re * tw_re - v_im * tw_im).as_array());
+                    im_s1.copy_from_slice((v_re * tw_im + v_im * tw_re).as_array());
                 });
         });
 }
