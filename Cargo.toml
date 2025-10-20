@@ -17,7 +17,7 @@ num-traits = "0.2.19"
 multiversion = "0.8.0"
 num-complex = { version = "0.4.6", features = ["bytemuck"], optional = true }
 bytemuck = { version = "1.23.2", optional = true }
-wide = { git = "https://github.com/Lokathor/wide", branch = "main" }
+wide = "0.8.1"
 
 [features]
 default = []
