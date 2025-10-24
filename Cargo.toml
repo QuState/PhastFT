@@ -35,7 +35,6 @@ harness = false
 
 [profile.release]
 codegen-units = 1
-lto = true
 panic = "abort"
 
 [profile.profiling]
