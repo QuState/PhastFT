@@ -25,7 +25,6 @@ pub fn fft_dit_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_4_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
@@ -77,7 +76,6 @@ pub fn fft_dit_chunk_4_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_4_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
@@ -129,7 +127,6 @@ pub fn fft_dit_chunk_4_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
@@ -187,7 +184,6 @@ pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_8_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
@@ -245,7 +241,6 @@ pub fn fft_dit_chunk_8_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_16_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
@@ -313,7 +308,6 @@ pub fn fft_dit_chunk_16_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_16_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
@@ -380,7 +374,6 @@ pub fn fft_dit_chunk_16_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_32_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
@@ -495,7 +488,6 @@ pub fn fft_dit_chunk_32_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_32_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
@@ -578,7 +570,6 @@ pub fn fft_dit_chunk_32_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_64_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
@@ -768,7 +759,6 @@ pub fn fft_dit_chunk_64_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_chunk_64_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
@@ -909,7 +899,6 @@ pub fn fft_dit_chunk_64_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_64_chunk_n_simd(
@@ -973,7 +962,6 @@ pub fn fft_dit_64_chunk_n_simd(
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_dit_32_chunk_n_simd(

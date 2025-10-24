@@ -42,7 +42,6 @@ use crate::twiddles::filter_twiddles;
             "x86+avx2+fma",
             "x86+sse4.2",
             "x86+sse2",
-            "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
 ))]
 pub fn fft_64_with_opts_and_plan(
     reals: &mut [f64],
@@ -151,7 +150,6 @@ pub fn fft_64_with_opts_and_plan(
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 pub fn fft_32_with_opts_and_plan(
     reals: &mut [f32],

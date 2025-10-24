@@ -16,7 +16,6 @@ use num_traits::Float;
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon", // ARM64 with NEON (Apple Silicon M1/M2)
     ))]
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
 pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
