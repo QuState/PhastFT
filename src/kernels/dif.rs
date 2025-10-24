@@ -15,7 +15,6 @@ use wide::{f32x16, f64x8};
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_64_chunk_n_simd(
@@ -71,7 +70,6 @@ pub fn fft_64_chunk_n_simd(
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_32_chunk_n_simd(
@@ -127,7 +125,6 @@ pub fn fft_32_chunk_n_simd(
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_chunk_n<T: Float>(

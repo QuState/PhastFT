@@ -14,7 +14,6 @@ use num_traits::Float;
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
@@ -43,7 +42,6 @@ pub fn fft_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     "x86+avx2+fma",
     "x86+sse4.2",
     "x86+sse2",
-    "aarch64+neon",
 ))]
 #[inline]
 pub fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
