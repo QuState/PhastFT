@@ -8,7 +8,8 @@ use phastft::{
 };
 use rand::distr::StandardUniform;
 use rand::prelude::Distribution;
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 
