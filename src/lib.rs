@@ -24,6 +24,7 @@ pub mod planner;
 mod twiddles;
 mod utils;
 
+pub use algorithms::cobra::cobra_apply;
 pub use algorithms::dif::{fft_32_with_opts_and_plan, fft_64_with_opts_and_plan};
 pub use algorithms::dit::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
 
