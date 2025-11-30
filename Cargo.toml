@@ -25,7 +25,7 @@ default = []
 complex-nums = ["dep:num-complex", "dep:bytemuck"]
 
 [dev-dependencies]
-criterion = "0.7.0"
+criterion = "0.8.0"
 fftw = "0.8.0"
 rand = "0.9.2"
 utilities = { path = "utilities" }
