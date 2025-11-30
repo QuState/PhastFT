@@ -119,10 +119,7 @@ pub fn fft_64_with_opts_and_plan(
     // Optional bit reversal (controlled by options)
     if opts.dif_perform_bit_reversal {
         if opts.multithreaded_bit_reversal {
-            rayon::join(
-                || cobra_apply(reals, n),
-                || cobra_apply(imags, n),
-            );
+            rayon::join(|| cobra_apply(reals, n), || cobra_apply(imags, n));
         } else {
             cobra_apply(reals, n);
             cobra_apply(imags, n);
@@ -226,10 +223,7 @@ pub fn fft_32_with_opts_and_plan(
 
     if opts.dif_perform_bit_reversal {
         if opts.multithreaded_bit_reversal {
-            rayon::join(
-                || cobra_apply(reals, n),
-                || cobra_apply(imags, n),
-            );
+            rayon::join(|| cobra_apply(reals, n), || cobra_apply(imags, n));
         } else {
             cobra_apply(reals, n);
             cobra_apply(imags, n);
