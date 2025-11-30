@@ -35,7 +35,6 @@ const L1_BLOCK_SIZE: usize = 1024;
 fn recursive_dit_fft_f64(
     reals: &mut [f64],
     imags: &mut [f64],
-    offset: usize,
     size: usize,
     planner: &PlannerDit64,
     mut stage_twiddle_idx: usize,
@@ -45,8 +44,8 @@ fn recursive_dit_fft_f64(
     if size <= L1_BLOCK_SIZE {
         for stage in 0..log_size {
             stage_twiddle_idx = execute_dit_stage_f64(
-                &mut reals[offset..offset + size],
-                &mut imags[offset..offset + size],
+                &mut reals[..size],
+                &mut imags[..size],
                 stage,
                 planner,
                 stage_twiddle_idx,
@@ -57,9 +56,13 @@ fn recursive_dit_fft_f64(
         let half = size / 2;
         let log_half = half.ilog2() as usize;
 
+        let (re_first_half, re_second_half) = reals.split_at_mut(half);
+        let (im_first_half, im_second_half) = imags.split_at_mut(half);
         // Recursively process both halves
-        recursive_dit_fft_f64(reals, imags, offset, half, planner, 0);
-        recursive_dit_fft_f64(reals, imags, offset + half, half, planner, 0);
+        rayon::join(
+            || recursive_dit_fft_f64(re_first_half, im_first_half, half, planner, 0),
+            || recursive_dit_fft_f64(re_second_half, im_second_half, half, planner, 0),
+        );
 
         // Both halves completed stages 0..log_half-1
         // Stages 0-5 use hardcoded twiddles, 6+ use planner
@@ -68,8 +71,8 @@ fn recursive_dit_fft_f64(
         // Process remaining stages that span both halves
         for stage in log_half..log_size {
             stage_twiddle_idx = execute_dit_stage_f64(
-                &mut reals[offset..offset + size],
-                &mut imags[offset..offset + size],
+                &mut reals[..size],
+                &mut imags[..size],
                 stage,
                 planner,
                 stage_twiddle_idx,
@@ -252,7 +255,7 @@ pub fn fft_64_dit_with_planner_and_opts(
         }
     }
 
-    recursive_dit_fft_f64(reals, imags, 0, n, planner, 0);
+    recursive_dit_fft_f64(reals, imags, n, planner, 0);
 
     // Scaling for inverse transform
     if let Direction::Reverse = planner.direction {
