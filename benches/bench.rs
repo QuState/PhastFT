@@ -73,7 +73,10 @@ fn benchmark_forward_f32(c: &mut Criterion) {
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
-        group.throughput(Throughput::Elements(len as u64));
+        group.throughput(Throughput::ElementsAndBytes {
+            elements: len as u64,
+            bytes: (len * size_of::<f32>()) as u64,
+        });
 
         let id = "PhastFT DIF";
         let options = Options::guess_options(len);
@@ -134,7 +137,10 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
-        group.throughput(Throughput::Elements(len as u64));
+        group.throughput(Throughput::ElementsAndBytes {
+            elements: len as u64,
+            bytes: (len * size_of::<f32>()) as u64,
+        });
 
         let id = "PhastFT DIF";
         let options = Options::guess_options(len);
@@ -195,7 +201,10 @@ fn benchmark_forward_f64(c: &mut Criterion) {
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
-        group.throughput(Throughput::Elements(len as u64));
+        group.throughput(Throughput::ElementsAndBytes {
+            elements: len as u64,
+            bytes: (len * size_of::<f64>()) as u64,
+        });
 
         let id = "PhastFT DIF";
         let options = Options::guess_options(len);
@@ -256,7 +265,10 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
-        group.throughput(Throughput::Elements(len as u64));
+        group.throughput(Throughput::ElementsAndBytes {
+            elements: len as u64,
+            bytes: (len * size_of::<f64>()) as u64,
+        });
 
         let id = "PhastFT DIF";
         let options = Options::guess_options(len);
