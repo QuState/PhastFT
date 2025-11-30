@@ -49,7 +49,7 @@ impl Options {
     pub fn guess_options(input_size: usize) -> Options {
         let mut options = Options::default();
         let n: usize = input_size.ilog2() as usize;
-        options.multithreaded_bit_reversal = n >= 22;
+        options.multithreaded_bit_reversal = n >= 16;
         options
     }
 }
