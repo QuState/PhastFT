@@ -921,49 +921,6 @@ pub fn fft_dit_64_chunk_n_simd(
         });
 }
 
-/// General DIT butterfly for f64
-#[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
-    "x86_64+avx2+fma",
-    "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
-    "x86+avx2+fma",
-    "x86+sse4.2",
-    "x86+sse2",
-))]
-#[inline]
-pub fn fft_dit_64_chunk_n_simd_parallel(
-    reals: &mut [f64],
-    imags: &mut [f64],
-    twiddles_re: &[f64],
-    twiddles_im: &[f64],
-    dist: usize,
-) {
-    const LANES: usize = 8;
-    let chunk_size = dist << 1;
-    assert!(chunk_size >= LANES * 2);
-
-    use rayon::prelude::*;
-
-    reals
-        .chunks_exact_mut(chunk_size)
-        .zip(imags.chunks_exact_mut(chunk_size)).par_bridge()
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-
-            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-                .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    fft_dit_64_chunk_n_simd_kernel(re_s0, re_s1, im_s0, im_s1, tw_re, tw_im)
-                });
-        });
-}
-
 #[inline(always)] // for multiversioning to work
 fn fft_dit_64_chunk_n_simd_kernel(
     re_s0: &mut [f64; 8],
