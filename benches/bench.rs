@@ -69,6 +69,7 @@ fn benchmark_forward_f32(c: &mut Criterion) {
     group.plot_config(
         criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
     );
+    group.sample_size(20);
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
@@ -129,6 +130,7 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
     group.plot_config(
         criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
     );
+    group.sample_size(20);
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
@@ -189,6 +191,7 @@ fn benchmark_forward_f64(c: &mut Criterion) {
     group.plot_config(
         criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
     );
+    group.sample_size(20);
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
@@ -249,6 +252,7 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
     group.plot_config(
         criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
     );
+    group.sample_size(20);
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
