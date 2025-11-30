@@ -913,9 +913,11 @@ pub fn fft_dit_64_chunk_n_simd(
     let two = f64x8::splat(2.0);
     assert!(chunk_size >= LANES * 2);
 
+    use rayon::prelude::*;
+
     reals
         .chunks_exact_mut(chunk_size)
-        .zip(imags.chunks_exact_mut(chunk_size))
+        .zip(imags.chunks_exact_mut(chunk_size)).par_bridge()
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
