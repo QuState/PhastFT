@@ -239,10 +239,10 @@ pub fn fft_64_dit_with_planner_and_opts(
 
     // DIT requires bit-reversed input
     if opts.multithreaded_bit_reversal {
-        std::thread::scope(|s| {
-            s.spawn(|| cobra_apply(reals, log_n));
-            s.spawn(|| cobra_apply(imags, log_n));
-        });
+            rayon::join(
+                || cobra_apply(reals, log_n),
+                || cobra_apply(imags, log_n),
+            );
     } else {
         cobra_apply(reals, log_n);
         cobra_apply(imags, log_n);
@@ -286,10 +286,10 @@ pub fn fft_32_dit_with_planner_and_opts(
 
     // DIT requires bit-reversed input
     if opts.multithreaded_bit_reversal {
-        std::thread::scope(|s| {
-            s.spawn(|| cobra_apply(reals, log_n));
-            s.spawn(|| cobra_apply(imags, log_n));
-        });
+            rayon::join(
+                || cobra_apply(reals, log_n),
+                || cobra_apply(imags, log_n),
+            );
     } else {
         cobra_apply(reals, log_n);
         cobra_apply(imags, log_n);
