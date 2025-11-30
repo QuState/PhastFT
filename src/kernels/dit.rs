@@ -33,9 +33,8 @@ pub fn fft_dit_chunk_4_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
 
     let two = 2.0_f64;
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -84,9 +83,8 @@ pub fn fft_dit_chunk_4_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
 
     let two = 2.0_f32;
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -147,9 +145,8 @@ pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         -std::f64::consts::FRAC_1_SQRT_2, // W_8^3 imag (-sqrt(2)/2)
     ]);
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -204,9 +201,8 @@ pub fn fft_dit_chunk_8_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
         -std::f32::consts::FRAC_1_SQRT_2, // W_8^3 imag (-sqrt(2)/2)
     ]);
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -272,9 +268,8 @@ pub fn fft_dit_chunk_16_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         -0.38268343236508984,             // W_16^7 = -sin(pi/8)
     ]);
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -339,9 +334,8 @@ pub fn fft_dit_chunk_16_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
         -0.382_683_43_f32,                // W_16^7 = -sin(pi/8)
     ]);
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -428,9 +422,8 @@ pub fn fft_dit_chunk_32_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         -0.19509032201612825,             // W_32^15
     ]);
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -535,9 +528,8 @@ pub fn fft_dit_chunk_32_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
         -0.195_090_32_f32,                // W_32^15
     ]);
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -671,9 +663,8 @@ pub fn fft_dit_chunk_64_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         -0.0980171403295606,              // W_64^31
     ]);
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
@@ -846,9 +837,8 @@ pub fn fft_dit_chunk_64_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
         -0.098_017_14_f32,                // W_64^31
     ]);
 
-    reals
-        .chunks_exact_mut(CHUNK_SIZE)
-        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
