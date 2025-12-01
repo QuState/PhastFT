@@ -20,6 +20,7 @@ use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64
 mod algorithms;
 mod kernels;
 pub mod options;
+mod parallel;
 pub mod planner;
 mod twiddles;
 mod utils;
