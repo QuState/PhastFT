@@ -23,7 +23,7 @@ use crate::kernels::dit::{
     fft_dit_chunk_8_simd_f64,
 };
 use crate::options::Options;
-use crate::parallel::parallel_join;
+use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
 /// L1 cache block size in complex elements (8KB for f32, 16KB for f64)
@@ -60,7 +60,7 @@ fn recursive_dit_fft_f64(
         let (re_first_half, re_second_half) = reals.split_at_mut(half);
         let (im_first_half, im_second_half) = imags.split_at_mut(half);
         // Recursively process both halves
-        parallel_join(
+        run_maybe_in_parallel(
             true,
             || recursive_dit_fft_f64(re_first_half, im_first_half, half, planner, 0),
             || recursive_dit_fft_f64(re_second_half, im_second_half, half, planner, 0),
@@ -113,7 +113,7 @@ fn recursive_dit_fft_f32(
         let (re_first_half, re_second_half) = reals.split_at_mut(half);
         let (im_first_half, im_second_half) = imags.split_at_mut(half);
         // Recursively process both halves
-        parallel_join(
+        run_maybe_in_parallel(
             true,
             || recursive_dit_fft_f32(re_first_half, im_first_half, half, planner, 0),
             || recursive_dit_fft_f32(re_second_half, im_second_half, half, planner, 0),
@@ -248,7 +248,7 @@ pub fn fft_64_dit_with_planner_and_opts(
     assert_eq!(log_n, planner.log_n);
 
     // DIT requires bit-reversed input
-    parallel_join(
+    run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
         || cobra_apply(reals, log_n),
         || cobra_apply(imags, log_n),
@@ -291,7 +291,7 @@ pub fn fft_32_dit_with_planner_and_opts(
     assert_eq!(log_n, planner.log_n);
 
     // DIT requires bit-reversed input
-    parallel_join(
+    run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
         || cobra_apply(reals, log_n),
         || cobra_apply(imags, log_n),
