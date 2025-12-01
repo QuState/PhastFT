@@ -45,7 +45,7 @@ jobs:
           command: fmt
           args: --all -- --check
 
-combo:
+  combo:
     name: Test ${{ matrix.args }}
     runs-on: ubuntu-latest
     strategy:
