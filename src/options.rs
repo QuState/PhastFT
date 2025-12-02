@@ -9,8 +9,10 @@
 #[derive(Debug, Clone)]
 pub struct Options {
     /// Whether to run the bit reversal step in 2 threads instead of one.
-    /// This is beneficial only at large input sizes (i.e. gigabytes of data).
+    /// This is beneficial only at medium to large sizes (i.e. megabytes of data).
     /// The exact threshold where it starts being beneficial varies depending on the hardware.
+    ///
+    /// This option is ignored if the `parallel` feature is disabled.
     pub multithreaded_bit_reversal: bool,
 
     /// Controls bit reversal behavior for DIF FFT algorithms.
@@ -37,6 +39,8 @@ pub struct Options {
     /// Do not split the input any further to run in parallel below this size
     ///
     /// Set to `usize::MAX` to disable parallelism in the recursive FFT step.
+    ///
+    /// This option is ignored if the `parallel` feature is disabled.
     pub smallest_parallel_chunk_size: usize,
 }
 
