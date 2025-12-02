@@ -1066,6 +1066,15 @@ pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
     }
 }
 
+const REVERSED: [usize; 128] = [
+    0, 64, 32, 96, 16, 80, 48, 112, 8, 72, 40, 104, 24, 88, 56, 120, 4, 68, 36, 100, 20, 84, 52,
+    116, 12, 76, 44, 108, 28, 92, 60, 124, 2, 66, 34, 98, 18, 82, 50, 114, 10, 74, 42, 106, 26, 90,
+    58, 122, 6, 70, 38, 102, 22, 86, 54, 118, 14, 78, 46, 110, 30, 94, 62, 126, 1, 65, 33, 97, 17,
+    81, 49, 113, 9, 73, 41, 105, 25, 89, 57, 121, 5, 69, 37, 101, 21, 85, 53, 117, 13, 77, 45, 109,
+    29, 93, 61, 125, 3, 67, 35, 99, 19, 83, 51, 115, 11, 75, 43, 107, 27, 91, 59, 123, 7, 71, 39,
+    103, 23, 87, 55, 119, 15, 79, 47, 111, 31, 95, 63, 127,
+];
+
 /// Pure Rust implementation of Cache Optimal Bit-Reverse Algorithm (COBRA).
 /// Rewritten from a C++ implementation [3].
 ///
@@ -1091,7 +1100,6 @@ pub fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
     }
     let num_b_bits = log_n - 2 * LOG_BLOCK_WIDTH;
     let b_size: usize = 1 << num_b_bits;
-    let block_width: usize = 1 << LOG_BLOCK_WIDTH;
 
     let mut buffer = [T::default(); BLOCK_WIDTH * BLOCK_WIDTH];
 
@@ -1099,21 +1107,15 @@ pub fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
         let b_rev = b.reverse_bits() >> ((b_size - 1).leading_zeros());
 
         // Copy block to buffer
-        for a in 0..block_width {
-            let a_rev = a.reverse_bits() >> ((block_width - 1).leading_zeros());
+        for (a, a_rev) in REVERSED.into_iter().enumerate() {
             for c in 0..BLOCK_WIDTH {
                 buffer[(a_rev << LOG_BLOCK_WIDTH) | c] =
                     v[(a << num_b_bits << LOG_BLOCK_WIDTH) | (b << LOG_BLOCK_WIDTH) | c];
             }
         }
 
-        for c in 0..BLOCK_WIDTH {
-            // NOTE: Typo in original pseudocode by Carter and Gatlin at the following line:
-            let c_rev = c.reverse_bits() >> ((block_width - 1).leading_zeros());
-
-            for a_rev in 0..BLOCK_WIDTH {
-                let a = a_rev.reverse_bits() >> ((block_width - 1).leading_zeros());
-
+        for (c, c_rev) in REVERSED.into_iter().enumerate() {
+            for (a_rev, a) in REVERSED.into_iter().enumerate() {
                 // To guarantee each value is swapped only one time:
                 // index < reversed_index <-->
                 // a b c < c' b' a' <-->
@@ -1135,10 +1137,8 @@ pub fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
         }
 
         // Copy changes that were swapped into buffer above:
-        for a in 0..BLOCK_WIDTH {
-            let a_rev = a.reverse_bits() >> ((block_width - 1).leading_zeros());
-            for c in 0..BLOCK_WIDTH {
-                let c_rev = c.reverse_bits() >> ((block_width - 1).leading_zeros());
+        for (a, a_rev) in REVERSED.into_iter().enumerate() {
+            for (c, c_rev) in REVERSED.into_iter().enumerate() {
                 let index_less_than_reverse = a < c_rev
                     || (a == c_rev && b < b_rev)
                     || (a == c_rev && b == b_rev && a_rev < c);

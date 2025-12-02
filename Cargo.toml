@@ -33,6 +33,10 @@ utilities = { path = "utilities" }
 name = "bench"
 harness = false
 
+[[bench]]
+name = "bit_reversal"
+harness = false
+
 [profile.release]
 codegen-units = 1
 panic = "abort"
