@@ -38,6 +38,7 @@ fn recursive_dit_fft_f64(
     imags: &mut [f64],
     size: usize,
     planner: &PlannerDit64,
+    opts: &Options,
     mut stage_twiddle_idx: usize,
 ) -> usize {
     let log_size = size.ilog2() as usize;
@@ -61,9 +62,9 @@ fn recursive_dit_fft_f64(
         let (im_first_half, im_second_half) = imags.split_at_mut(half);
         // Recursively process both halves
         run_maybe_in_parallel(
-            true,
-            || recursive_dit_fft_f64(re_first_half, im_first_half, half, planner, 0),
-            || recursive_dit_fft_f64(re_second_half, im_second_half, half, planner, 0),
+            size > opts.smallest_parallel_chunk_size,
+            || recursive_dit_fft_f64(re_first_half, im_first_half, half, planner, opts, 0),
+            || recursive_dit_fft_f64(re_second_half, im_second_half, half, planner, opts, 0),
         );
 
         // Both halves completed stages 0..log_half-1
@@ -91,6 +92,7 @@ fn recursive_dit_fft_f32(
     imags: &mut [f32],
     size: usize,
     planner: &PlannerDit32,
+    opts: &Options,
     mut stage_twiddle_idx: usize,
 ) -> usize {
     let log_size = size.ilog2() as usize;
@@ -114,9 +116,9 @@ fn recursive_dit_fft_f32(
         let (im_first_half, im_second_half) = imags.split_at_mut(half);
         // Recursively process both halves
         run_maybe_in_parallel(
-            true,
-            || recursive_dit_fft_f32(re_first_half, im_first_half, half, planner, 0),
-            || recursive_dit_fft_f32(re_second_half, im_second_half, half, planner, 0),
+            size > opts.smallest_parallel_chunk_size,
+            || recursive_dit_fft_f32(re_first_half, im_first_half, half, planner, opts, 0),
+            || recursive_dit_fft_f32(re_second_half, im_second_half, half, planner, opts, 0),
         );
 
         // Both halves completed stages 0..log_half-1
@@ -261,7 +263,7 @@ pub fn fft_64_dit_with_planner_and_opts(
         }
     }
 
-    recursive_dit_fft_f64(reals, imags, n, planner, 0);
+    recursive_dit_fft_f64(reals, imags, n, planner, opts, 0);
 
     // Scaling for inverse transform
     if let Direction::Reverse = planner.direction {
@@ -304,7 +306,7 @@ pub fn fft_32_dit_with_planner_and_opts(
         }
     }
 
-    recursive_dit_fft_f32(reals, imags, n, planner, 0);
+    recursive_dit_fft_f32(reals, imags, n, planner, opts, 0);
 
     // Scaling for inverse transform
     if let Direction::Reverse = planner.direction {

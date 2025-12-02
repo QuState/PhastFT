@@ -33,6 +33,11 @@ pub struct Options {
     /// fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
     /// ```
     pub dif_perform_bit_reversal: bool,
+
+    /// Do not split the input any further to run in parallel below this size
+    ///
+    /// Set to `usize::MAX` to disable parallelism in the recursive FFT step.
+    pub smallest_parallel_chunk_size: usize,
 }
 
 impl Default for Options {
@@ -40,6 +45,7 @@ impl Default for Options {
         Self {
             multithreaded_bit_reversal: false,
             dif_perform_bit_reversal: true, // Default to standard FFT behavior
+            smallest_parallel_chunk_size: usize::MAX,
         }
     }
 }
@@ -50,6 +56,7 @@ impl Options {
         let mut options = Options::default();
         let n: usize = input_size.ilog2() as usize;
         options.multithreaded_bit_reversal = n >= 16;
+        options.smallest_parallel_chunk_size = 16384;
         options
     }
 }
