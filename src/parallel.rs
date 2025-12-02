@@ -13,7 +13,7 @@ where
     #[cfg(feature = "parallel")]
     {
         if parallel {
-            rayon::join(oper_a, oper_b)
+            chili::Scope::global().join(|_| oper_a(), |_| oper_b())
         } else {
             (oper_a(), oper_b())
         }
