@@ -165,3 +165,50 @@ pub fn fft_chunk_n<T: Float>(
                 });
         });
 }
+
+/// DIF butterfly for chunk_size == 4 with hard-coded twiddle factors
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
+    "x86_64+avx2+fma",
+    "x86_64+sse4.2",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
+    "x86+avx2+fma",
+    "x86+sse4.2",
+    "x86+sse2",
+))]
+#[inline]
+pub fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
+    const DIST: usize = 2;
+    const CHUNK_SIZE: usize = DIST << 1;
+
+    reals
+        .chunks_exact_mut(CHUNK_SIZE)
+        .zip(imags.chunks_exact_mut(CHUNK_SIZE))
+        .for_each(|(reals_chunk, imags_chunk)| {
+            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+
+            // First pair (W_4^0 = 1)
+            let real_c0 = reals_s0[0];
+            let real_c1 = reals_s1[0];
+            let imag_c0 = imags_s0[0];
+            let imag_c1 = imags_s1[0];
+
+            reals_s0[0] = real_c0 + real_c1;
+            imags_s0[0] = imag_c0 + imag_c1;
+            reals_s1[0] = real_c0 - real_c1;
+            imags_s1[0] = imag_c0 - imag_c1;
+
+            // Second pair (W_4^1 = -i)
+            let real_c0 = reals_s0[1];
+            let real_c1 = reals_s1[1];
+            let imag_c0 = imags_s0[1];
+            let imag_c1 = imags_s1[1];
+
+            reals_s0[1] = real_c0 + real_c1;
+            imags_s0[1] = imag_c0 + imag_c1;
+            // Multiply by -i: (a + bi) * (-i) = b - ai
+            reals_s1[1] = imag_c0 - imag_c1;
+            imags_s1[1] = -(real_c0 - real_c1);
+        });
+}
