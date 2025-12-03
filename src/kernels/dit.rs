@@ -66,6 +66,79 @@ pub fn fft_dit_chunk_4_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
         });
 }
 
+/// DIT butterflies for chunk_size == 4 and chunk_size == 2 in one function (f64)
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
+    "x86_64+avx2+fma",
+    "x86_64+sse4.2",
+    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
+    "x86+avx2+fma",
+    "x86+sse4.2",
+    "x86+sse2",
+))]
+#[inline]
+pub fn fft_dit_chunk_fused_4_2_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
+    const DIST: usize = 2;
+    const CHUNK_SIZE: usize = DIST << 1;
+
+    let two = 2.0_f64;
+
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .for_each(|(reals_chunk, imags_chunk)| {
+            // chunk size 2
+            {
+                let z0_re = reals_chunk[0];
+                let z0_im = imags_chunk[0];
+                let z1_re = reals_chunk[1];
+                let z1_im = imags_chunk[1];
+                let z2_re = reals_chunk[2];
+                let z2_im = imags_chunk[2];
+                let z3_re = reals_chunk[3];
+                let z3_im = imags_chunk[3];
+
+                reals_chunk[0] = z0_re + z1_re;
+                imags_chunk[0] = z0_im + z1_im;
+                reals_chunk[1] = z0_re - z1_re;
+                imags_chunk[1] = z0_im - z1_im;
+                reals_chunk[2] = z2_re + z3_re;
+                imags_chunk[2] = z2_im + z3_im;
+                reals_chunk[3] = z2_re - z3_re;
+                imags_chunk[3] = z2_im - z3_im;
+            }
+
+            // chunk size 4
+
+            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+
+            // First pair (W_4^0 = 1)
+            let in0_re = reals_s0[0];
+            let in1_re = reals_s1[0];
+            let in0_im = imags_s0[0];
+            let in1_im = imags_s1[0];
+
+            reals_s0[0] = in0_re + in1_re;
+            imags_s0[0] = in0_im + in1_im;
+            // out1 = 2*in0 - out0
+            reals_s1[0] = in0_re.mul_add(two, -reals_s0[0]);
+            imags_s1[0] = in0_im.mul_add(two, -imags_s0[0]);
+
+            // Second pair (W_4^1 = -i)
+            let in0_re = reals_s0[1];
+            let in1_re = reals_s1[1];
+            let in0_im = imags_s0[1];
+            let in1_im = imags_s1[1];
+
+            // W_4^1 = -i
+            reals_s0[1] = in0_re + in1_im;
+            imags_s0[1] = in0_im - in1_re;
+            // out1 = 2*in0 - out0
+            reals_s1[1] = in0_re.mul_add(two, -reals_s0[1]);
+            imags_s1[1] = in0_im.mul_add(two, -imags_s0[1]);
+        });
+}
+
 /// DIT butterfly for chunk_size == 4 (f32)
 #[multiversion::multiversion(targets(
     "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
