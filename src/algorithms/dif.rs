@@ -16,6 +16,7 @@ use crate::algorithms::cobra::cobra_apply;
 use crate::kernels::common::{fft_chunk_2, fft_chunk_4};
 use crate::kernels::dif::{fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_n};
 use crate::options::Options;
+use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, Planner32, Planner64};
 use crate::twiddles::filter_twiddles;
 
@@ -118,15 +119,11 @@ pub fn fft_64_with_opts_and_plan(
 
     // Optional bit reversal (controlled by options)
     if opts.dif_perform_bit_reversal {
-        if opts.multithreaded_bit_reversal {
-            std::thread::scope(|s| {
-                s.spawn(|| cobra_apply(reals, n));
-                s.spawn(|| cobra_apply(imags, n));
-            });
-        } else {
-            cobra_apply(reals, n);
-            cobra_apply(imags, n);
-        }
+        run_maybe_in_parallel(
+            opts.multithreaded_bit_reversal,
+            || cobra_apply(reals, n),
+            || cobra_apply(imags, n),
+        );
     }
 
     // Scaling for inverse transform
@@ -225,15 +222,11 @@ pub fn fft_32_with_opts_and_plan(
     }
 
     if opts.dif_perform_bit_reversal {
-        if opts.multithreaded_bit_reversal {
-            std::thread::scope(|s| {
-                s.spawn(|| cobra_apply(reals, n));
-                s.spawn(|| cobra_apply(imags, n));
-            });
-        } else {
-            cobra_apply(reals, n);
-            cobra_apply(imags, n);
-        }
+        run_maybe_in_parallel(
+            opts.multithreaded_bit_reversal,
+            || cobra_apply(reals, n),
+            || cobra_apply(imags, n),
+        );
     }
 
     // Scaling for inverse transform

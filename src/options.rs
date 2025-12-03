@@ -9,8 +9,10 @@
 #[derive(Debug, Clone)]
 pub struct Options {
     /// Whether to run the bit reversal step in 2 threads instead of one.
-    /// This is beneficial only at large input sizes (i.e. gigabytes of data).
+    /// This is beneficial only at medium to large sizes (i.e. megabytes of data).
     /// The exact threshold where it starts being beneficial varies depending on the hardware.
+    ///
+    /// This option is ignored if the `parallel` feature is disabled.
     pub multithreaded_bit_reversal: bool,
 
     /// Controls bit reversal behavior for DIF FFT algorithms.
@@ -33,6 +35,13 @@ pub struct Options {
     /// fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
     /// ```
     pub dif_perform_bit_reversal: bool,
+
+    /// Do not split the input any further to run in parallel below this size
+    ///
+    /// Set to `usize::MAX` to disable parallelism in the recursive FFT step.
+    ///
+    /// This option is ignored if the `parallel` feature is disabled.
+    pub smallest_parallel_chunk_size: usize,
 }
 
 impl Default for Options {
@@ -40,6 +49,7 @@ impl Default for Options {
         Self {
             multithreaded_bit_reversal: false,
             dif_perform_bit_reversal: true, // Default to standard FFT behavior
+            smallest_parallel_chunk_size: usize::MAX,
         }
     }
 }
@@ -49,7 +59,8 @@ impl Options {
     pub fn guess_options(input_size: usize) -> Options {
         let mut options = Options::default();
         let n: usize = input_size.ilog2() as usize;
-        options.multithreaded_bit_reversal = n >= 22;
+        options.multithreaded_bit_reversal = n >= 16;
+        options.smallest_parallel_chunk_size = 16384;
         options
     }
 }

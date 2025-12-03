@@ -46,8 +46,13 @@ jobs:
           args: --all -- --check
 
   combo:
-    name: Test
+    name: Test ${{ matrix.args }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # ensures if one fails, the other keeps running
+      matrix:
+        # This creates two jobs: one with the flag, one with an empty string
+        args: ["--all-features", "--features=complex-nums"]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -63,7 +68,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all-features
+          args: ${{ matrix.args }}
 
   coverage:
     runs-on: ubuntu-latest

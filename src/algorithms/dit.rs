@@ -23,6 +23,7 @@ use crate::kernels::dit::{
     fft_dit_chunk_8_simd_f64,
 };
 use crate::options::Options;
+use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
 /// L1 cache block size in complex elements (8KB for f32, 16KB for f64)
@@ -35,9 +36,9 @@ const L1_BLOCK_SIZE: usize = 1024;
 fn recursive_dit_fft_f64(
     reals: &mut [f64],
     imags: &mut [f64],
-    offset: usize,
     size: usize,
     planner: &PlannerDit64,
+    opts: &Options,
     mut stage_twiddle_idx: usize,
 ) -> usize {
     let log_size = size.ilog2() as usize;
@@ -45,8 +46,8 @@ fn recursive_dit_fft_f64(
     if size <= L1_BLOCK_SIZE {
         for stage in 0..log_size {
             stage_twiddle_idx = execute_dit_stage_f64(
-                &mut reals[offset..offset + size],
-                &mut imags[offset..offset + size],
+                &mut reals[..size],
+                &mut imags[..size],
                 stage,
                 planner,
                 stage_twiddle_idx,
@@ -57,9 +58,14 @@ fn recursive_dit_fft_f64(
         let half = size / 2;
         let log_half = half.ilog2() as usize;
 
+        let (re_first_half, re_second_half) = reals.split_at_mut(half);
+        let (im_first_half, im_second_half) = imags.split_at_mut(half);
         // Recursively process both halves
-        recursive_dit_fft_f64(reals, imags, offset, half, planner, 0);
-        recursive_dit_fft_f64(reals, imags, offset + half, half, planner, 0);
+        run_maybe_in_parallel(
+            size > opts.smallest_parallel_chunk_size,
+            || recursive_dit_fft_f64(re_first_half, im_first_half, half, planner, opts, 0),
+            || recursive_dit_fft_f64(re_second_half, im_second_half, half, planner, opts, 0),
+        );
 
         // Both halves completed stages 0..log_half-1
         // Stages 0-5 use hardcoded twiddles, 6+ use planner
@@ -68,8 +74,8 @@ fn recursive_dit_fft_f64(
         // Process remaining stages that span both halves
         for stage in log_half..log_size {
             stage_twiddle_idx = execute_dit_stage_f64(
-                &mut reals[offset..offset + size],
-                &mut imags[offset..offset + size],
+                &mut reals[..size],
+                &mut imags[..size],
                 stage,
                 planner,
                 stage_twiddle_idx,
@@ -84,9 +90,9 @@ fn recursive_dit_fft_f64(
 fn recursive_dit_fft_f32(
     reals: &mut [f32],
     imags: &mut [f32],
-    offset: usize,
     size: usize,
     planner: &PlannerDit32,
+    opts: &Options,
     mut stage_twiddle_idx: usize,
 ) -> usize {
     let log_size = size.ilog2() as usize;
@@ -94,8 +100,8 @@ fn recursive_dit_fft_f32(
     if size <= L1_BLOCK_SIZE {
         for stage in 0..log_size {
             stage_twiddle_idx = execute_dit_stage_f32(
-                &mut reals[offset..offset + size],
-                &mut imags[offset..offset + size],
+                &mut reals[..size],
+                &mut imags[..size],
                 stage,
                 planner,
                 stage_twiddle_idx,
@@ -106,15 +112,24 @@ fn recursive_dit_fft_f32(
         let half = size / 2;
         let log_half = half.ilog2() as usize;
 
-        recursive_dit_fft_f32(reals, imags, offset, half, planner, 0);
-        recursive_dit_fft_f32(reals, imags, offset + half, half, planner, 0);
+        let (re_first_half, re_second_half) = reals.split_at_mut(half);
+        let (im_first_half, im_second_half) = imags.split_at_mut(half);
+        // Recursively process both halves
+        run_maybe_in_parallel(
+            size > opts.smallest_parallel_chunk_size,
+            || recursive_dit_fft_f32(re_first_half, im_first_half, half, planner, opts, 0),
+            || recursive_dit_fft_f32(re_second_half, im_second_half, half, planner, opts, 0),
+        );
 
+        // Both halves completed stages 0..log_half-1
+        // Stages 0-5 use hardcoded twiddles, 6+ use planner
         stage_twiddle_idx = log_half.saturating_sub(6);
 
+        // Process remaining stages that span both halves
         for stage in log_half..log_size {
             stage_twiddle_idx = execute_dit_stage_f32(
-                &mut reals[offset..offset + size],
-                &mut imags[offset..offset + size],
+                &mut reals[..size],
+                &mut imags[..size],
                 stage,
                 planner,
                 stage_twiddle_idx,
@@ -235,15 +250,11 @@ pub fn fft_64_dit_with_planner_and_opts(
     assert_eq!(log_n, planner.log_n);
 
     // DIT requires bit-reversed input
-    if opts.multithreaded_bit_reversal {
-        std::thread::scope(|s| {
-            s.spawn(|| cobra_apply(reals, log_n));
-            s.spawn(|| cobra_apply(imags, log_n));
-        });
-    } else {
-        cobra_apply(reals, log_n);
-        cobra_apply(imags, log_n);
-    }
+    run_maybe_in_parallel(
+        opts.multithreaded_bit_reversal,
+        || cobra_apply(reals, log_n),
+        || cobra_apply(imags, log_n),
+    );
 
     // Handle inverse FFT
     if let Direction::Reverse = planner.direction {
@@ -252,7 +263,7 @@ pub fn fft_64_dit_with_planner_and_opts(
         }
     }
 
-    recursive_dit_fft_f64(reals, imags, 0, n, planner, 0);
+    recursive_dit_fft_f64(reals, imags, n, planner, opts, 0);
 
     // Scaling for inverse transform
     if let Direction::Reverse = planner.direction {
@@ -282,15 +293,11 @@ pub fn fft_32_dit_with_planner_and_opts(
     assert_eq!(log_n, planner.log_n);
 
     // DIT requires bit-reversed input
-    if opts.multithreaded_bit_reversal {
-        std::thread::scope(|s| {
-            s.spawn(|| cobra_apply(reals, log_n));
-            s.spawn(|| cobra_apply(imags, log_n));
-        });
-    } else {
-        cobra_apply(reals, log_n);
-        cobra_apply(imags, log_n);
-    }
+    run_maybe_in_parallel(
+        opts.multithreaded_bit_reversal,
+        || cobra_apply(reals, log_n),
+        || cobra_apply(imags, log_n),
+    );
 
     // Handle inverse FFT
     if let Direction::Reverse = planner.direction {
@@ -299,7 +306,7 @@ pub fn fft_32_dit_with_planner_and_opts(
         }
     }
 
-    recursive_dit_fft_f32(reals, imags, 0, n, planner, 0);
+    recursive_dit_fft_f32(reals, imags, n, planner, opts, 0);
 
     // Scaling for inverse transform
     if let Direction::Reverse = planner.direction {
