@@ -142,7 +142,6 @@ fn recursive_dit_fft_f32(
 
 /// Execute a single DIT stage, dispatching to appropriate kernel based on chunk size.
 /// Returns updated stage_twiddle_idx.
-#[inline]
 fn execute_dit_stage_f64(
     reals: &mut [f64],
     imags: &mut [f64],
@@ -181,7 +180,6 @@ fn execute_dit_stage_f64(
 
 /// Execute a single DIT stage, dispatching to appropriate kernel based on chunk size.
 /// Returns updated stage_twiddle_idx.
-#[inline]
 fn execute_dit_stage_f32(
     reals: &mut [f32],
     imags: &mut [f32],

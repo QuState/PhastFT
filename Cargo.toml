@@ -35,10 +35,6 @@ utilities = { path = "utilities" }
 name = "bench"
 harness = false
 
-[profile.release]
-codegen-units = 1
-panic = "abort"
-
 [profile.profiling]
 inherits = "release"
 debug = true

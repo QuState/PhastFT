@@ -18,7 +18,6 @@ const BLOCK_WIDTH: usize = 128; // size of the cacheline
 const LOG_BLOCK_WIDTH: usize = 7; // log2 of cacheline
 
 /// Fully unrolled bit reversal for size 64 (log_n = 6)
-#[inline(always)]
 fn bit_rev_64<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=64
     // Only swap when i < rev(i) to avoid double swapping
@@ -53,7 +52,6 @@ fn bit_rev_64<T>(buf: &mut [T]) {
 }
 
 /// Fully unrolled bit reversal for size 128 (log_n = 7)
-#[inline(always)]
 fn bit_rev_128<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=128
     // Only swap when i < rev(i) to avoid double swapping
@@ -116,7 +114,6 @@ fn bit_rev_128<T>(buf: &mut [T]) {
 }
 
 /// Fully unrolled bit reversal for size 256 (log_n = 8)
-#[inline(always)]
 fn bit_rev_256<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=256
     // Only swap when i < rev(i) to avoid double swapping
@@ -243,7 +240,6 @@ fn bit_rev_256<T>(buf: &mut [T]) {
 }
 
 /// Fully unrolled bit reversal for size 512 (log_n = 9)
-#[inline(always)]
 fn bit_rev_512<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=512
     // Only swap when i < rev(i) to avoid double swapping
@@ -490,7 +486,6 @@ fn bit_rev_512<T>(buf: &mut [T]) {
 }
 
 /// Fully unrolled bit reversal for size 1024 (log_n = 10)
-#[inline(always)]
 fn bit_rev_1024<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=1024
     // Only swap when i < rev(i) to avoid double swapping
@@ -994,7 +989,6 @@ fn bit_rev_1024<T>(buf: &mut [T]) {
 
 /// ## References
 /// [1] <https://www.katjaas.nl/bitreversal/bitreversal.html>
-#[inline]
 pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
     // Use unrolled versions for common sizes
     match log_n {
