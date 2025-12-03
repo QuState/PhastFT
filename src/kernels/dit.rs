@@ -916,42 +916,30 @@ pub fn fft_dit_64_chunk_n_simd(
                 .zip(twiddles_re.as_chunks::<LANES>().0.iter())
                 .zip(twiddles_im.as_chunks::<LANES>().0.iter())
                 .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    fft_dit_64_chunk_n_simd_kernel(re_s0, re_s1, im_s0, im_s1, tw_re, tw_im)
+                    let two = f64x8::splat(2.0);
+                    let in0_re = f64x8::new(*re_s0);
+                    let in1_re = f64x8::new(*re_s1);
+                    let in0_im = f64x8::new(*im_s0);
+                    let in1_im = f64x8::new(*im_s1);
+
+                    let tw_re = f64x8::new(*tw_re);
+                    let tw_im = f64x8::new(*tw_im);
+
+                    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+                    let out0_re = tw_im.mul_neg_add(in1_im, tw_re.mul_add(in1_re, in0_re));
+                    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+                    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+
+                    // Use FMA for out1 = 2*in0 - out0
+                    let out1_re = two.mul_sub(in0_re, out0_re);
+                    let out1_im = two.mul_sub(in0_im, out0_im);
+
+                    re_s0.copy_from_slice(out0_re.as_array());
+                    im_s0.copy_from_slice(out0_im.as_array());
+                    re_s1.copy_from_slice(out1_re.as_array());
+                    im_s1.copy_from_slice(out1_im.as_array());
                 });
         });
-}
-
-#[inline(always)] // for multiversioning to work
-fn fft_dit_64_chunk_n_simd_kernel(
-    re_s0: &mut [f64; 8],
-    re_s1: &mut [f64; 8],
-    im_s0: &mut [f64; 8],
-    im_s1: &mut [f64; 8],
-    tw_re: &[f64; 8],
-    tw_im: &[f64; 8],
-) {
-    let two = f64x8::splat(2.0);
-    let in0_re = f64x8::new(*re_s0);
-    let in1_re = f64x8::new(*re_s1);
-    let in0_im = f64x8::new(*im_s0);
-    let in1_im = f64x8::new(*im_s1);
-
-    let tw_re = f64x8::new(*tw_re);
-    let tw_im = f64x8::new(*tw_im);
-
-    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-    let out0_re = tw_im.mul_neg_add(in1_im, tw_re.mul_add(in1_re, in0_re));
-    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
-
-    // Use FMA for out1 = 2*in0 - out0
-    let out1_re = two.mul_sub(in0_re, out0_re);
-    let out1_im = two.mul_sub(in0_im, out0_im);
-
-    re_s0.copy_from_slice(out0_re.as_array());
-    im_s0.copy_from_slice(out0_im.as_array());
-    re_s1.copy_from_slice(out1_re.as_array());
-    im_s1.copy_from_slice(out1_im.as_array());
 }
 
 /// General DIT butterfly for f32
@@ -990,40 +978,28 @@ pub fn fft_dit_32_chunk_n_simd(
                 .zip(twiddles_re.as_chunks::<LANES>().0.iter())
                 .zip(twiddles_im.as_chunks::<LANES>().0.iter())
                 .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    fft_dit_32_chunk_n_simd_kernel(re_s0, re_s1, im_s0, im_s1, tw_re, tw_im)
+                    let two = f32x16::splat(2.0);
+                    let in0_re = f32x16::new(*re_s0);
+                    let in1_re = f32x16::new(*re_s1);
+                    let in0_im = f32x16::new(*im_s0);
+                    let in1_im = f32x16::new(*im_s1);
+
+                    let tw_re = f32x16::new(*tw_re);
+                    let tw_im = f32x16::new(*tw_im);
+
+                    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+                    let out0_re = tw_im.mul_neg_add(in1_im, tw_re.mul_add(in1_re, in0_re));
+                    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+                    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+
+                    // Use FMA for out1 = 2*in0 - out0
+                    let out1_re = two.mul_sub(in0_re, out0_re);
+                    let out1_im = two.mul_sub(in0_im, out0_im);
+
+                    re_s0.copy_from_slice(out0_re.as_array());
+                    im_s0.copy_from_slice(out0_im.as_array());
+                    re_s1.copy_from_slice(out1_re.as_array());
+                    im_s1.copy_from_slice(out1_im.as_array());
                 });
         });
-}
-
-#[inline(always)] // for multiversioning to work
-fn fft_dit_32_chunk_n_simd_kernel(
-    re_s0: &mut [f32; 16],
-    re_s1: &mut [f32; 16],
-    im_s0: &mut [f32; 16],
-    im_s1: &mut [f32; 16],
-    tw_re: &[f32; 16],
-    tw_im: &[f32; 16],
-) {
-    let two = f32x16::splat(2.0);
-    let in0_re = f32x16::new(*re_s0);
-    let in1_re = f32x16::new(*re_s1);
-    let in0_im = f32x16::new(*im_s0);
-    let in1_im = f32x16::new(*im_s1);
-
-    let tw_re = f32x16::new(*tw_re);
-    let tw_im = f32x16::new(*tw_im);
-
-    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-    let out0_re = tw_im.mul_neg_add(in1_im, tw_re.mul_add(in1_re, in0_re));
-    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
-
-    // Use FMA for out1 = 2*in0 - out0
-    let out1_re = two.mul_sub(in0_re, out0_re);
-    let out1_im = two.mul_sub(in0_im, out0_im);
-
-    re_s0.copy_from_slice(out0_re.as_array());
-    im_s0.copy_from_slice(out0_im.as_array());
-    re_s1.copy_from_slice(out1_re.as_array());
-    im_s1.copy_from_slice(out1_im.as_array());
 }
