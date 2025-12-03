@@ -13,8 +13,8 @@
 //! 3. Optionally apply bit-reversal at the end
 //!
 use crate::algorithms::cobra::cobra_apply;
-use crate::kernels::common::{fft_chunk_2, fft_chunk_4};
-use crate::kernels::dif::{fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_n};
+use crate::kernels::common::fft_chunk_2;
+use crate::kernels::dif::{fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_4, fft_chunk_n};
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, Planner32, Planner64};
