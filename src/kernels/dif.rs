@@ -16,7 +16,6 @@ use wide::{f32x16, f64x8};
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_64_chunk_n_simd(
     reals: &mut [f64],
     imags: &mut [f64],
@@ -71,7 +70,6 @@ pub fn fft_64_chunk_n_simd(
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_32_chunk_n_simd(
     reals: &mut [f32],
     imags: &mut [f32],
@@ -126,7 +124,6 @@ pub fn fft_32_chunk_n_simd(
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_chunk_n<T: Float>(
     reals: &mut [T],
     imags: &mut [T],
@@ -176,7 +173,6 @@ pub fn fft_chunk_n<T: Float>(
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
     const DIST: usize = 2;
     const CHUNK_SIZE: usize = DIST << 1;

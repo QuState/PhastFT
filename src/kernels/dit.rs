@@ -11,7 +11,6 @@ use crate::kernels::common::fft_chunk_2;
 
 /// DIT butterfly for chunk_size == 2
 /// Identical to DIF version (no twiddles at size 2)
-#[inline]
 pub fn fft_dit_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     fft_chunk_2(reals, imags);
 }
@@ -26,7 +25,6 @@ pub fn fft_dit_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_4_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 2;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -76,7 +74,6 @@ pub fn fft_dit_chunk_4_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_4_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 2;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -126,7 +123,6 @@ pub fn fft_dit_chunk_4_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 4;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -182,7 +178,6 @@ pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_8_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 4;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -238,7 +233,6 @@ pub fn fft_dit_chunk_8_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_16_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 8;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -304,7 +298,6 @@ pub fn fft_dit_chunk_16_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_16_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 8;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -369,7 +362,6 @@ pub fn fft_dit_chunk_16_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_32_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 16;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -482,7 +474,6 @@ pub fn fft_dit_chunk_32_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_32_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 16;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -563,7 +554,6 @@ pub fn fft_dit_chunk_32_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_64_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 32;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -751,7 +741,6 @@ pub fn fft_dit_chunk_64_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_chunk_64_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 32;
     const CHUNK_SIZE: usize = DIST << 1;
@@ -890,7 +879,6 @@ pub fn fft_dit_chunk_64_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_64_chunk_n_simd(
     reals: &mut [f64],
     imags: &mut [f64],
@@ -952,7 +940,6 @@ pub fn fft_dit_64_chunk_n_simd(
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_dit_32_chunk_n_simd(
     reals: &mut [f32],
     imags: &mut [f32],

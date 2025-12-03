@@ -15,7 +15,6 @@ use num_traits::Float;
     "x86+sse4.2",
     "x86+sse2",
 ))]
-#[inline]
 pub fn fft_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
     reals
         .chunks_exact_mut(2)
