@@ -5,7 +5,8 @@
 use core::f32;
 
 use num_traits::Float;
-use wide::{f32x16, f32x4, f32x8, f64x4, f64x8};
+use fearless_simd::{Simd, SimdBase, SimdFrom};
+use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
 
 use crate::kernels::common::fft_chunk_2;
 
@@ -114,32 +115,24 @@ pub fn fft_dit_chunk_4_simd_f32(reals: &mut [f32], imags: &mut [f32]) {
 }
 
 /// DIT butterfly for chunk_size == 8 (f64) with SIMD
-#[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
-    "x86_64+avx2+fma",
-    "x86_64+sse4.2",
-    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
-    "x86+avx2+fma",
-    "x86+sse4.2",
-    "x86+sse2",
-))]
-pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
+#[inline(always)] // required by fearless_simd
+pub fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 4;
     const CHUNK_SIZE: usize = DIST << 1;
 
-    let two = f64x4::splat(2.0);
-    let sqrt2_2 = f64x4::new([
+    let two = f64x4::splat(simd, 2.0);
+    let sqrt2_2 = f64x4::simd_from([
         1.0,                              // W_8^0 real
         std::f64::consts::FRAC_1_SQRT_2,  // W_8^1 real (sqrt(2)/2)
         0.0,                              // W_8^2 real
         -std::f64::consts::FRAC_1_SQRT_2, // W_8^3 real (-sqrt(2)/2)
-    ]);
-    let sqrt2_2_im = f64x4::new([
+    ], simd);
+    let sqrt2_2_im = f64x4::simd_from([
         0.0,                              // W_8^0 imag
         -std::f64::consts::FRAC_1_SQRT_2, // W_8^1 imag (-sqrt(2)/2)
         -1.0,                             // W_8^2 imag
         -std::f64::consts::FRAC_1_SQRT_2, // W_8^3 imag (-sqrt(2)/2)
-    ]);
+    ], simd);
 
     (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
@@ -147,10 +140,10 @@ pub fn fft_dit_chunk_8_simd_f64(reals: &mut [f64], imags: &mut [f64]) {
             let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
             let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            let in0_re = f64x4::new(reals_s0[0..4].try_into().unwrap());
-            let in1_re = f64x4::new(reals_s1[0..4].try_into().unwrap());
-            let in0_im = f64x4::new(imags_s0[0..4].try_into().unwrap());
-            let in1_im = f64x4::new(imags_s1[0..4].try_into().unwrap());
+            let in0_re = f64x4::simd_from(reals_s0[0..4].try_into().unwrap(), simd);
+            let in1_re = f64x4::simd_from(reals_s1[0..4].try_into().unwrap(), simd);
+            let in0_im = f64x4::simd_from(imags_s0[0..4].try_into().unwrap(), simd);
+            let in1_im = f64x4::simd_from(imags_s1[0..4].try_into().unwrap(), simd);
 
             // out0.re = (in0.re + w.re * in1.re) - w.im * in1.im
             let out0_re = sqrt2_2_im.mul_neg_add(in1_im, sqrt2_2.mul_add(in1_re, in0_re));
