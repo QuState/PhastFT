@@ -25,6 +25,7 @@ use crate::kernels::dit::{
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
+use fearless_simd::{Level, dispatch};
 
 /// L1 cache block size in complex elements (8KB for f32, 16KB for f64)
 const L1_BLOCK_SIZE: usize = 1024;
@@ -40,6 +41,7 @@ fn recursive_dit_fft_f64(
     planner: &PlannerDit64,
     opts: &Options,
     mut stage_twiddle_idx: usize,
+    simd_level: Level,
 ) -> usize {
     let log_size = size.ilog2() as usize;
 
@@ -51,6 +53,7 @@ fn recursive_dit_fft_f64(
                 stage,
                 planner,
                 stage_twiddle_idx,
+                simd_level
             );
         }
         stage_twiddle_idx
@@ -63,8 +66,8 @@ fn recursive_dit_fft_f64(
         // Recursively process both halves
         run_maybe_in_parallel(
             size > opts.smallest_parallel_chunk_size,
-            || recursive_dit_fft_f64(re_first_half, im_first_half, half, planner, opts, 0),
-            || recursive_dit_fft_f64(re_second_half, im_second_half, half, planner, opts, 0),
+            || recursive_dit_fft_f64(re_first_half, im_first_half, half, planner, opts, 0, simd_level),
+            || recursive_dit_fft_f64(re_second_half, im_second_half, half, planner, opts, 0, simd_level),
         );
 
         // Both halves completed stages 0..log_half-1
@@ -79,6 +82,7 @@ fn recursive_dit_fft_f64(
                 stage,
                 planner,
                 stage_twiddle_idx,
+                simd_level
             );
         }
 
@@ -94,6 +98,7 @@ fn recursive_dit_fft_f32(
     planner: &PlannerDit32,
     opts: &Options,
     mut stage_twiddle_idx: usize,
+    simd_level: Level,
 ) -> usize {
     let log_size = size.ilog2() as usize;
 
@@ -105,6 +110,7 @@ fn recursive_dit_fft_f32(
                 stage,
                 planner,
                 stage_twiddle_idx,
+                simd_level
             );
         }
         stage_twiddle_idx
@@ -117,8 +123,8 @@ fn recursive_dit_fft_f32(
         // Recursively process both halves
         run_maybe_in_parallel(
             size > opts.smallest_parallel_chunk_size,
-            || recursive_dit_fft_f32(re_first_half, im_first_half, half, planner, opts, 0),
-            || recursive_dit_fft_f32(re_second_half, im_second_half, half, planner, opts, 0),
+            || recursive_dit_fft_f32(re_first_half, im_first_half, half, planner, opts, 0, simd_level),
+            || recursive_dit_fft_f32(re_second_half, im_second_half, half, planner, opts, 0, simd_level),
         );
 
         // Both halves completed stages 0..log_half-1
@@ -133,6 +139,7 @@ fn recursive_dit_fft_f32(
                 stage,
                 planner,
                 stage_twiddle_idx,
+                simd_level
             );
         }
 
@@ -148,6 +155,7 @@ fn execute_dit_stage_f64(
     stage: usize,
     planner: &PlannerDit64,
     stage_twiddle_idx: usize,
+    simd_level: Level,
 ) -> usize {
     let dist = 1 << stage;
     let chunk_size = dist << 1;
@@ -156,24 +164,24 @@ fn execute_dit_stage_f64(
         fft_dit_chunk_2(reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 4 {
-        fft_dit_chunk_4_simd_f64(reals, imags);
+        dispatch!(simd_level, simd => fft_dit_chunk_4_simd_f64(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 8 {
-        fft_dit_chunk_8_simd_f64(reals, imags);
+        dispatch!(simd_level, simd => fft_dit_chunk_8_simd_f64(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 16 {
-        fft_dit_chunk_16_simd_f64(reals, imags);
+        dispatch!(simd_level, simd => fft_dit_chunk_16_simd_f64(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 32 {
-        fft_dit_chunk_32_simd_f64(reals, imags);
+        dispatch!(simd_level, simd => fft_dit_chunk_32_simd_f64(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 64 {
-        fft_dit_chunk_64_simd_f64(reals, imags);
+        dispatch!(simd_level, simd => fft_dit_chunk_64_simd_f64(simd, reals, imags));
         stage_twiddle_idx
     } else {
         // For larger chunks, use general kernel with twiddles from planner
         let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
-        fft_dit_64_chunk_n_simd(reals, imags, twiddles_re, twiddles_im, dist);
+        dispatch!(simd_level, simd => fft_dit_64_chunk_n_simd(simd, reals, imags, twiddles_re, twiddles_im, dist));
         stage_twiddle_idx + 1
     }
 }
@@ -186,6 +194,7 @@ fn execute_dit_stage_f32(
     stage: usize,
     planner: &PlannerDit32,
     stage_twiddle_idx: usize,
+    simd_level: Level,
 ) -> usize {
     let dist = 1 << stage;
     let chunk_size = dist << 1;
@@ -194,24 +203,24 @@ fn execute_dit_stage_f32(
         fft_dit_chunk_2(reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 4 {
-        fft_dit_chunk_4_simd_f32(reals, imags);
+        dispatch!(simd_level, simd => fft_dit_chunk_4_simd_f32(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 8 {
-        fft_dit_chunk_8_simd_f32(reals, imags);
+        dispatch!(simd_level, simd =>  fft_dit_chunk_8_simd_f32(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 16 {
-        fft_dit_chunk_16_simd_f32(reals, imags);
+        dispatch!(simd_level, simd =>  fft_dit_chunk_16_simd_f32(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 32 {
-        fft_dit_chunk_32_simd_f32(reals, imags);
+        dispatch!(simd_level, simd =>  fft_dit_chunk_32_simd_f32(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 64 {
-        fft_dit_chunk_64_simd_f32(reals, imags);
+        dispatch!(simd_level, simd =>  fft_dit_chunk_64_simd_f32(simd, reals, imags));
         stage_twiddle_idx
     } else {
         // For larger chunks, use general kernel with twiddles from planner
         let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
-        fft_dit_32_chunk_n_simd(reals, imags, twiddles_re, twiddles_im, dist);
+        dispatch!(simd_level, simd =>  fft_dit_32_chunk_n_simd(simd, reals, imags, twiddles_re, twiddles_im, dist));
         stage_twiddle_idx + 1
     }
 }
@@ -261,7 +270,8 @@ pub fn fft_64_dit_with_planner_and_opts(
         }
     }
 
-    recursive_dit_fft_f64(reals, imags, n, planner, opts, 0);
+    let simd_level = Level::new();
+    recursive_dit_fft_f64(reals, imags, n, planner, opts, 0, simd_level);
 
     // Scaling for inverse transform
     if let Direction::Reverse = planner.direction {
@@ -304,7 +314,8 @@ pub fn fft_32_dit_with_planner_and_opts(
         }
     }
 
-    recursive_dit_fft_f32(reals, imags, n, planner, opts, 0);
+    let simd_level = Level::new();
+    recursive_dit_fft_f32(reals, imags, n, planner, opts, 0, simd_level);
 
     // Scaling for inverse transform
     if let Direction::Reverse = planner.direction {
