@@ -5,7 +5,7 @@
 use core::f32;
 
 use num_traits::Float;
-use fearless_simd::{Simd, SimdBase, SimdFrom};
+use fearless_simd::{Simd, SimdBase, SimdFrom, SimdFloat};
 use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
 
 use crate::kernels::common::fft_chunk_2;
@@ -154,10 +154,10 @@ pub fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0.copy_from_slice(out0_re.as_array());
-            imags_s0.copy_from_slice(out0_im.as_array());
-            reals_s1.copy_from_slice(out1_re.as_array());
-            imags_s1.copy_from_slice(out1_im.as_array());
+            reals_s0.copy_from_slice(out0_re.as_slice());
+            imags_s0.copy_from_slice(out0_im.as_slice());
+            reals_s1.copy_from_slice(out1_re.as_slice());
+            imags_s1.copy_from_slice(out1_im.as_slice());
         });
 }
 
