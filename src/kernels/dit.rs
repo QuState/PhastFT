@@ -6,7 +6,7 @@ use core::f32;
 
 use num_traits::Float;
 use fearless_simd::{Simd, SimdBase, SimdFrom, SimdFloat};
-use wide::{f32x16, f32x4, f32x8, f64x4, f64x8};
+use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
 
 use crate::kernels::common::fft_chunk_2;
 
@@ -101,7 +101,6 @@ pub fn fft_dit_chunk_4_simd_f32<S: Simd>(_simd: S, reals: &mut [f32], imags: &mu
 /// DIT butterfly for chunk_size == 8 (f64) with SIMD
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const DIST: usize = 4;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -149,7 +148,6 @@ pub fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut
 /// DIT butterfly for chunk_size == 8 (f32) with SIMD
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const DIST: usize = 4;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -197,7 +195,6 @@ pub fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut
 /// DIT butterfly for chunk_size == 16 (f64)
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const DIST: usize = 8;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -255,7 +252,6 @@ pub fn fft_dit_chunk_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
 /// DIT butterfly for chunk_size == 16 (f32)
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_16_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const DIST: usize = 8;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -312,7 +308,6 @@ pub fn fft_dit_chunk_16_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mu
 /// DIT butterfly for chunk_size == 32 (f64)
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const DIST: usize = 16;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -417,7 +412,6 @@ pub fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
 /// DIT butterfly for chunk_size == 32 (f32)
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const DIST: usize = 16;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -490,7 +484,6 @@ pub fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mu
 /// DIT butterfly for chunk_size == 64 (f64)
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const DIST: usize = 32;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -668,7 +661,6 @@ pub fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
 /// DIT butterfly for chunk_size == 64 (f32)
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const DIST: usize = 32;
     const CHUNK_SIZE: usize = DIST << 1;
 
@@ -805,7 +797,6 @@ pub fn fft_dit_64_chunk_n_simd<S: Simd>(
     twiddles_im: &[f64],
     dist: usize,
 ) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const LANES: usize = 8;
     let chunk_size = dist << 1;
     assert!(chunk_size >= LANES * 2);
@@ -860,7 +851,6 @@ pub fn fft_dit_32_chunk_n_simd<S: Simd>(
     twiddles_im: &[f32],
     dist: usize,
 ) {
-    use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
     const LANES: usize = 16;
     let chunk_size = dist << 1;
     assert!(chunk_size >= LANES * 2);
