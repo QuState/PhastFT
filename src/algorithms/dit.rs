@@ -161,7 +161,7 @@ fn execute_dit_stage_f64(
     let chunk_size = dist << 1;
 
     if chunk_size == 2 {
-        fft_dit_chunk_2(reals, imags);
+        dispatch!(simd_level, simd => fft_dit_chunk_2(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 4 {
         dispatch!(simd_level, simd => fft_dit_chunk_4_simd_f64(simd, reals, imags));
@@ -200,7 +200,7 @@ fn execute_dit_stage_f32(
     let chunk_size = dist << 1;
 
     if chunk_size == 2 {
-        fft_dit_chunk_2(reals, imags);
+        dispatch!(simd_level, simd => fft_dit_chunk_2(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 4 {
         dispatch!(simd_level, simd => fft_dit_chunk_4_simd_f32(simd, reals, imags));

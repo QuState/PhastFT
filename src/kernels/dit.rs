@@ -8,12 +8,24 @@ use num_traits::Float;
 use fearless_simd::{Simd, SimdBase, SimdFrom, SimdFloat};
 use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8};
 
-use crate::kernels::common::fft_chunk_2;
-
 /// DIT butterfly for chunk_size == 2
 /// Identical to DIF version (no twiddles at size 2)
-pub fn fft_dit_chunk_2<T: Float>(reals: &mut [T], imags: &mut [T]) {
-    fft_chunk_2(reals, imags);
+#[inline(always)] // required by fearless_simd
+pub fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut [T]) {
+    reals
+        .chunks_exact_mut(2)
+        .zip(imags.chunks_exact_mut(2))
+        .for_each(|(reals_chunk, imags_chunk)| {
+            let z0_re = reals_chunk[0];
+            let z0_im = imags_chunk[0];
+            let z1_re = reals_chunk[1];
+            let z1_im = imags_chunk[1];
+
+            reals_chunk[0] = z0_re + z1_re;
+            imags_chunk[0] = z0_im + z1_im;
+            reals_chunk[1] = z0_re - z1_re;
+            imags_chunk[1] = z0_im - z1_im;
+        });
 }
 
 /// DIT butterfly for chunk_size == 4 (f64)
