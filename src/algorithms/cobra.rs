@@ -987,18 +987,21 @@ fn bit_rev_1024<T>(buf: &mut [T]) {
     buf.swap(991, 1007);
 }
 
-/// ## References
-/// [1] <https://www.katjaas.nl/bitreversal/bitreversal.html>
-pub(crate) fn bit_rev_gray<T>(buf: &mut [T], log_n: usize) {
-    // Use unrolled versions for common sizes
+/// Dispatches to fully unrolled versions for small sizes
+pub(crate) fn bit_rev_unrolled<T>(buf: &mut [T], log_n: usize) {
     match log_n {
         6 => return bit_rev_64(buf),
         7 => return bit_rev_128(buf),
         8 => return bit_rev_256(buf),
         9 => return bit_rev_512(buf),
         10 => return bit_rev_1024(buf),
-        _ => {} // Fall through to generic implementation
+        _ => bit_rev_gray(buf, log_n)
     }
+}
+
+/// ## References
+/// [1] <https://www.katjaas.nl/bitreversal/bitreversal.html>
+pub(crate) fn bit_rev_gray<T>(buf: &mut [T], log_n: usize) {
     let mut nodd: usize;
     let mut noddrev; // to hold bitwise negated or odd values
 
