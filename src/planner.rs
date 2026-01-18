@@ -2,9 +2,7 @@
 //! a Fast Fourier Transform (FFT). Currently, the planner is responsible for
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
-use crate::bencher::{
-    guess_fastest_bit_reversal_impl, measure_fastest_bit_reversal_impl, BitRevFunc,
-};
+use crate::bencher::{guess_fastest_bit_reversal_impl, measure_fastest_bit_reversal_impl};
 use crate::twiddles::{generate_twiddles, generate_twiddles_simd_32, generate_twiddles_simd_64};
 
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
@@ -16,6 +14,9 @@ pub enum Direction {
     /// Multiply the exponent term in the twiddle factor by -1
     Reverse = -1,
 }
+
+// Type alias for the function signature
+pub type BitRevFunc<T> = fn(&mut [T], usize);
 
 macro_rules! impl_planner_for {
     ($struct_name:ident, $precision:ident, $generate_twiddles_simd_fn:ident) => {

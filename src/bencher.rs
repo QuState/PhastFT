@@ -3,9 +3,7 @@
 use std::time::Instant;
 
 use crate::algorithms::cobra::*;
-
-// Type alias for the function signature
-pub type BitRevFunc<T> = fn(&mut [T], usize);
+use crate::planner::BitRevFunc;
 
 /// Benchmarks multiple implementations and returns the fastest one
 fn find_fastest_implementation<T: Default + Copy + Clone>(
