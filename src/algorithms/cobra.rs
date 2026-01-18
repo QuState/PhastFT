@@ -995,7 +995,7 @@ pub(crate) fn bit_rev_unrolled<T>(buf: &mut [T], log_n: usize) {
         8 => return bit_rev_256(buf),
         9 => return bit_rev_512(buf),
         10 => return bit_rev_1024(buf),
-        _ => bit_rev_gray(buf, log_n)
+        _ => bit_rev_gray(buf, log_n),
     }
 }
 

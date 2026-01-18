@@ -48,7 +48,8 @@ fn find_fastest_implementation<T: Default + Copy + Clone>(
 }
 
 pub fn measure_fastest_bit_reversal_impl<T: Default + Copy + Clone>(log_n: usize) -> BitRevFunc<T> {
-    let implementations: &[BitRevFunc<T>] = &[bit_rev_cobra, bit_rev_gray, bit_rev_naive, bit_rev_unrolled];
+    let implementations: &[BitRevFunc<T>] =
+        &[bit_rev_cobra, bit_rev_gray, bit_rev_naive, bit_rev_unrolled];
 
     let test_data: Vec<T> = vec![T::default(); 1 << log_n];
     let iterations = 10;
