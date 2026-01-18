@@ -5,12 +5,12 @@ use std::time::Instant;
 use crate::algorithms::cobra::*;
 
 // Type alias for the function signature
-pub type BitRevFunc = fn(&mut [u8], usize);
+pub type BitRevFunc = fn(&mut [f32], usize);
 
 /// Benchmarks multiple implementations and returns the fastest one
 fn find_fastest_implementation(
     implementations: &[BitRevFunc],
-    test_data: &[u8],
+    test_data: &[f32],
     iterations: usize,
 ) -> BitRevFunc {
     let mut results = Vec::new();
@@ -52,7 +52,7 @@ fn find_fastest_implementation(
 pub fn measure_fastest_bit_reversal_impl(log_n: usize) -> BitRevFunc {
     let implementations: &[BitRevFunc] = &[bit_rev_cobra, bit_rev_gray, bit_rev_naive];
 
-    let test_data: Vec<u8> = (0..=255).cycle().take(1 << log_n).collect();
+    let test_data: Vec<f32> = vec![5.0; 1 << log_n];
     let iterations = 10;
 
     let fastest = find_fastest_implementation(implementations, &test_data, iterations);
