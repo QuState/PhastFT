@@ -15,7 +15,10 @@ pub enum Direction {
     Reverse = -1,
 }
 
-// Type alias for the function signature
+/// Signature of the bit reversal functions
+///
+/// We have several different implementations and this allows us to abstract over them
+/// and choose the fastest one on your hardware at runtime.
 pub type BitRevFunc<T> = fn(&mut [T], usize);
 
 macro_rules! impl_planner_for {
