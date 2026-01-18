@@ -19,7 +19,7 @@ pub enum Direction {
 ///
 /// We have several different implementations and this allows us to abstract over them
 /// and choose the fastest one on your hardware at runtime.
-pub type BitRevFunc<T> = fn(&mut [T], usize);
+pub(crate) type BitRevFunc<T> = fn(&mut [T], usize);
 
 macro_rules! impl_planner_for {
     ($struct_name:ident, $precision:ident, $generate_twiddles_simd_fn:ident) => {
