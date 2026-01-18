@@ -34,8 +34,8 @@ fn find_fastest_implementation<T: Default + Copy + Clone>(
 
         results.push((*func, elapsed));
         // println!(
-        //     "Implementation {}: {} ns total ({} ns/iter)",
-        //     idx,
+        //     "Implementation {:?}: {} ns total ({} ns/iter)",
+        //     func,
         //     elapsed,
         //     elapsed / iterations as u128
         // );
