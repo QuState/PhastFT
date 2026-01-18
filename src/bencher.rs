@@ -5,14 +5,14 @@ use std::time::Instant;
 use crate::algorithms::cobra::*;
 
 // Type alias for the function signature
-pub type BitRevFunc = fn(&mut [f32], usize);
+pub type BitRevFunc<T> = fn(&mut [T], usize);
 
 /// Benchmarks multiple implementations and returns the fastest one
-fn find_fastest_implementation(
-    implementations: &[BitRevFunc],
-    test_data: &[f32],
+fn find_fastest_implementation<T: Default + Copy + Clone>(
+    implementations: &[BitRevFunc<T>],
+    test_data: &[T],
     iterations: usize,
-) -> BitRevFunc {
+) -> BitRevFunc<T> {
     let mut results = Vec::new();
 
     for func in implementations.iter() {
@@ -49,10 +49,10 @@ fn find_fastest_implementation(
     fastest.0
 }
 
-pub fn measure_fastest_bit_reversal_impl(log_n: usize) -> BitRevFunc {
-    let implementations: &[BitRevFunc] = &[bit_rev_cobra, bit_rev_gray, bit_rev_naive];
+pub fn measure_fastest_bit_reversal_impl<T: Default + Copy + Clone>(log_n: usize) -> BitRevFunc<T> {
+    let implementations: &[BitRevFunc<T>] = &[bit_rev_cobra, bit_rev_gray, bit_rev_naive];
 
-    let test_data: Vec<f32> = vec![5.0; 1 << log_n];
+    let test_data: Vec<T> = vec![T::default(); 1 << log_n];
     let iterations = 10;
 
     let fastest = find_fastest_implementation(implementations, &test_data, iterations);
@@ -60,7 +60,7 @@ pub fn measure_fastest_bit_reversal_impl(log_n: usize) -> BitRevFunc {
     fastest
 }
 
-pub fn guess_fastest_bit_reversal_impl(log_n: usize) -> BitRevFunc {
+pub fn guess_fastest_bit_reversal_impl<T: Default + Copy + Clone>(log_n: usize) -> BitRevFunc<T> {
     if log_n <= 10 {
         bit_rev_gray
     } else {

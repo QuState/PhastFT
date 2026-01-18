@@ -91,7 +91,7 @@ macro_rules! impl_planner_dit_for {
             /// The log2 of the FFT size
             pub log_n: usize,
             /// The chosen bit reversal implementation
-            pub bit_rev_impl: BitRevFunc,
+            pub bit_rev_impl: BitRevFunc<$precision>,
         }
 
         impl $struct_name {
