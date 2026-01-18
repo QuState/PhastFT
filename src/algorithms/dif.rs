@@ -12,7 +12,7 @@
 //! 2. Works up to the last stage, with log(N) stages in total.
 //! 3. Optionally apply bit-reversal at the end
 //!
-use crate::algorithms::cobra::cobra_apply;
+use crate::algorithms::cobra::bit_rev_cobra;
 use crate::kernels::common::fft_chunk_2;
 use crate::kernels::dif::{fft_32_chunk_n_simd, fft_64_chunk_n_simd, fft_chunk_4, fft_chunk_n};
 use crate::options::Options;
@@ -121,8 +121,8 @@ pub fn fft_64_with_opts_and_plan(
     if opts.dif_perform_bit_reversal {
         run_maybe_in_parallel(
             opts.multithreaded_bit_reversal,
-            || cobra_apply(reals, n),
-            || cobra_apply(imags, n),
+            || bit_rev_cobra(reals, n),
+            || bit_rev_cobra(imags, n),
         );
     }
 
@@ -224,8 +224,8 @@ pub fn fft_32_with_opts_and_plan(
     if opts.dif_perform_bit_reversal {
         run_maybe_in_parallel(
             opts.multithreaded_bit_reversal,
-            || cobra_apply(reals, n),
-            || cobra_apply(imags, n),
+            || bit_rev_cobra(reals, n),
+            || bit_rev_cobra(imags, n),
         );
     }
 

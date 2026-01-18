@@ -18,6 +18,7 @@ use crate::planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64
 use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 
 mod algorithms;
+mod bencher;
 mod kernels;
 pub mod options;
 mod parallel;

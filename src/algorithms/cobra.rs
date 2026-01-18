@@ -1037,7 +1037,7 @@ pub(crate) fn bit_rev_gray<T>(buf: &mut [T], log_n: usize) {
 }
 
 /// Slow, naive implementation of bit reversal
-pub(crate) fn bit_rev_naive<T>(buf: &mut [T]) {
+pub(crate) fn bit_rev_naive<T>(buf: &mut [T], _log_n: usize) {
     let n = buf.len();
     let mut j = 0;
 
@@ -1212,9 +1212,9 @@ mod tests {
             let mut actual_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let mut actual_im: Vec<f64> = (0..big_n).map(f64::from).collect();
 
-            bit_rev_naive(&mut actual_re);
+            bit_rev_naive(&mut actual_re, n);
 
-            bit_rev_naive(&mut actual_im);
+            bit_rev_naive(&mut actual_im, n);
 
             let input_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let expected_re = top_down_bit_reverse_permutation(&input_re);
