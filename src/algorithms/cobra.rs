@@ -989,7 +989,7 @@ fn bit_rev_1024<T>(buf: &mut [T]) {
 
 /// ## References
 /// [1] <https://www.katjaas.nl/bitreversal/bitreversal.html>
-pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
+pub(crate) fn bit_rev_gray<T>(buf: &mut [T], log_n: usize) {
     // Use unrolled versions for common sizes
     match log_n {
         6 => return bit_rev_64(buf),
@@ -1036,12 +1036,8 @@ pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
     }
 }
 
-#[allow(dead_code)]
-#[deprecated(
-    since = "0.1.0",
-    note = "Naive bit reverse permutation is slow and not cache friendly. COBRA should be used instead."
-)]
-pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
+/// Slow, naive implementation of bit reversal
+pub(crate) fn bit_rev_naive<T>(buf: &mut [T]) {
     let n = buf.len();
     let mut j = 0;
 
@@ -1078,9 +1074,9 @@ pub(crate) fn bit_reverse_permutation<T>(buf: &mut [T]) {
                                      "x86+sse4.2",
                                      "x86+sse2",
 ))]
-pub fn cobra_apply<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
+pub fn bit_rev_cobra<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
     if log_n <= 2 * LOG_BLOCK_WIDTH {
-        bit_rev(v, log_n);
+        bit_rev_gray(v, log_n);
         return;
     }
     let num_b_bits = log_n - 2 * LOG_BLOCK_WIDTH;
@@ -1175,11 +1171,11 @@ mod tests {
     }
 
     #[test]
-    fn cobra() {
+    fn test_cobra_bit_reversal() {
         for n in 4..23 {
             let big_n = 1 << n;
             let mut v: Vec<_> = (0..big_n).collect();
-            cobra_apply(&mut v, n);
+            bit_rev_cobra(&mut v, n);
 
             let x: Vec<_> = (0..big_n).collect();
             assert_eq!(v, top_down_bit_reverse_permutation(&x));
@@ -1187,18 +1183,18 @@ mod tests {
     }
 
     #[test]
-    fn bit_reversal() {
+    fn test_gray_bit_reversal() {
         let n = 3;
         let big_n = 1 << n;
         let mut buf: Vec<f64> = (0..big_n).map(f64::from).collect();
-        bit_rev(&mut buf, n);
+        bit_rev_gray(&mut buf, n);
         println!("{buf:?}");
         assert_eq!(buf, vec![0.0, 4.0, 2.0, 6.0, 1.0, 5.0, 3.0, 7.0]);
 
         let n = 4;
         let big_n = 1 << n;
         let mut buf: Vec<f64> = (0..big_n).map(f64::from).collect();
-        bit_rev(&mut buf, n);
+        bit_rev_gray(&mut buf, n);
         println!("{buf:?}");
         assert_eq!(
             buf,
@@ -1210,17 +1206,15 @@ mod tests {
     }
 
     #[test]
-    fn naive_bit_reverse_permutation() {
+    fn test_naive_bit_reversal() {
         for n in 2..24 {
             let big_n = 1 << n;
             let mut actual_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let mut actual_im: Vec<f64> = (0..big_n).map(f64::from).collect();
 
-            #[allow(deprecated)]
-            bit_reverse_permutation(&mut actual_re);
+            bit_rev_naive(&mut actual_re);
 
-            #[allow(deprecated)]
-            bit_reverse_permutation(&mut actual_im);
+            bit_rev_naive(&mut actual_im);
 
             let input_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let expected_re = top_down_bit_reverse_permutation(&input_re);
