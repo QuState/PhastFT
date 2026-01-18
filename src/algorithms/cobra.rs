@@ -990,11 +990,11 @@ fn bit_rev_1024<T>(buf: &mut [T]) {
 /// Dispatches to fully unrolled versions for small sizes
 pub(crate) fn bit_rev_unrolled<T>(buf: &mut [T], log_n: usize) {
     match log_n {
-        6 => return bit_rev_64(buf),
-        7 => return bit_rev_128(buf),
-        8 => return bit_rev_256(buf),
-        9 => return bit_rev_512(buf),
-        10 => return bit_rev_1024(buf),
+        6 => bit_rev_64(buf),
+        7 => bit_rev_128(buf),
+        8 => bit_rev_256(buf),
+        9 => bit_rev_512(buf),
+        10 => bit_rev_1024(buf),
         _ => bit_rev_gray(buf, log_n),
     }
 }
