@@ -2,6 +2,9 @@
 //! a Fast Fourier Transform (FFT). Currently, the planner is responsible for
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
+use crate::bencher::{
+    guess_fastest_bit_reversal_impl, measure_fastest_bit_reversal_impl, BitRevFunc,
+};
 use crate::twiddles::{generate_twiddles, generate_twiddles_simd_32, generate_twiddles_simd_64};
 
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
@@ -87,11 +90,31 @@ macro_rules! impl_planner_dit_for {
             pub direction: Direction,
             /// The log2 of the FFT size
             pub log_n: usize,
+            /// The chosen bit reversal implementation
+            pub bit_rev_impl: BitRevFunc,
         }
 
         impl $struct_name {
             /// Create a DIT planner for an FFT of size `num_points`
+            ///
+            /// Measures several different implementations to pick the fastest one on your hardware.
+            /// If you'd like to skip that step, use [Self::new_oneshot].
             pub fn new(num_points: usize, direction: Direction) -> Self {
+                Self::new_internal(num_points, direction, true)
+            }
+
+            /// Create a DIT planner for an FFT of size `num_points` and skip selection of the fastest algorithm
+            ///
+            /// This is faster if you only need to perform FFT once, so you don't get to reuse the planner for multiple executions.
+            pub fn new_oneshot(num_points: usize, direction: Direction) -> Self {
+                Self::new_internal(num_points, direction, false)
+            }
+
+            fn new_internal(
+                num_points: usize,
+                direction: Direction,
+                measure_bit_rev: bool,
+            ) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
 
                 let log_n = num_points.ilog2() as usize;
@@ -119,10 +142,17 @@ macro_rules! impl_planner_dit_for {
                     }
                 }
 
+                let bit_rev_impl = if measure_bit_rev {
+                    measure_fastest_bit_reversal_impl(log_n)
+                } else {
+                    guess_fastest_bit_reversal_impl(log_n)
+                };
+
                 Self {
                     stage_twiddles,
                     direction,
                     log_n,
+                    bit_rev_impl,
                 }
             }
         }
