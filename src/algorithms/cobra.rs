@@ -19,6 +19,7 @@ const LOG_BLOCK_WIDTH: usize = 7; // log2 of cacheline
 
 /// Fully unrolled bit reversal for size 64 (log_n = 6)
 fn bit_rev_64<T>(buf: &mut [T]) {
+    assert!(buf.len() >= 64);
     // Pre-computed bit-reversed pairs for N=64
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 32);
@@ -53,6 +54,7 @@ fn bit_rev_64<T>(buf: &mut [T]) {
 
 /// Fully unrolled bit reversal for size 128 (log_n = 7)
 fn bit_rev_128<T>(buf: &mut [T]) {
+    assert!(buf.len() >= 128);
     // Pre-computed bit-reversed pairs for N=128
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 64);
@@ -115,6 +117,7 @@ fn bit_rev_128<T>(buf: &mut [T]) {
 
 /// Fully unrolled bit reversal for size 256 (log_n = 8)
 fn bit_rev_256<T>(buf: &mut [T]) {
+    assert!(buf.len() >= 256);
     // Pre-computed bit-reversed pairs for N=256
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 128);
@@ -241,6 +244,7 @@ fn bit_rev_256<T>(buf: &mut [T]) {
 
 /// Fully unrolled bit reversal for size 512 (log_n = 9)
 fn bit_rev_512<T>(buf: &mut [T]) {
+    assert!(buf.len() >= 512);
     // Pre-computed bit-reversed pairs for N=512
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 256);
@@ -487,6 +491,7 @@ fn bit_rev_512<T>(buf: &mut [T]) {
 
 /// Fully unrolled bit reversal for size 1024 (log_n = 10)
 fn bit_rev_1024<T>(buf: &mut [T]) {
+    assert!(buf.len() >= 1024);
     // Pre-computed bit-reversed pairs for N=1024
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 512);
