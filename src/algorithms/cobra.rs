@@ -18,7 +18,7 @@ const BLOCK_WIDTH: usize = 128; // size of the cacheline
 const LOG_BLOCK_WIDTH: usize = 7; // log2 of cacheline
 
 /// Fully unrolled bit reversal for size 64 (log_n = 6)
-fn bit_rev_64<T>(buf: &mut [T; 64]) {
+fn bit_rev_64<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=64
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 32);
@@ -52,7 +52,7 @@ fn bit_rev_64<T>(buf: &mut [T; 64]) {
 }
 
 /// Fully unrolled bit reversal for size 128 (log_n = 7)
-fn bit_rev_128<T>(buf: &mut [T; 128]) {
+fn bit_rev_128<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=128
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 64);
@@ -114,7 +114,7 @@ fn bit_rev_128<T>(buf: &mut [T; 128]) {
 }
 
 /// Fully unrolled bit reversal for size 256 (log_n = 8)
-fn bit_rev_256<T>(buf: &mut [T; 256]) {
+fn bit_rev_256<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=256
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 128);
@@ -240,7 +240,7 @@ fn bit_rev_256<T>(buf: &mut [T; 256]) {
 }
 
 /// Fully unrolled bit reversal for size 512 (log_n = 9)
-fn bit_rev_512<T>(buf: &mut [T; 512]) {
+fn bit_rev_512<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=512
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 256);
@@ -486,7 +486,7 @@ fn bit_rev_512<T>(buf: &mut [T; 512]) {
 }
 
 /// Fully unrolled bit reversal for size 1024 (log_n = 10)
-fn bit_rev_1024<T>(buf: &mut [T; 1024]) {
+fn bit_rev_1024<T>(buf: &mut [T]) {
     // Pre-computed bit-reversed pairs for N=1024
     // Only swap when i < rev(i) to avoid double swapping
     buf.swap(1, 512);
@@ -992,11 +992,11 @@ fn bit_rev_1024<T>(buf: &mut [T; 1024]) {
 pub(crate) fn bit_rev<T>(buf: &mut [T], log_n: usize) {
     // Use unrolled versions for common sizes
     match log_n {
-        6 => return bit_rev_64(buf.try_into().unwrap()),
-        7 => return bit_rev_128(buf.try_into().unwrap()),
-        8 => return bit_rev_256(buf.try_into().unwrap()),
-        9 => return bit_rev_512(buf.try_into().unwrap()),
-        10 => return bit_rev_1024(buf.try_into().unwrap()),
+        6 => return bit_rev_64(buf),
+        7 => return bit_rev_128(buf),
+        8 => return bit_rev_256(buf),
+        9 => return bit_rev_512(buf),
+        10 => return bit_rev_1024(buf),
         _ => {} // Fall through to generic implementation
     }
     let mut nodd: usize;
