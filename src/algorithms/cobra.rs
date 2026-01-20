@@ -1078,13 +1078,13 @@ pub(crate) fn bit_rev_naive<T>(buf: &mut [T], _log_n: usize) {
                                      "x86+sse2",
 ))]
 pub fn bit_rev_cobra<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
+    assert!(BLOCK_WIDTH == 1 << LOG_BLOCK_WIDTH);
     if log_n <= 2 * LOG_BLOCK_WIDTH {
         bit_rev_gray(v, log_n);
         return;
     }
     let num_b_bits = log_n - 2 * LOG_BLOCK_WIDTH;
     let b_size: usize = 1 << num_b_bits;
-    let block_width: usize = 1 << LOG_BLOCK_WIDTH;
 
     let mut buffer = [T::default(); BLOCK_WIDTH * BLOCK_WIDTH];
 
@@ -1092,8 +1092,8 @@ pub fn bit_rev_cobra<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
         let b_rev = b.reverse_bits() >> ((b_size - 1).leading_zeros());
 
         // Copy block to buffer
-        for a in 0..block_width {
-            let a_rev = a.reverse_bits() >> ((block_width - 1).leading_zeros());
+        for a in 0..BLOCK_WIDTH {
+            let a_rev = a.reverse_bits() >> ((BLOCK_WIDTH - 1).leading_zeros());
             for c in 0..BLOCK_WIDTH {
                 buffer[(a_rev << LOG_BLOCK_WIDTH) | c] =
                     v[(a << num_b_bits << LOG_BLOCK_WIDTH) | (b << LOG_BLOCK_WIDTH) | c];
@@ -1102,10 +1102,10 @@ pub fn bit_rev_cobra<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
 
         for c in 0..BLOCK_WIDTH {
             // NOTE: Typo in original pseudocode by Carter and Gatlin at the following line:
-            let c_rev = c.reverse_bits() >> ((block_width - 1).leading_zeros());
+            let c_rev = c.reverse_bits() >> ((BLOCK_WIDTH - 1).leading_zeros());
 
             for a_rev in 0..BLOCK_WIDTH {
-                let a = a_rev.reverse_bits() >> ((block_width - 1).leading_zeros());
+                let a = a_rev.reverse_bits() >> ((BLOCK_WIDTH - 1).leading_zeros());
 
                 // To guarantee each value is swapped only one time:
                 // index < reversed_index <-->
@@ -1129,9 +1129,9 @@ pub fn bit_rev_cobra<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
 
         // Copy changes that were swapped into buffer above:
         for a in 0..BLOCK_WIDTH {
-            let a_rev = a.reverse_bits() >> ((block_width - 1).leading_zeros());
+            let a_rev = a.reverse_bits() >> ((BLOCK_WIDTH - 1).leading_zeros());
             for c in 0..BLOCK_WIDTH {
-                let c_rev = c.reverse_bits() >> ((block_width - 1).leading_zeros());
+                let c_rev = c.reverse_bits() >> ((BLOCK_WIDTH - 1).leading_zeros());
                 let index_less_than_reverse = a < c_rev
                     || (a == c_rev && b < b_rev)
                     || (a == c_rev && b == b_rev && a_rev < c);
