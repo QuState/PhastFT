@@ -1078,7 +1078,7 @@ pub(crate) fn bit_rev_naive<T>(buf: &mut [T], _log_n: usize) {
                                      "x86+sse2",
 ))]
 pub fn bit_rev_cobra<T: Default + Copy + Clone>(v: &mut [T], log_n: usize) {
-    assert!(BLOCK_WIDTH == 1 << LOG_BLOCK_WIDTH);
+    const { assert!(BLOCK_WIDTH == 1 << LOG_BLOCK_WIDTH) };
     if log_n <= 2 * LOG_BLOCK_WIDTH {
         bit_rev_gray(v, log_n);
         return;
