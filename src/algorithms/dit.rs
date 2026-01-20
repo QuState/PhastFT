@@ -14,7 +14,7 @@
 //! DIT starts with fine-grained memory access and progressively works with
 //! larger contiguous chunks.
 //!
-use crate::algorithms::cobra::cobra_apply;
+use crate::algorithms::bravo::bit_rev_bravo;
 use crate::kernels::dit::{
     fft_dit_32_chunk_n_simd, fft_dit_64_chunk_n_simd, fft_dit_chunk_16_simd_f32,
     fft_dit_chunk_16_simd_f64, fft_dit_chunk_2, fft_dit_chunk_32_simd_f32,
@@ -250,8 +250,8 @@ pub fn fft_64_dit_with_planner_and_opts(
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
-        || cobra_apply(reals, log_n),
-        || cobra_apply(imags, log_n),
+        || bit_rev_bravo(reals, log_n),
+        || bit_rev_bravo(imags, log_n),
     );
 
     // Handle inverse FFT
@@ -293,8 +293,8 @@ pub fn fft_32_dit_with_planner_and_opts(
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
-        || cobra_apply(reals, log_n),
-        || cobra_apply(imags, log_n),
+        || bit_rev_bravo(reals, log_n),
+        || bit_rev_bravo(imags, log_n),
     );
 
     // Handle inverse FFT
