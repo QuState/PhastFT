@@ -9,10 +9,10 @@
 ///
 /// When nightly Rust with std::simd is available, this can use hardware SIMD instructions.
 /// For now, we implement the interleave operation manually to demonstrate the algorithm.
-/// 
+///
 /// The initial implementation was heavily assisted by Claude Code
 
-const LANES: usize = 4; // Vector width W
+const LANES: usize = 8; // Vector width W
 
 /// A simple vector type that mimics std::simd::Simd for f64
 #[derive(Clone, Copy)]
@@ -20,7 +20,7 @@ struct Vec4([f64; LANES]);
 
 impl Vec4 {
     fn from_slice(s: &[f64]) -> Self {
-        Vec4([s[0], s[1], s[2], s[3]])
+        Vec4([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]])
     }
 
     fn copy_to_slice(self, s: &mut [f64]) {
@@ -28,6 +28,10 @@ impl Vec4 {
         s[1] = self.0[1];
         s[2] = self.0[2];
         s[3] = self.0[3];
+        s[4] = self.0[4];
+        s[5] = self.0[5];
+        s[6] = self.0[6];
+        s[7] = self.0[7];
     }
 
     /// Interleave two vectors, producing low and high halves.
@@ -39,8 +43,8 @@ impl Vec4 {
     fn interleave(self, other: Vec4) -> (Vec4, Vec4) {
         let a = self.0;
         let b = other.0;
-        let lo = Vec4([a[0], b[0], a[1], b[1]]);
-        let hi = Vec4([a[2], b[2], a[3], b[3]]);
+        let lo = Vec4([a[0], b[0], a[1], b[1], a[2], b[2], a[3], b[3]]);
+        let hi = Vec4([a[4], b[4], a[5], b[5], a[6], b[6], a[7], b[7]]);
         (lo, hi)
     }
 }
