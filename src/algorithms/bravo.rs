@@ -7,54 +7,25 @@
 /// For N = 2^n elements with W-element vectors, the algorithm performs log₂(N) rounds
 /// of in-place interleave operations on pairs of vectors.
 ///
-/// When nightly Rust with std::simd is available, this can use hardware SIMD instructions.
-/// For now, we implement the interleave operation manually to demonstrate the algorithm.
+/// Uses std::simd for hardware SIMD instructions on nightly Rust.
 ///
 /// The initial implementation was heavily assisted by Claude Code
+use std::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 
 const LANES: usize = 8; // Vector width W
 
-/// A simple vector type that mimics std::simd::Simd for f64
-#[derive(Clone, Copy, Default)]
-struct Vec4<T: Default + Copy + Clone>([T; LANES]);
-
-impl<T: Default + Copy + Clone> Vec4<T> {
-    fn from_slice(s: &[T]) -> Self {
-        Vec4([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]])
-    }
-
-    fn copy_to_slice(self, s: &mut [T]) {
-        s[0] = self.0[0];
-        s[1] = self.0[1];
-        s[2] = self.0[2];
-        s[3] = self.0[3];
-        s[4] = self.0[4];
-        s[5] = self.0[5];
-        s[6] = self.0[6];
-        s[7] = self.0[7];
-    }
-
-    /// Interleave two vectors, producing low and high halves.
-    /// For vectors [a0, a1, a2, a3] and [b0, b1, b2, b3]:
-    /// - low:  [a0, b0, a1, b1]
-    /// - high: [a2, b2, a3, b3]
-    ///
-    /// This matches std::simd::Simd::interleave() behavior.
-    fn interleave(self, other: Vec4<T>) -> (Vec4<T>, Vec4<T>) {
-        let a = self.0;
-        let b = other.0;
-        let lo = Vec4([a[0], b[0], a[1], b[1], a[2], b[2], a[3], b[3]]);
-        let hi = Vec4([a[4], b[4], a[5], b[5], a[6], b[6], a[7], b[7]]);
-        (lo, hi)
-    }
-}
+type Vec8<T> = Simd<T, LANES>;
 
 /// Performs in-place bit-reversal permutation using the BRAVO algorithm.
 ///
 /// # Arguments
 /// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
 /// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
-pub fn bit_rev_bravo<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
+pub fn bit_rev_bravo<T>(data: &mut [T], n: usize)
+where
+    T: Default + Copy + Clone + SimdElement,
+    LaneCount<LANES>: SupportedLaneCount,
+{
     let big_n = 1usize << n;
     assert_eq!(data.len(), big_n, "Data length must be 2^n");
 
@@ -88,20 +59,20 @@ pub fn bit_rev_bravo<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
         }
 
         // Load vectors for class A
-        let mut vecs_a: [Vec4<T>; LANES] = [Vec4([T::default(); LANES]); LANES];
+        let mut vecs_a: [Vec8<T>; LANES] = [Simd::splat(T::default()); LANES];
         for j in 0..w {
             let base_idx = (class_idx + j * num_classes) * w;
-            vecs_a[j] = Vec4::from_slice(&data[base_idx..base_idx + w]);
+            vecs_a[j] = Simd::from_slice(&data[base_idx..base_idx + w]);
         }
 
         // Perform interleave rounds for class A
         for round in 0..log_w {
-            let mut new_vecs: [Vec4<T>; LANES] = [Vec4([T::default(); LANES]); LANES];
+            let mut new_vecs: [Vec8<T>; LANES] = [Simd::splat(T::default()); LANES];
             let stride = 1 << round;
 
             // W/2 pairs per round, stored as parallel arrays
-            let mut los: [Vec4<T>; LANES / 2] = [Vec4([T::default(); LANES]); LANES / 2];
-            let mut his: [Vec4<T>; LANES / 2] = [Vec4([T::default(); LANES]); LANES / 2];
+            let mut los: [Vec8<T>; LANES / 2] = [Simd::splat(T::default()); LANES / 2];
+            let mut his: [Vec8<T>; LANES / 2] = [Simd::splat(T::default()); LANES / 2];
 
             let mut pair_idx = 0;
             let mut i = 0;
@@ -134,19 +105,19 @@ pub fn bit_rev_bravo<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
             }
         } else {
             // Swapping pair - load class B, process it, then swap both
-            let mut vecs_b: [Vec4<T>; LANES] = [Vec4([T::default(); LANES]); LANES];
+            let mut vecs_b: [Vec8<T>; LANES] = [Simd::splat(T::default()); LANES];
             for j in 0..w {
                 let base_idx = (class_idx_rev + j * num_classes) * w;
-                vecs_b[j] = Vec4::from_slice(&data[base_idx..base_idx + w]);
+                vecs_b[j] = Simd::from_slice(&data[base_idx..base_idx + w]);
             }
 
             // Perform interleave rounds for class B
             for round in 0..log_w {
-                let mut new_vecs: [Vec4<T>; LANES] = [Vec4([T::default(); LANES]); LANES];
+                let mut new_vecs: [Vec8<T>; LANES] = [Simd::splat(T::default()); LANES];
                 let stride = 1 << round;
 
-                let mut los: [Vec4<T>; LANES / 2] = [Vec4([T::default(); LANES]); LANES / 2];
-                let mut his: [Vec4<T>; LANES / 2] = [Vec4([T::default(); LANES]); LANES / 2];
+                let mut los: [Vec8<T>; LANES / 2] = [Simd::splat(T::default()); LANES / 2];
+                let mut his: [Vec8<T>; LANES / 2] = [Simd::splat(T::default()); LANES / 2];
 
                 let mut pair_idx = 0;
                 let mut i = 0;

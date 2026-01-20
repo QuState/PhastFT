@@ -1,3 +1,4 @@
+#![cfg_attr(feature = "nightly", feature(portable_simd))]
 #![doc = include_str!("../README.md")]
 #![warn(
     missing_docs,
