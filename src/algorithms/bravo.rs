@@ -15,15 +15,15 @@
 const LANES: usize = 8; // Vector width W
 
 /// A simple vector type that mimics std::simd::Simd for f64
-#[derive(Clone, Copy)]
-struct Vec4([f64; LANES]);
+#[derive(Clone, Copy, Default)]
+struct Vec4<T: Default + Copy + Clone>([T; LANES]);
 
-impl Vec4 {
-    fn from_slice(s: &[f64]) -> Self {
+impl<T: Default + Copy + Clone> Vec4<T> {
+    fn from_slice(s: &[T]) -> Self {
         Vec4([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]])
     }
 
-    fn copy_to_slice(self, s: &mut [f64]) {
+    fn copy_to_slice(self, s: &mut [T]) {
         s[0] = self.0[0];
         s[1] = self.0[1];
         s[2] = self.0[2];
@@ -40,7 +40,7 @@ impl Vec4 {
     /// - high: [a2, b2, a3, b3]
     ///
     /// This matches std::simd::Simd::interleave() behavior.
-    fn interleave(self, other: Vec4) -> (Vec4, Vec4) {
+    fn interleave(self, other: Vec4<T>) -> (Vec4<T>, Vec4<T>) {
         let a = self.0;
         let b = other.0;
         let lo = Vec4([a[0], b[0], a[1], b[1], a[2], b[2], a[3], b[3]]);
@@ -54,7 +54,7 @@ impl Vec4 {
 /// # Arguments
 /// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
 /// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
-pub fn bit_rev_bravo(data: &mut [f64], n: usize) {
+pub fn bit_rev_bravo<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
     let big_n = 1usize << n;
     assert_eq!(data.len(), big_n, "Data length must be 2^n");
 
@@ -88,7 +88,7 @@ pub fn bit_rev_bravo(data: &mut [f64], n: usize) {
         }
 
         // Load vectors for class A
-        let mut vecs_a: [Vec4; LANES] = [Vec4([0.0; LANES]); LANES];
+        let mut vecs_a: [Vec4<T>; LANES] = [Vec4([T::default(); LANES]); LANES];
         for j in 0..w {
             let base_idx = (class_idx + j * num_classes) * w;
             vecs_a[j] = Vec4::from_slice(&data[base_idx..base_idx + w]);
@@ -96,12 +96,12 @@ pub fn bit_rev_bravo(data: &mut [f64], n: usize) {
 
         // Perform interleave rounds for class A
         for round in 0..log_w {
-            let mut new_vecs: [Vec4; LANES] = [Vec4([0.0; LANES]); LANES];
+            let mut new_vecs: [Vec4<T>; LANES] = [Vec4([T::default(); LANES]); LANES];
             let stride = 1 << round;
 
             // W/2 pairs per round, stored as parallel arrays
-            let mut los: [Vec4; LANES / 2] = [Vec4([0.0; LANES]); LANES / 2];
-            let mut his: [Vec4; LANES / 2] = [Vec4([0.0; LANES]); LANES / 2];
+            let mut los: [Vec4<T>; LANES / 2] = [Vec4([T::default(); LANES]); LANES / 2];
+            let mut his: [Vec4<T>; LANES / 2] = [Vec4([T::default(); LANES]); LANES / 2];
 
             let mut pair_idx = 0;
             let mut i = 0;
@@ -134,7 +134,7 @@ pub fn bit_rev_bravo(data: &mut [f64], n: usize) {
             }
         } else {
             // Swapping pair - load class B, process it, then swap both
-            let mut vecs_b: [Vec4; LANES] = [Vec4([0.0; LANES]); LANES];
+            let mut vecs_b: [Vec4<T>; LANES] = [Vec4([T::default(); LANES]); LANES];
             for j in 0..w {
                 let base_idx = (class_idx_rev + j * num_classes) * w;
                 vecs_b[j] = Vec4::from_slice(&data[base_idx..base_idx + w]);
@@ -142,11 +142,11 @@ pub fn bit_rev_bravo(data: &mut [f64], n: usize) {
 
             // Perform interleave rounds for class B
             for round in 0..log_w {
-                let mut new_vecs: [Vec4; LANES] = [Vec4([0.0; LANES]); LANES];
+                let mut new_vecs: [Vec4<T>; LANES] = [Vec4([T::default(); LANES]); LANES];
                 let stride = 1 << round;
 
-                let mut los: [Vec4; LANES / 2] = [Vec4([0.0; LANES]); LANES / 2];
-                let mut his: [Vec4; LANES / 2] = [Vec4([0.0; LANES]); LANES / 2];
+                let mut los: [Vec4<T>; LANES / 2] = [Vec4([T::default(); LANES]); LANES / 2];
+                let mut his: [Vec4<T>; LANES / 2] = [Vec4([T::default(); LANES]); LANES / 2];
 
                 let mut pair_idx = 0;
                 let mut i = 0;
@@ -183,7 +183,7 @@ pub fn bit_rev_bravo(data: &mut [f64], n: usize) {
 }
 
 /// Scalar bit-reversal for small arrays
-fn scalar_bit_reversal(data: &mut [f64], n: usize) {
+fn scalar_bit_reversal<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
     let big_n = data.len();
 
     for i in 0..big_n {
