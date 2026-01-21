@@ -155,10 +155,10 @@ pub fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0.copy_from_slice(out0_re.as_slice());
-            imags_s0.copy_from_slice(out0_im.as_slice());
-            reals_s1.copy_from_slice(out1_re.as_slice());
-            imags_s1.copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(reals_s0);
+            out0_im.store_slice(imags_s0);
+            out1_re.store_slice(reals_s1);
+            out1_im.store_slice(imags_s1);
         });
 }
 
@@ -208,10 +208,10 @@ pub fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0.copy_from_slice(out0_re.as_slice());
-            imags_s0.copy_from_slice(out0_im.as_slice());
-            reals_s1.copy_from_slice(out1_re.as_slice());
-            imags_s1.copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(reals_s0);
+            out0_im.store_slice(imags_s0);
+            out1_re.store_slice(reals_s1);
+            out1_im.store_slice(imags_s1);
         });
 }
 
@@ -271,10 +271,10 @@ pub fn fft_dit_chunk_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0.copy_from_slice(out0_re.as_slice());
-            imags_s0.copy_from_slice(out0_im.as_slice());
-            reals_s1.copy_from_slice(out1_re.as_slice());
-            imags_s1.copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(reals_s0);
+            out0_im.store_slice(imags_s0);
+            out1_re.store_slice(reals_s1);
+            out1_im.store_slice(imags_s1);
         });
 }
 
@@ -334,10 +334,10 @@ pub fn fft_dit_chunk_16_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0.copy_from_slice(out0_re.as_slice());
-            imags_s0.copy_from_slice(out0_im.as_slice());
-            reals_s1.copy_from_slice(out1_re.as_slice());
-            imags_s1.copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(reals_s0);
+            out0_im.store_slice(imags_s0);
+            out1_re.store_slice(reals_s1);
+            out1_im.store_slice(imags_s1);
         });
 }
 /// DIT butterfly for chunk_size == 32 (f64)
@@ -426,10 +426,10 @@ pub fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
             let out1_re_0_7 = two.mul_sub(in0_re_0_7, out0_re_0_7);
             let out1_im_0_7 = two.mul_sub(in0_im_0_7, out0_im_0_7);
 
-            reals_s0[0..8].copy_from_slice(out0_re_0_7.as_slice());
-            imags_s0[0..8].copy_from_slice(out0_im_0_7.as_slice());
-            reals_s1[0..8].copy_from_slice(out1_re_0_7.as_slice());
-            imags_s1[0..8].copy_from_slice(out1_im_0_7.as_slice());
+            out0_re_0_7.store_slice(&mut reals_s0[0..8]);
+            out0_im_0_7.store_slice(&mut imags_s0[0..8]);
+            out1_re_0_7.store_slice(&mut reals_s1[0..8]);
+            out1_im_0_7.store_slice(&mut imags_s1[0..8]);
 
             // Process second 8 butterflies
             let in0_re_8_15 = f64x8::from_slice(simd, &reals_s0[8..16]);
@@ -449,10 +449,10 @@ pub fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
             let out1_re_8_15 = two.mul_sub(in0_re_8_15, out0_re_8_15);
             let out1_im_8_15 = two.mul_sub(in0_im_8_15, out0_im_8_15);
 
-            reals_s0[8..16].copy_from_slice(out0_re_8_15.as_slice());
-            imags_s0[8..16].copy_from_slice(out0_im_8_15.as_slice());
-            reals_s1[8..16].copy_from_slice(out1_re_8_15.as_slice());
-            imags_s1[8..16].copy_from_slice(out1_im_8_15.as_slice());
+            out0_re_8_15.store_slice(&mut reals_s0[8..16]);
+            out0_im_8_15.store_slice(&mut imags_s0[8..16]);
+            out1_re_8_15.store_slice(&mut reals_s1[8..16]);
+            out1_im_8_15.store_slice(&mut imags_s1[8..16]);
         });
 }
 
@@ -527,10 +527,10 @@ pub fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0.copy_from_slice(out0_re.as_slice());
-            imags_s0.copy_from_slice(out0_im.as_slice());
-            reals_s1.copy_from_slice(out1_re.as_slice());
-            imags_s1.copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(reals_s0);
+            out0_im.store_slice(imags_s0);
+            out1_re.store_slice(reals_s1);
+            out1_im.store_slice(imags_s1);
         });
 }
 
@@ -676,10 +676,10 @@ pub fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0[0..8].copy_from_slice(out0_re.as_slice());
-            imags_s0[0..8].copy_from_slice(out0_im.as_slice());
-            reals_s1[0..8].copy_from_slice(out1_re.as_slice());
-            imags_s1[0..8].copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(&mut reals_s0[0..8]);
+            out0_im.store_slice(&mut imags_s0[0..8]);
+            out1_re.store_slice(&mut reals_s1[0..8]);
+            out1_im.store_slice(&mut imags_s1[0..8]);
 
             // Process butterflies 8..15
             let in0_re = f64x8::from_slice(simd, &reals_s0[8..16]);
@@ -692,10 +692,10 @@ pub fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0[8..16].copy_from_slice(out0_re.as_slice());
-            imags_s0[8..16].copy_from_slice(out0_im.as_slice());
-            reals_s1[8..16].copy_from_slice(out1_re.as_slice());
-            imags_s1[8..16].copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(&mut reals_s0[8..16]);
+            out0_im.store_slice(&mut imags_s0[8..16]);
+            out1_re.store_slice(&mut reals_s1[8..16]);
+            out1_im.store_slice(&mut imags_s1[8..16]);
 
             // Process butterflies 16..23
             let in0_re = f64x8::from_slice(simd, &reals_s0[16..24]);
@@ -710,10 +710,10 @@ pub fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0[16..24].copy_from_slice(out0_re.as_slice());
-            imags_s0[16..24].copy_from_slice(out0_im.as_slice());
-            reals_s1[16..24].copy_from_slice(out1_re.as_slice());
-            imags_s1[16..24].copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(&mut reals_s0[16..24]);
+            out0_im.store_slice(&mut imags_s0[16..24]);
+            out1_re.store_slice(&mut reals_s1[16..24]);
+            out1_im.store_slice(&mut imags_s1[16..24]);
 
             // Process butterflies 24..31
             let in0_re = f64x8::from_slice(simd, &reals_s0[24..32]);
@@ -728,10 +728,10 @@ pub fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0[24..32].copy_from_slice(out0_re.as_slice());
-            imags_s0[24..32].copy_from_slice(out0_im.as_slice());
-            reals_s1[24..32].copy_from_slice(out1_re.as_slice());
-            imags_s1[24..32].copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(&mut reals_s0[24..32]);
+            out0_im.store_slice(&mut imags_s0[24..32]);
+            out1_re.store_slice(&mut reals_s1[24..32]);
+            out1_im.store_slice(&mut imags_s1[24..32]);
         });
 }
 
@@ -851,10 +851,10 @@ pub fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0[0..16].copy_from_slice(out0_re.as_slice());
-            imags_s0[0..16].copy_from_slice(out0_im.as_slice());
-            reals_s1[0..16].copy_from_slice(out1_re.as_slice());
-            imags_s1[0..16].copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(&mut reals_s0[0..16]);
+            out0_im.store_slice(&mut imags_s0[0..16]);
+            out1_re.store_slice(&mut reals_s1[0..16]);
+            out1_im.store_slice(&mut imags_s1[0..16]);
 
             // Process butterflies 16..31
             let in0_re = f32x16::from_slice(simd, &reals_s0[16..32]);
@@ -869,10 +869,10 @@ pub fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mu
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
-            reals_s0[16..32].copy_from_slice(out0_re.as_slice());
-            imags_s0[16..32].copy_from_slice(out0_im.as_slice());
-            reals_s1[16..32].copy_from_slice(out1_re.as_slice());
-            imags_s1[16..32].copy_from_slice(out1_im.as_slice());
+            out0_re.store_slice(&mut reals_s0[16..32]);
+            out0_im.store_slice(&mut imags_s0[16..32]);
+            out1_re.store_slice(&mut reals_s1[16..32]);
+            out1_im.store_slice(&mut imags_s1[16..32]);
         });
 }
 
@@ -922,10 +922,10 @@ pub fn fft_dit_64_chunk_n_simd<S: Simd>(
                     let out1_re = two.mul_sub(in0_re, out0_re);
                     let out1_im = two.mul_sub(in0_im, out0_im);
 
-                    re_s0.copy_from_slice(out0_re.as_slice());
-                    im_s0.copy_from_slice(out0_im.as_slice());
-                    re_s1.copy_from_slice(out1_re.as_slice());
-                    im_s1.copy_from_slice(out1_im.as_slice());
+                    out0_re.store_slice(re_s0);
+                    out0_im.store_slice(im_s0);
+                    out1_re.store_slice(re_s1);
+                    out1_im.store_slice(im_s1);
                 });
         });
 }
@@ -976,10 +976,10 @@ pub fn fft_dit_32_chunk_n_simd<S: Simd>(
                     let out1_re = two.mul_sub(in0_re, out0_re);
                     let out1_im = two.mul_sub(in0_im, out0_im);
 
-                    re_s0.copy_from_slice(out0_re.as_slice());
-                    im_s0.copy_from_slice(out0_im.as_slice());
-                    re_s1.copy_from_slice(out1_re.as_slice());
-                    im_s1.copy_from_slice(out1_im.as_slice());
+                    out0_re.store_slice(re_s0);
+                    out0_im.store_slice(im_s0);
+                    out1_re.store_slice(re_s1);
+                    out1_im.store_slice(im_s1);
                 });
         });
 }
