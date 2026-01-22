@@ -17,13 +17,7 @@
 use fearless_simd::{dispatch, Level, Simd};
 
 use crate::algorithms::cobra::cobra_apply;
-use crate::kernels::dit::{
-    fft_dit_chunk_n_simd_f32, fft_dit_chunk_n_simd_f64, fft_dit_chunk_16_simd_f32,
-    fft_dit_chunk_16_simd_f64, fft_dit_chunk_2, fft_dit_chunk_32_simd_f32,
-    fft_dit_chunk_32_simd_f64, fft_dit_chunk_4_simd_f32, fft_dit_chunk_4_simd_f64,
-    fft_dit_chunk_64_simd_f32, fft_dit_chunk_64_simd_f64, fft_dit_chunk_8_simd_f32,
-    fft_dit_chunk_8_simd_f64,
-};
+use crate::kernels::dit::*;
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
@@ -165,26 +159,24 @@ fn execute_dit_stage_f64<S: Simd>(
         simd.vectorize(|| fft_dit_chunk_2(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 4 {
-        simd.vectorize(|| fft_dit_chunk_4_simd_f64(simd, reals, imags));
+        fft_dit_chunk_4_f64(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 8 {
-        simd.vectorize(|| fft_dit_chunk_8_simd_f64(simd, reals, imags));
+        fft_dit_chunk_8_f64(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 16 {
-        simd.vectorize(|| fft_dit_chunk_16_simd_f64(simd, reals, imags));
+        fft_dit_chunk_16_f64(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 32 {
-        simd.vectorize(|| fft_dit_chunk_32_simd_f64(simd, reals, imags));
+        fft_dit_chunk_32_f64(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 64 {
-        simd.vectorize(|| fft_dit_chunk_64_simd_f64(simd, reals, imags));
+        fft_dit_chunk_64_f64(simd, reals, imags);
         stage_twiddle_idx
     } else {
         // For larger chunks, use general kernel with twiddles from planner
         let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
-        simd.vectorize(|| {
-            fft_dit_chunk_n_simd_f64(simd, reals, imags, twiddles_re, twiddles_im, dist)
-        });
+        fft_dit_chunk_n_f64(simd, reals, imags, twiddles_re, twiddles_im, dist);
         stage_twiddle_idx + 1
     }
 }
@@ -206,26 +198,24 @@ fn execute_dit_stage_f32<S: Simd>(
         simd.vectorize(|| fft_dit_chunk_2(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 4 {
-        simd.vectorize(|| fft_dit_chunk_4_simd_f32(simd, reals, imags));
+        fft_dit_chunk_4_f32(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 8 {
-        simd.vectorize(|| fft_dit_chunk_8_simd_f32(simd, reals, imags));
+        fft_dit_chunk_8_f32(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 16 {
-        simd.vectorize(|| fft_dit_chunk_16_simd_f32(simd, reals, imags));
+        fft_dit_chunk_16_f32(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 32 {
-        simd.vectorize(|| fft_dit_chunk_32_simd_f32(simd, reals, imags));
+        fft_dit_chunk_32_f32(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 64 {
-        simd.vectorize(|| fft_dit_chunk_64_simd_f32(simd, reals, imags));
+        fft_dit_chunk_64_f32(simd, reals, imags);
         stage_twiddle_idx
     } else {
         // For larger chunks, use general kernel with twiddles from planner
         let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
-        simd.vectorize(|| {
-            fft_dit_chunk_n_simd_f32(simd, reals, imags, twiddles_re, twiddles_im, dist)
-        });
+        fft_dit_chunk_n_f32(simd, reals, imags, twiddles_re, twiddles_im, dist);
         stage_twiddle_idx + 1
     }
 }
