@@ -878,7 +878,7 @@ pub fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mu
 
 /// General DIT butterfly for f64
 #[inline(always)] // required by fearless_simd
-pub fn fft_dit_64_chunk_n_simd<S: Simd>(
+pub fn fft_dit_chunk_n_simd_f64<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
@@ -932,7 +932,7 @@ pub fn fft_dit_64_chunk_n_simd<S: Simd>(
 
 /// General DIT butterfly for f32
 #[inline(always)] // required by fearless_simd
-pub fn fft_dit_32_chunk_n_simd<S: Simd>(
+pub fn fft_dit_chunk_n_simd_f32<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
