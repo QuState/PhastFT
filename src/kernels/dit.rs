@@ -174,7 +174,7 @@ fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f6
             let in1_im = f64x4::from_slice(simd, &imags_s1[0..4]);
 
             // out0.re = (in0.re + w.re * in1.re) - w.im * in1.im
-            let out0_re = sqrt2_2_im.mul_add(-in1_im, sqrt2_2.mul_add(in1_re, in0_re));
+            let out0_re = sqrt2_2_im.mul_neg_add(in1_im, sqrt2_2.mul_add(in1_re, in0_re));
             // out0.im = (in0.im + w.re*in1.im) + w.im*in1.re
             let out0_im = sqrt2_2_im.mul_add(in1_re, sqrt2_2.mul_add(in1_im, in0_im));
 
@@ -236,7 +236,7 @@ fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f3
             let in1_im = f32x4::from_slice(simd, &imags_s1[0..4]);
 
             // out0.re = (in0.re + w.re * in1.re) - w.im * in1.im
-            let out0_re = sqrt2_2_im.mul_add(-in1_im, sqrt2_2.mul_add(in1_re, in0_re));
+            let out0_re = sqrt2_2_im.mul_neg_add(in1_im, sqrt2_2.mul_add(in1_re, in0_re));
             // out0.im = (in0.im + w.re * in1.im) + w.im * in1.re
             let out0_im = sqrt2_2_im.mul_add(in1_re, sqrt2_2.mul_add(in1_im, in0_im));
 
@@ -309,7 +309,7 @@ fn fft_dit_chunk_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
             let in0_im = f64x8::from_slice(simd, &imags_s0[0..8]);
             let in1_im = f64x8::from_slice(simd, &imags_s1[0..8]);
 
-            let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
+            let out0_re = twiddle_im.mul_neg_add(in1_im, twiddle_re.mul_add(in1_re, in0_re));
             let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
 
             // out1 = 2*in0 - out0
@@ -381,7 +381,7 @@ fn fft_dit_chunk_16_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
             let in0_im = f32x8::from_slice(simd, &imags_s0[0..8]);
             let in1_im = f32x8::from_slice(simd, &imags_s1[0..8]);
 
-            let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
+            let out0_re = twiddle_im.mul_neg_add(in1_im, twiddle_re.mul_add(in1_re, in0_re));
             let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
 
             // out1 = 2*in0 - out0
@@ -481,8 +481,8 @@ fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
             let in0_im_0_7 = f64x8::from_slice(simd, &imags_s0[0..8]);
             let in1_im_0_7 = f64x8::from_slice(simd, &imags_s1[0..8]);
 
-            let out0_re_0_7 =
-                twiddle_im_0_7.mul_add(-in1_im_0_7, twiddle_re_0_7.mul_add(in1_re_0_7, in0_re_0_7));
+            let out0_re_0_7 = twiddle_im_0_7
+                .mul_neg_add(in1_im_0_7, twiddle_re_0_7.mul_add(in1_re_0_7, in0_re_0_7));
             let out0_im_0_7 =
                 twiddle_im_0_7.mul_add(in1_re_0_7, twiddle_re_0_7.mul_add(in1_im_0_7, in0_im_0_7));
 
@@ -500,8 +500,8 @@ fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
             let in0_im_8_15 = f64x8::from_slice(simd, &imags_s0[8..16]);
             let in1_im_8_15 = f64x8::from_slice(simd, &imags_s1[8..16]);
 
-            let out0_re_8_15 = twiddle_im_8_15.mul_add(
-                -in1_im_8_15,
+            let out0_re_8_15 = twiddle_im_8_15.mul_neg_add(
+                in1_im_8_15,
                 twiddle_re_8_15.mul_add(in1_re_8_15, in0_re_8_15),
             );
             let out0_im_8_15 = twiddle_im_8_15.mul_add(
@@ -593,7 +593,7 @@ fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
             let in0_im = f32x16::from_slice(simd, &imags_s0[0..16]);
             let in1_im = f32x16::from_slice(simd, &imags_s1[0..16]);
 
-            let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
+            let out0_re = twiddle_im.mul_neg_add(in1_im, twiddle_re.mul_add(in1_re, in0_re));
             let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
 
             let out1_re = two.mul_sub(in0_re, out0_re);
@@ -752,7 +752,8 @@ fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
             let in0_im = f64x8::from_slice(simd, &imags_s0[0..8]);
             let in1_im = f64x8::from_slice(simd, &imags_s1[0..8]);
 
-            let out0_re = twiddle_im_0_7.mul_add(-in1_im, twiddle_re_0_7.mul_add(in1_re, in0_re));
+            let out0_re =
+                twiddle_im_0_7.mul_neg_add(in1_im, twiddle_re_0_7.mul_add(in1_re, in0_re));
             let out0_im = twiddle_im_0_7.mul_add(in1_re, twiddle_re_0_7.mul_add(in1_im, in0_im));
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
@@ -768,7 +769,8 @@ fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
             let in0_im = f64x8::from_slice(simd, &imags_s0[8..16]);
             let in1_im = f64x8::from_slice(simd, &imags_s1[8..16]);
 
-            let out0_re = twiddle_im_8_15.mul_add(-in1_im, twiddle_re_8_15.mul_add(in1_re, in0_re));
+            let out0_re =
+                twiddle_im_8_15.mul_neg_add(in1_im, twiddle_re_8_15.mul_add(in1_re, in0_re));
             let out0_im = twiddle_im_8_15.mul_add(in1_re, twiddle_re_8_15.mul_add(in1_im, in0_im));
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
@@ -785,7 +787,7 @@ fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
             let in1_im = f64x8::from_slice(simd, &imags_s1[16..24]);
 
             let out0_re =
-                twiddle_im_16_23.mul_add(-in1_im, twiddle_re_16_23.mul_add(in1_re, in0_re));
+                twiddle_im_16_23.mul_neg_add(in1_im, twiddle_re_16_23.mul_add(in1_re, in0_re));
             let out0_im =
                 twiddle_im_16_23.mul_add(in1_re, twiddle_re_16_23.mul_add(in1_im, in0_im));
             let out1_re = two.mul_sub(in0_re, out0_re);
@@ -803,7 +805,7 @@ fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
             let in1_im = f64x8::from_slice(simd, &imags_s1[24..32]);
 
             let out0_re =
-                twiddle_im_24_31.mul_add(-in1_im, twiddle_re_24_31.mul_add(in1_re, in0_re));
+                twiddle_im_24_31.mul_neg_add(in1_im, twiddle_re_24_31.mul_add(in1_re, in0_re));
             let out0_im =
                 twiddle_im_24_31.mul_add(in1_re, twiddle_re_24_31.mul_add(in1_im, in0_im));
             let out1_re = two.mul_sub(in0_re, out0_re);
@@ -936,7 +938,8 @@ fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
             let in0_im = f32x16::from_slice(simd, &imags_s0[0..16]);
             let in1_im = f32x16::from_slice(simd, &imags_s1[0..16]);
 
-            let out0_re = twiddle_im_0_15.mul_add(-in1_im, twiddle_re_0_15.mul_add(in1_re, in0_re));
+            let out0_re =
+                twiddle_im_0_15.mul_neg_add(in1_im, twiddle_re_0_15.mul_add(in1_re, in0_re));
             let out0_im = twiddle_im_0_15.mul_add(in1_re, twiddle_re_0_15.mul_add(in1_im, in0_im));
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
@@ -953,7 +956,7 @@ fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
             let in1_im = f32x16::from_slice(simd, &imags_s1[16..32]);
 
             let out0_re =
-                twiddle_im_16_31.mul_add(-in1_im, twiddle_re_16_31.mul_add(in1_re, in0_re));
+                twiddle_im_16_31.mul_neg_add(in1_im, twiddle_re_16_31.mul_add(in1_re, in0_re));
             let out0_im =
                 twiddle_im_16_31.mul_add(in1_re, twiddle_re_16_31.mul_add(in1_im, in0_im));
             let out1_re = two.mul_sub(in0_re, out0_re);
@@ -1020,7 +1023,7 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
                     let tw_im = f64x8::simd_from(simd, *tw_im);
 
                     // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                    let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+                    let out0_re = tw_im.mul_neg_add(in1_im, tw_re.mul_add(in1_re, in0_re));
                     // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
                     let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
@@ -1090,7 +1093,7 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
                     let tw_im = f32x16::simd_from(simd, *tw_im);
 
                     // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                    let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+                    let out0_re = tw_im.mul_neg_add(in1_im, tw_re.mul_add(in1_re, in0_re));
                     // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
                     let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
