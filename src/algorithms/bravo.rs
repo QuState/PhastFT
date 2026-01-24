@@ -9,7 +9,6 @@
 ///
 /// The initial implementation was translated from mathematical notation in the paper
 /// to Rust by Claude 4.5 Opus.
-
 use fearless_simd::prelude::*;
 use fearless_simd::{f32x4, f32x8, f64x2, f64x4, Simd};
 
@@ -58,7 +57,8 @@ macro_rules! impl_bit_rev_bravo {
                 }
 
                 // Load vectors for class A
-                let mut chunks_a: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
+                let mut chunks_a: [Chunk<S>; LANES] =
+                    [Chunk::splat(simd, Default::default()); LANES];
                 for j in 0..w {
                     let base_idx = (class_idx + j * num_classes) * w;
                     chunks_a[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
@@ -66,7 +66,8 @@ macro_rules! impl_bit_rev_bravo {
 
                 // Perform interleave rounds for class A
                 for round in 0..log_w {
-                    let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
+                    let mut new_chunks: [Chunk<S>; LANES] =
+                        [Chunk::splat(simd, Default::default()); LANES];
                     let stride = 1 << round;
 
                     let mut pair_idx = 0;
@@ -98,7 +99,8 @@ macro_rules! impl_bit_rev_bravo {
                     }
                 } else {
                     // Swapping pair - load class B, process it, then swap both
-                    let mut chunks_b: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
+                    let mut chunks_b: [Chunk<S>; LANES] =
+                        [Chunk::splat(simd, Default::default()); LANES];
                     for j in 0..w {
                         let base_idx = (class_idx_rev + j * num_classes) * w;
                         chunks_b[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
@@ -106,7 +108,8 @@ macro_rules! impl_bit_rev_bravo {
 
                     // Perform interleave rounds for class B
                     for round in 0..log_w {
-                        let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
+                        let mut new_chunks: [Chunk<S>; LANES] =
+                            [Chunk::splat(simd, Default::default()); LANES];
                         let stride = 1 << round;
 
                         let mut pair_idx = 0;
