@@ -25,7 +25,6 @@ fearless_simd = { git = "https://github.com/valadaptive/fearless_simd.git", bran
 default = []
 complex-nums = ["dep:num-complex", "dep:bytemuck"]
 parallel = ["dep:rayon"]
-nightly = []
 
 [dev-dependencies]
 criterion = "0.8.0"

@@ -10,7 +10,6 @@
 /// Uses std::simd for hardware SIMD instructions on nightly Rust.
 ///
 /// The initial implementation was heavily assisted by Claude Code
-use std::simd::Simd;
 
 const LANES: usize = 8; // Vector width W
 
