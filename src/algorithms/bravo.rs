@@ -19,7 +19,7 @@ use fearless_simd::{f32x8, f64x8, Simd};
 /// Macro to generate bit_rev_bravo implementations for concrete types.
 /// Used instead of generics because `fearless_simd` doesn't let us be generic over the exact float type.
 macro_rules! impl_bit_rev_bravo {
-    ($fn_name:ident, $elem_ty:ty, $vec_ty:ty, $default:expr) => {
+    ($fn_name:ident, $elem_ty:ty, $vec_ty:ty) => {
         /// Performs in-place bit-reversal permutation using the BRAVO algorithm.
         ///
         /// # Arguments
@@ -62,7 +62,7 @@ macro_rules! impl_bit_rev_bravo {
                 }
 
                 // Load vectors for class A
-                let mut chunks_a: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
+                let mut chunks_a: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
                 for j in 0..w {
                     let base_idx = (class_idx + j * num_classes) * w;
                     chunks_a[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
@@ -70,12 +70,12 @@ macro_rules! impl_bit_rev_bravo {
 
                 // Perform interleave rounds for class A
                 for round in 0..log_w {
-                    let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
+                    let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
                     let stride = 1 << round;
 
                     // W/2 pairs per round, stored as parallel arrays
-                    let mut los: [Chunk<S>; LANES / 2] = [Chunk::splat(simd, $default); LANES / 2];
-                    let mut his: [Chunk<S>; LANES / 2] = [Chunk::splat(simd, $default); LANES / 2];
+                    let mut los: [Chunk<S>; LANES / 2] = [Chunk::splat(simd, Default::default()); LANES / 2];
+                    let mut his: [Chunk<S>; LANES / 2] = [Chunk::splat(simd, Default::default()); LANES / 2];
 
                     let mut pair_idx = 0;
                     let mut i = 0;
@@ -111,7 +111,7 @@ macro_rules! impl_bit_rev_bravo {
                     }
                 } else {
                     // Swapping pair - load class B, process it, then swap both
-                    let mut chunks_b: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
+                    let mut chunks_b: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
                     for j in 0..w {
                         let base_idx = (class_idx_rev + j * num_classes) * w;
                         chunks_b[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
@@ -119,13 +119,13 @@ macro_rules! impl_bit_rev_bravo {
 
                     // Perform interleave rounds for class B
                     for round in 0..log_w {
-                        let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
+                        let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
                         let stride = 1 << round;
 
                         let mut los: [Chunk<S>; LANES / 2] =
-                            [Chunk::splat(simd, $default); LANES / 2];
+                            [Chunk::splat(simd, Default::default()); LANES / 2];
                         let mut his: [Chunk<S>; LANES / 2] =
-                            [Chunk::splat(simd, $default); LANES / 2];
+                            [Chunk::splat(simd, Default::default()); LANES / 2];
 
                         let mut pair_idx = 0;
                         let mut i = 0;
@@ -167,8 +167,8 @@ macro_rules! impl_bit_rev_bravo {
 }
 
 // Generate concrete implementations for f32 and f64
-impl_bit_rev_bravo!(bit_rev_bravo_f32, f32, f32x8<S>, 0.0_f32);
-impl_bit_rev_bravo!(bit_rev_bravo_f64, f64, f64x8<S>, 0.0_f64);
+impl_bit_rev_bravo!(bit_rev_bravo_f32, f32, f32x8<S>);
+impl_bit_rev_bravo!(bit_rev_bravo_f64, f64, f64x8<S>);
 
 /// Scalar bit-reversal for small arrays
 fn scalar_bit_reversal<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
