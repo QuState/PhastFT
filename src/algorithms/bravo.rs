@@ -73,10 +73,6 @@ macro_rules! impl_bit_rev_bravo {
                     let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
                     let stride = 1 << round;
 
-                    // W/2 pairs per round, stored as parallel arrays
-                    let mut los: [Chunk<S>; LANES / 2] = [Chunk::splat(simd, Default::default()); LANES / 2];
-                    let mut his: [Chunk<S>; LANES / 2] = [Chunk::splat(simd, Default::default()); LANES / 2];
-
                     let mut pair_idx = 0;
                     let mut i = 0;
                     while i < w {
@@ -87,17 +83,12 @@ macro_rules! impl_bit_rev_bravo {
                             let vec1 = chunks_a[idx1];
                             let lo = vec0.zip_low(vec1);
                             let hi = vec0.zip_high(vec1);
-                            los[pair_idx] = lo;
-                            his[pair_idx] = hi;
+                            let base = (pair_idx % stride) + (pair_idx / stride) * stride * 2;
+                            new_chunks[base] = lo;
+                            new_chunks[base + stride] = hi;
                             pair_idx += 1;
                         }
                         i += stride * 2;
-                    }
-
-                    for j in 0..(w / 2) {
-                        let base = (j % stride) + (j / stride) * stride * 2;
-                        new_chunks[base] = los[j];
-                        new_chunks[base + stride] = his[j];
                     }
 
                     chunks_a = new_chunks;
@@ -122,11 +113,6 @@ macro_rules! impl_bit_rev_bravo {
                         let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
                         let stride = 1 << round;
 
-                        let mut los: [Chunk<S>; LANES / 2] =
-                            [Chunk::splat(simd, Default::default()); LANES / 2];
-                        let mut his: [Chunk<S>; LANES / 2] =
-                            [Chunk::splat(simd, Default::default()); LANES / 2];
-
                         let mut pair_idx = 0;
                         let mut i = 0;
                         while i < w {
@@ -137,17 +123,12 @@ macro_rules! impl_bit_rev_bravo {
                                 let vec1 = chunks_b[idx1];
                                 let lo = vec0.zip_low(vec1);
                                 let hi = vec0.zip_high(vec1);
-                                los[pair_idx] = lo;
-                                his[pair_idx] = hi;
+                                let base = (pair_idx % stride) + (pair_idx / stride) * stride * 2;
+                                new_chunks[base] = lo;
+                                new_chunks[base + stride] = hi;
                                 pair_idx += 1;
                             }
                             i += stride * 2;
-                        }
-
-                        for j in 0..(w / 2) {
-                            let base = (j % stride) + (j / stride) * stride * 2;
-                            new_chunks[base] = los[j];
-                            new_chunks[base + stride] = his[j];
                         }
 
                         chunks_b = new_chunks;
