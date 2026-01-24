@@ -49,6 +49,15 @@ macro_rules! impl_bit_rev_bravo {
             // For in-place operation, we handle class pairs that swap with each other.
             // We only process when class_idx <= class_idx_rev to avoid double processing.
 
+            let mut chunks_a: Box<[Chunk<S>]> =
+                vec![Chunk::splat(simd, $default); LANES].into_boxed_slice();
+            let mut new_chunks_a: Box<[Chunk<S>]> =
+                vec![Chunk::splat(simd, $default); LANES].into_boxed_slice();
+            let mut chunks_b: Box<[Chunk<S>]> =
+                vec![Chunk::splat(simd, $default); LANES].into_boxed_slice();
+            let mut new_chunks_b: Box<[Chunk<S>]> =
+                vec![Chunk::splat(simd, $default); LANES].into_boxed_slice();
+
             for class_idx in 0..num_classes {
                 let class_idx_rev = if class_bits > 0 {
                     class_idx.reverse_bits() >> (usize::BITS - class_bits as u32)
@@ -62,7 +71,6 @@ macro_rules! impl_bit_rev_bravo {
                 }
 
                 // Load vectors for class A
-                let mut chunks_a: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                 for j in 0..w {
                     let base_idx = (class_idx + j * num_classes) * w;
                     chunks_a[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
@@ -70,7 +78,6 @@ macro_rules! impl_bit_rev_bravo {
 
                 // Perform interleave rounds for class A
                 for round in 0..log_w {
-                    let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                     let stride = 1 << round;
 
                     // W/2 pairs per round, stored as parallel arrays
@@ -96,11 +103,11 @@ macro_rules! impl_bit_rev_bravo {
 
                     for j in 0..(w / 2) {
                         let base = (j % stride) + (j / stride) * stride * 2;
-                        new_chunks[base] = los[j];
-                        new_chunks[base + stride] = his[j];
+                        new_chunks_a[base] = los[j];
+                        new_chunks_a[base + stride] = his[j];
                     }
 
-                    chunks_a = new_chunks;
+                    std::mem::swap(&mut chunks_a, &mut new_chunks_a);
                 }
 
                 if class_idx == class_idx_rev {
@@ -111,7 +118,6 @@ macro_rules! impl_bit_rev_bravo {
                     }
                 } else {
                     // Swapping pair - load class B, process it, then swap both
-                    let mut chunks_b: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                     for j in 0..w {
                         let base_idx = (class_idx_rev + j * num_classes) * w;
                         chunks_b[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
@@ -119,7 +125,6 @@ macro_rules! impl_bit_rev_bravo {
 
                     // Perform interleave rounds for class B
                     for round in 0..log_w {
-                        let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                         let stride = 1 << round;
 
                         let mut los: [Chunk<S>; LANES / 2] =
@@ -146,11 +151,11 @@ macro_rules! impl_bit_rev_bravo {
 
                         for j in 0..(w / 2) {
                             let base = (j % stride) + (j / stride) * stride * 2;
-                            new_chunks[base] = los[j];
-                            new_chunks[base + stride] = his[j];
+                            new_chunks_b[base] = los[j];
+                            new_chunks_b[base + stride] = his[j];
                         }
 
-                        chunks_b = new_chunks;
+                        std::mem::swap(&mut chunks_b, &mut new_chunks_b);
                     }
 
                     // Swap: write A's result to B's location and vice versa
