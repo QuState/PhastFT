@@ -16,7 +16,7 @@
 //!
 use fearless_simd::{dispatch, Level, Simd};
 
-use crate::algorithms::bravo::bit_rev_bravo;
+use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
 use crate::kernels::dit::*;
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
@@ -254,8 +254,8 @@ pub fn fft_64_dit_with_planner_and_opts(
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
-        || bit_rev_bravo(reals, log_n),
-        || bit_rev_bravo(imags, log_n),
+        || bit_rev_bravo_f64(reals, log_n),
+        || bit_rev_bravo_f64(imags, log_n),
     );
 
     // Handle inverse FFT
@@ -298,8 +298,8 @@ pub fn fft_32_dit_with_planner_and_opts(
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
-        || bit_rev_bravo(reals, log_n),
-        || bit_rev_bravo(imags, log_n),
+        || bit_rev_bravo_f32(reals, log_n),
+        || bit_rev_bravo_f32(imags, log_n),
     );
 
     // Handle inverse FFT
