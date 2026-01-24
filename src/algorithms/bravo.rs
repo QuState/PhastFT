@@ -1,4 +1,4 @@
-/// BRAVO: Bit-Reversal Algorithm using Vector permute Operations
+/// CO-BRAVO: Cache-Optimal Bit-Reversal Algorithm using Vector permute Operations
 ///
 /// This implements the algorithm from "Optimal Bit-Reversal Using Vector Permutations"
 /// by Lokhmotov and Mycroft (SPAA'07).
@@ -7,9 +7,8 @@
 /// For N = 2^n elements with W-element vectors, the algorithm performs log₂(N) rounds
 /// of in-place interleave operations on pairs of vectors.
 ///
-/// Uses std::simd for hardware SIMD instructions on nightly Rust.
-///
-/// The initial implementation was heavily assisted by Claude Code
+/// The initial implementation was translated from mathematical notation in the paper
+/// to Rust by Claude 4.5 Opus.
 
 use fearless_simd::prelude::*;
 use fearless_simd::{f32x4, f32x8, f64x2, f64x4, Simd};
