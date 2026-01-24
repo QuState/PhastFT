@@ -18,6 +18,7 @@
 //! - Use DIF if you don't want to or don't need to apply a bit reversal on the input.
 //! - Use DIT for slightly better performance.
 
+pub mod bravo;
 pub mod cobra;
 pub mod dif;
 pub mod dit;

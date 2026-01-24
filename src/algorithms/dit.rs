@@ -16,7 +16,7 @@
 //!
 use fearless_simd::{dispatch, Level, Simd};
 
-use crate::algorithms::cobra::cobra_apply;
+use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
 use crate::kernels::dit::*;
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
@@ -251,11 +251,13 @@ pub fn fft_64_dit_with_planner_and_opts(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
+    let simd_level = Level::new();
+
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
-        || cobra_apply(reals, log_n),
-        || cobra_apply(imags, log_n),
+        || dispatch!(simd_level, simd => bit_rev_bravo_f64(simd, reals, log_n)),
+        || dispatch!(simd_level, simd => bit_rev_bravo_f64(simd, imags, log_n)),
     );
 
     // Handle inverse FFT
@@ -265,7 +267,6 @@ pub fn fft_64_dit_with_planner_and_opts(
         }
     }
 
-    let simd_level = Level::new();
     dispatch!(simd_level, simd => recursive_dit_fft_f64(simd, reals, imags, n, planner, opts, 0));
 
     // Scaling for inverse transform
@@ -295,11 +296,13 @@ pub fn fft_32_dit_with_planner_and_opts(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
+    let simd_level = Level::new();
+
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
-        || cobra_apply(reals, log_n),
-        || cobra_apply(imags, log_n),
+        || dispatch!(simd_level, simd => bit_rev_bravo_f32(simd, reals, log_n)),
+        || dispatch!(simd_level, simd => bit_rev_bravo_f32(simd, imags, log_n)),
     );
 
     // Handle inverse FFT
@@ -309,7 +312,6 @@ pub fn fft_32_dit_with_planner_and_opts(
         }
     }
 
-    let simd_level = Level::new();
     dispatch!(simd_level, simd => recursive_dit_fft_f32(simd, reals, imags, n, planner, opts, 0));
 
     // Scaling for inverse transform
