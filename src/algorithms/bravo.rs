@@ -168,6 +168,7 @@ pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
 /// # Arguments
 /// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
 /// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
+#[inline(always)] // required by fearless_simd
 pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
     match <S::f64s>::N {
         2 => bit_rev_bravo_chunk_2_f64(simd, data, n), // SSE, NEON and fallback
