@@ -62,15 +62,15 @@ macro_rules! impl_bit_rev_bravo {
                 }
 
                 // Load vectors for class A
-                let mut vecs_a: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
+                let mut chunks_a: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                 for j in 0..w {
                     let base_idx = (class_idx + j * num_classes) * w;
-                    vecs_a[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
+                    chunks_a[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
                 }
 
                 // Perform interleave rounds for class A
                 for round in 0..log_w {
-                    let mut new_vecs: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
+                    let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                     let stride = 1 << round;
 
                     // W/2 pairs per round, stored as parallel arrays
@@ -83,8 +83,8 @@ macro_rules! impl_bit_rev_bravo {
                         for offset in 0..stride {
                             let idx0 = i + offset;
                             let idx1 = i + offset + stride;
-                            let vec0 = vecs_a[idx0];
-                            let vec1 = vecs_a[idx1];
+                            let vec0 = chunks_a[idx0];
+                            let vec1 = chunks_a[idx1];
                             let lo = vec0.zip_low(vec1);
                             let hi = vec0.zip_high(vec1);
                             los[pair_idx] = lo;
@@ -96,30 +96,30 @@ macro_rules! impl_bit_rev_bravo {
 
                     for j in 0..(w / 2) {
                         let base = (j % stride) + (j / stride) * stride * 2;
-                        new_vecs[base] = los[j];
-                        new_vecs[base + stride] = his[j];
+                        new_chunks[base] = los[j];
+                        new_chunks[base + stride] = his[j];
                     }
 
-                    vecs_a = new_vecs;
+                    chunks_a = new_chunks;
                 }
 
                 if class_idx == class_idx_rev {
                     // Self-mapping class - just write back to same location
                     for j in 0..w {
                         let base_idx = (class_idx + j * num_classes) * w;
-                        vecs_a[j].store_slice(&mut data[base_idx..base_idx + w]);
+                        chunks_a[j].store_slice(&mut data[base_idx..base_idx + w]);
                     }
                 } else {
                     // Swapping pair - load class B, process it, then swap both
-                    let mut vecs_b: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
+                    let mut chunks_b: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                     for j in 0..w {
                         let base_idx = (class_idx_rev + j * num_classes) * w;
-                        vecs_b[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
+                        chunks_b[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
                     }
 
                     // Perform interleave rounds for class B
                     for round in 0..log_w {
-                        let mut new_vecs: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
+                        let mut new_chunks: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                         let stride = 1 << round;
 
                         let mut los: [Chunk<S>; LANES / 2] =
@@ -133,8 +133,8 @@ macro_rules! impl_bit_rev_bravo {
                             for offset in 0..stride {
                                 let idx0 = i + offset;
                                 let idx1 = i + offset + stride;
-                                let vec0 = vecs_b[idx0];
-                                let vec1 = vecs_b[idx1];
+                                let vec0 = chunks_b[idx0];
+                                let vec1 = chunks_b[idx1];
                                 let lo = vec0.zip_low(vec1);
                                 let hi = vec0.zip_high(vec1);
                                 los[pair_idx] = lo;
@@ -146,19 +146,19 @@ macro_rules! impl_bit_rev_bravo {
 
                         for j in 0..(w / 2) {
                             let base = (j % stride) + (j / stride) * stride * 2;
-                            new_vecs[base] = los[j];
-                            new_vecs[base + stride] = his[j];
+                            new_chunks[base] = los[j];
+                            new_chunks[base + stride] = his[j];
                         }
 
-                        vecs_b = new_vecs;
+                        chunks_b = new_chunks;
                     }
 
                     // Swap: write A's result to B's location and vice versa
                     for j in 0..w {
                         let base_idx_a = (class_idx + j * num_classes) * w;
                         let base_idx_b = (class_idx_rev + j * num_classes) * w;
-                        vecs_a[j].store_slice(&mut data[base_idx_b..base_idx_b + w]);
-                        vecs_b[j].store_slice(&mut data[base_idx_a..base_idx_a + w]);
+                        chunks_a[j].store_slice(&mut data[base_idx_b..base_idx_b + w]);
+                        chunks_b[j].store_slice(&mut data[base_idx_a..base_idx_a + w]);
                     }
                 }
             }
