@@ -147,6 +147,10 @@ macro_rules! impl_bit_rev_bravo {
 }
 
 // Generate concrete implementations for f32 and f64
+// This needed for two reasons:
+// 1. fearless_simd doesn't support being generic over the element type
+// 2. As of Rust 1.93 we cannot use an associated constant for array lengths,
+//    which is necessary for using the native vector width
 impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f32, f32, f32x4<S>, 4);
 impl_bit_rev_bravo!(bit_rev_bravo_chunk_8_f32, f32, f32x8<S>, 8);
 impl_bit_rev_bravo!(bit_rev_bravo_chunk_2_f64, f64, f64x2<S>, 2);
