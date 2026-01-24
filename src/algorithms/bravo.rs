@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_bravo_bit_reversal() {
-        for n in 8..24 {
+        for n in 2..24 {
             let big_n = 1 << n;
             let mut actual_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let mut actual_im: Vec<f64> = (0..big_n).map(f64::from).collect();
@@ -212,15 +212,5 @@ mod tests {
             let expected_im = top_down_bit_reverse_permutation(&input_im);
             assert_eq!(actual_im, expected_im);
         }
-    }
-
-    #[test]
-    fn test_small_cases() {
-        // Test n=4 (16 elements) - smallest case with W=4 vectors
-        let mut data: Vec<f64> = (0..16).map(f64::from).collect();
-        bit_rev_bravo(&mut data, 4);
-        let expected =
-            top_down_bit_reverse_permutation(&(0..16).map(f64::from).collect::<Vec<_>>());
-        assert_eq!(data, expected);
     }
 }
