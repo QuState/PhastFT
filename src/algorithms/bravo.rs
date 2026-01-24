@@ -12,19 +12,14 @@
 /// The initial implementation was heavily assisted by Claude Code
 
 use fearless_simd::prelude::*;
-use fearless_simd::{f32x8, f64x8, Simd};
+use fearless_simd::{f32x4, f32x8, f64x2, f64x4, Simd};
 
 /// Macro to generate bit_rev_bravo implementations for concrete types.
 /// Used instead of generics because `fearless_simd` doesn't let us be generic over the exact float type.
 macro_rules! impl_bit_rev_bravo {
     ($fn_name:ident, $elem_ty:ty, $vec_ty:ty, $lanes:expr) => {
-        /// Performs in-place bit-reversal permutation using the BRAVO algorithm.
-        ///
-        /// # Arguments
-        /// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
-        /// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
         #[inline(always)] // required by fearless_simd
-        pub fn $fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
+        fn $fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
             type Chunk<S> = $vec_ty;
             const LANES: usize = $lanes; // Vector width W
 
@@ -150,8 +145,37 @@ macro_rules! impl_bit_rev_bravo {
 }
 
 // Generate concrete implementations for f32 and f64
-impl_bit_rev_bravo!(bit_rev_bravo_f32, f32, f32x8<S>, 8);
-impl_bit_rev_bravo!(bit_rev_bravo_f64, f64, f64x8<S>, 8);
+impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f32, f32, f32x4<S>, 4);
+impl_bit_rev_bravo!(bit_rev_bravo_chunk_8_f32, f32, f32x8<S>, 8);
+impl_bit_rev_bravo!(bit_rev_bravo_chunk_2_f64, f64, f64x2<S>, 2);
+impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f64, f64, f64x4<S>, 4);
+
+/// Performs in-place bit-reversal permutation using the CO-BRAVO algorithm.
+///
+/// # Arguments
+/// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
+/// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
+#[inline(always)] // required by fearless_simd
+pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
+    match <S::f32s>::N {
+        4 => bit_rev_bravo_chunk_4_f32(simd, data, n),
+        _ => bit_rev_bravo_chunk_8_f32(simd, data, n),
+        // fearless_simd has no native support for AVX-512 yet
+    }
+}
+
+/// Performs in-place bit-reversal permutation using the CO-BRAVO algorithm.
+///
+/// # Arguments
+/// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
+/// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
+pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
+    match <S::f64s>::N {
+        2 => bit_rev_bravo_chunk_2_f64(simd, data, n),
+        _ => bit_rev_bravo_chunk_4_f64(simd, data, n),
+        // fearless_simd has no native support for AVX-512 yet
+    }
+}
 
 /// Scalar bit-reversal for small arrays
 fn scalar_bit_reversal<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
