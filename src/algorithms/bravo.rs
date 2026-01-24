@@ -158,7 +158,7 @@ impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f64, f64, f64x4<S>, 4);
 #[inline(always)] // required by fearless_simd
 pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
     match <S::f32s>::N {
-        4 => bit_rev_bravo_chunk_4_f32(simd, data, n),
+        4 => bit_rev_bravo_chunk_4_f32(simd, data, n), // SSE, NEON and fallback
         _ => bit_rev_bravo_chunk_8_f32(simd, data, n),
         // fearless_simd has no native support for AVX-512 yet
     }
@@ -171,7 +171,7 @@ pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
 /// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
 pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
     match <S::f64s>::N {
-        2 => bit_rev_bravo_chunk_2_f64(simd, data, n),
+        2 => bit_rev_bravo_chunk_2_f64(simd, data, n), // SSE, NEON and fallback
         _ => bit_rev_bravo_chunk_4_f64(simd, data, n),
         // fearless_simd has no native support for AVX-512 yet
     }
