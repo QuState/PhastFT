@@ -11,15 +11,13 @@
 ///
 /// The initial implementation was heavily assisted by Claude Code
 
-const LANES: usize = 8; // Vector width W
-
 use fearless_simd::prelude::*;
 use fearless_simd::{f32x8, f64x8, Simd};
 
 /// Macro to generate bit_rev_bravo implementations for concrete types.
 /// Used instead of generics because `fearless_simd` doesn't let us be generic over the exact float type.
 macro_rules! impl_bit_rev_bravo {
-    ($fn_name:ident, $elem_ty:ty, $vec_ty:ty) => {
+    ($fn_name:ident, $elem_ty:ty, $vec_ty:ty, $lanes:expr) => {
         /// Performs in-place bit-reversal permutation using the BRAVO algorithm.
         ///
         /// # Arguments
@@ -28,6 +26,10 @@ macro_rules! impl_bit_rev_bravo {
         #[inline(always)] // required by fearless_simd
         pub fn $fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
             type Chunk<S> = $vec_ty;
+            const LANES: usize = $lanes; // Vector width W
+
+            // as of Rust 1.93 we cannot use an associated constant for array lengths
+            assert!(<Chunk<S>>::N == LANES);
 
             let big_n = 1usize << n;
             assert_eq!(data.len(), big_n, "Data length must be 2^n");
@@ -148,8 +150,8 @@ macro_rules! impl_bit_rev_bravo {
 }
 
 // Generate concrete implementations for f32 and f64
-impl_bit_rev_bravo!(bit_rev_bravo_f32, f32, f32x8<S>);
-impl_bit_rev_bravo!(bit_rev_bravo_f64, f64, f64x8<S>);
+impl_bit_rev_bravo!(bit_rev_bravo_f32, f32, f32x8<S>, 8);
+impl_bit_rev_bravo!(bit_rev_bravo_f64, f64, f64x8<S>, 8);
 
 /// Scalar bit-reversal for small arrays
 fn scalar_bit_reversal<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
