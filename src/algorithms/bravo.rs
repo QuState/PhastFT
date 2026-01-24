@@ -13,19 +13,21 @@
 
 const LANES: usize = 8; // Vector width W
 
+use fearless_simd::prelude::*;
+use fearless_simd::{f32x8, f64x8, Simd};
+
 /// Macro to generate bit_rev_bravo implementations for concrete types.
-///
-/// This avoids monomorphization overhead and allows the compiler to optimize
-/// each type-specific implementation independently.
+/// Used instead of generics because `fearless_simd` doesn't let us be generic over the exact float type.
 macro_rules! impl_bit_rev_bravo {
-    ($fn_name:ident, $elem_ty:ty, $default:expr) => {
+    ($fn_name:ident, $elem_ty:ty, $vec_ty:ty, $default:expr) => {
         /// Performs in-place bit-reversal permutation using the BRAVO algorithm.
         ///
         /// # Arguments
         /// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
         /// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
-        pub fn $fn_name(data: &mut [$elem_ty], n: usize) {
-            type Vec8 = Simd<$elem_ty, LANES>;
+        #[inline(always)] // required by fearless_simd
+        pub fn $fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
+            type Chunk<S> = $vec_ty;
 
             let big_n = 1usize << n;
             assert_eq!(data.len(), big_n, "Data length must be 2^n");
@@ -60,20 +62,20 @@ macro_rules! impl_bit_rev_bravo {
                 }
 
                 // Load vectors for class A
-                let mut vecs_a: [Vec8; LANES] = [Simd::splat($default); LANES];
+                let mut vecs_a: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                 for j in 0..w {
                     let base_idx = (class_idx + j * num_classes) * w;
-                    vecs_a[j] = Simd::from_slice(&data[base_idx..base_idx + w]);
+                    vecs_a[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
                 }
 
                 // Perform interleave rounds for class A
                 for round in 0..log_w {
-                    let mut new_vecs: [Vec8; LANES] = [Simd::splat($default); LANES];
+                    let mut new_vecs: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                     let stride = 1 << round;
 
                     // W/2 pairs per round, stored as parallel arrays
-                    let mut los: [Vec8; LANES / 2] = [Simd::splat($default); LANES / 2];
-                    let mut his: [Vec8; LANES / 2] = [Simd::splat($default); LANES / 2];
+                    let mut los: [Chunk<S>; LANES / 2] = [Chunk::splat(simd, $default); LANES / 2];
+                    let mut his: [Chunk<S>; LANES / 2] = [Chunk::splat(simd, $default); LANES / 2];
 
                     let mut pair_idx = 0;
                     let mut i = 0;
@@ -81,7 +83,10 @@ macro_rules! impl_bit_rev_bravo {
                         for offset in 0..stride {
                             let idx0 = i + offset;
                             let idx1 = i + offset + stride;
-                            let (lo, hi) = vecs_a[idx0].interleave(vecs_a[idx1]);
+                            let vec0 = vecs_a[idx0];
+                            let vec1 = vecs_a[idx1];
+                            let lo = vec0.zip_low(vec1);
+                            let hi = vec0.zip_high(vec1);
                             los[pair_idx] = lo;
                             his[pair_idx] = hi;
                             pair_idx += 1;
@@ -102,23 +107,25 @@ macro_rules! impl_bit_rev_bravo {
                     // Self-mapping class - just write back to same location
                     for j in 0..w {
                         let base_idx = (class_idx + j * num_classes) * w;
-                        vecs_a[j].copy_to_slice(&mut data[base_idx..base_idx + w]);
+                        vecs_a[j].store_slice(&mut data[base_idx..base_idx + w]);
                     }
                 } else {
                     // Swapping pair - load class B, process it, then swap both
-                    let mut vecs_b: [Vec8; LANES] = [Simd::splat($default); LANES];
+                    let mut vecs_b: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                     for j in 0..w {
                         let base_idx = (class_idx_rev + j * num_classes) * w;
-                        vecs_b[j] = Simd::from_slice(&data[base_idx..base_idx + w]);
+                        vecs_b[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
                     }
 
                     // Perform interleave rounds for class B
                     for round in 0..log_w {
-                        let mut new_vecs: [Vec8; LANES] = [Simd::splat($default); LANES];
+                        let mut new_vecs: [Chunk<S>; LANES] = [Chunk::splat(simd, $default); LANES];
                         let stride = 1 << round;
 
-                        let mut los: [Vec8; LANES / 2] = [Simd::splat($default); LANES / 2];
-                        let mut his: [Vec8; LANES / 2] = [Simd::splat($default); LANES / 2];
+                        let mut los: [Chunk<S>; LANES / 2] =
+                            [Chunk::splat(simd, $default); LANES / 2];
+                        let mut his: [Chunk<S>; LANES / 2] =
+                            [Chunk::splat(simd, $default); LANES / 2];
 
                         let mut pair_idx = 0;
                         let mut i = 0;
@@ -126,7 +133,10 @@ macro_rules! impl_bit_rev_bravo {
                             for offset in 0..stride {
                                 let idx0 = i + offset;
                                 let idx1 = i + offset + stride;
-                                let (lo, hi) = vecs_b[idx0].interleave(vecs_b[idx1]);
+                                let vec0 = vecs_b[idx0];
+                                let vec1 = vecs_b[idx1];
+                                let lo = vec0.zip_low(vec1);
+                                let hi = vec0.zip_high(vec1);
                                 los[pair_idx] = lo;
                                 his[pair_idx] = hi;
                                 pair_idx += 1;
@@ -147,8 +157,8 @@ macro_rules! impl_bit_rev_bravo {
                     for j in 0..w {
                         let base_idx_a = (class_idx + j * num_classes) * w;
                         let base_idx_b = (class_idx_rev + j * num_classes) * w;
-                        vecs_a[j].copy_to_slice(&mut data[base_idx_b..base_idx_b + w]);
-                        vecs_b[j].copy_to_slice(&mut data[base_idx_a..base_idx_a + w]);
+                        vecs_a[j].store_slice(&mut data[base_idx_b..base_idx_b + w]);
+                        vecs_b[j].store_slice(&mut data[base_idx_a..base_idx_a + w]);
                     }
                 }
             }
@@ -157,8 +167,8 @@ macro_rules! impl_bit_rev_bravo {
 }
 
 // Generate concrete implementations for f32 and f64
-impl_bit_rev_bravo!(bit_rev_bravo_f32, f32, 0.0_f32);
-impl_bit_rev_bravo!(bit_rev_bravo_f64, f64, 0.0_f64);
+impl_bit_rev_bravo!(bit_rev_bravo_f32, f32, f32x8<S>, 0.0_f32);
+impl_bit_rev_bravo!(bit_rev_bravo_f64, f64, f64x8<S>, 0.0_f64);
 
 /// Scalar bit-reversal for small arrays
 fn scalar_bit_reversal<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
@@ -182,6 +192,8 @@ fn reverse_bits_scalar(x: usize, bits: u32) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use fearless_simd::{dispatch, Level};
+
     use super::*;
 
     /// Top down bit reverse interleaving. This is a very simple and well known approach that we
@@ -210,8 +222,9 @@ mod tests {
             let big_n = 1 << n;
             let mut actual_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let mut actual_im: Vec<f64> = (0..big_n).map(f64::from).collect();
-            bit_rev_bravo_f64(&mut actual_re, n);
-            bit_rev_bravo_f64(&mut actual_im, n);
+            let simd_level = Level::new();
+            dispatch!(simd_level, simd => bit_rev_bravo_f64(simd, &mut actual_re, n));
+            dispatch!(simd_level, simd => bit_rev_bravo_f64(simd, &mut actual_im, n));
             let input_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let expected_re = top_down_bit_reverse_permutation(&input_re);
             assert_eq!(actual_re, expected_re);
@@ -227,8 +240,9 @@ mod tests {
             let big_n = 1 << n;
             let mut actual_re: Vec<f32> = (0..big_n).map(|i| i as f32).collect();
             let mut actual_im: Vec<f32> = (0..big_n).map(|i| i as f32).collect();
-            bit_rev_bravo_f32(&mut actual_re, n);
-            bit_rev_bravo_f32(&mut actual_im, n);
+            let simd_level = Level::new();
+            dispatch!(simd_level, simd => bit_rev_bravo_f32(simd, &mut actual_re, n));
+            dispatch!(simd_level, simd => bit_rev_bravo_f32(simd, &mut actual_im, n));
             let input_re: Vec<f32> = (0..big_n).map(|i| i as f32).collect();
             let expected_re = top_down_bit_reverse_permutation(&input_re);
             assert_eq!(actual_re, expected_re);
