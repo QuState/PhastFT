@@ -1194,6 +1194,8 @@ fn fft_dit_chunk_n_simd_f32_fused<S: Simd>(
                         // given that modern CPUs are absurdly memory-bottlenecked
                         // this should help performance a lot, especially on larger sizes
 
+                        // TODO: this might be wrong. `chunk_size` changes between stages. Need to account for that.
+
                         let in0_re = out0_re;
                         let in0_im = out0_im;
                         let in1_re = out1_re;
