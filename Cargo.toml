@@ -19,7 +19,7 @@ num-complex = { version = "0.4.6", features = ["bytemuck"], optional = true }
 bytemuck = { version = "1.23.2", optional = true }
 wide = "1.0.3"
 rayon = { version = "1.11.0", optional = true }
-fearless_simd = { git = "https://github.com/linebender/fearless_simd.git", version = "0.3.0" }
+fearless_simd = { git = "https://github.com/linebender/fearless_simd.git", rev = "ccf476392b16ef64840486cff0e989c8cffe3c77", version = "0.3.0" }
 
 [features]
 default = []
