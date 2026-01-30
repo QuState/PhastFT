@@ -14,7 +14,7 @@
 //! DIT starts with fine-grained memory access and progressively works with
 //! larger contiguous chunks.
 //!
-use fearless_simd::{dispatch, Level, Simd};
+use fearless_simd::{dispatch, Simd};
 
 use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
 use crate::kernels::dit::*;
@@ -251,7 +251,7 @@ pub fn fft_64_dit_with_planner_and_opts(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
-    let simd_level = Level::new();
+    let simd_level = planner.simd_level;
 
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
@@ -296,7 +296,7 @@ pub fn fft_32_dit_with_planner_and_opts(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
-    let simd_level = Level::new();
+    let simd_level = planner.simd_level;
 
     // DIT requires bit-reversed input
     run_maybe_in_parallel(

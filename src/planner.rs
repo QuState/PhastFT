@@ -87,12 +87,16 @@ macro_rules! impl_planner_dit_for {
             pub direction: Direction,
             /// The log2 of the FFT size
             pub log_n: usize,
+            /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
+            pub simd_level: fearless_simd::Level,
         }
 
         impl $struct_name {
             /// Create a DIT planner for an FFT of size `num_points`
             pub fn new(num_points: usize, direction: Direction) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
+
+                let simd_level = fearless_simd::Level::new();
 
                 let log_n = num_points.ilog2() as usize;
                 let mut stage_twiddles = Vec::new();
@@ -123,6 +127,7 @@ macro_rules! impl_planner_dit_for {
                     stage_twiddles,
                     direction,
                     log_n,
+                    simd_level,
                 }
             }
         }
