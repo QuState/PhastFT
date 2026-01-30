@@ -24,7 +24,7 @@ pub fn fft_64_chunk_n_simd(
     dist: usize,
 ) {
     const LANES: usize = 8;
-    let chunk_size = dist << 1;
+    let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
     reals
@@ -78,7 +78,7 @@ pub fn fft_32_chunk_n_simd(
     dist: usize,
 ) {
     const LANES: usize = 16;
-    let chunk_size = dist << 1;
+    let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
     reals
@@ -131,7 +131,7 @@ pub fn fft_chunk_n<T: Float>(
     twiddles_im: &[T],
     dist: usize,
 ) {
-    let chunk_size = dist << 1;
+    let chunk_size = dist * 2;
 
     reals
         .chunks_exact_mut(chunk_size)
@@ -175,7 +175,7 @@ pub fn fft_chunk_n<T: Float>(
 ))]
 pub fn fft_chunk_4<T: Float>(reals: &mut [T], imags: &mut [T]) {
     const DIST: usize = 2;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     reals
         .chunks_exact_mut(CHUNK_SIZE)

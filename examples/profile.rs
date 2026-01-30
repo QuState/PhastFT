@@ -7,7 +7,7 @@ use phastft::{fft_64_dit, fft_64_with_opts_and_plan};
 use utilities::gen_random_signal;
 
 fn benchmark_fft_64(n: usize) {
-    let big_n = 1 << n;
+    let big_n = 1 << n; // 2.pow(n)
     let mut reals = vec![0.0; big_n];
     let mut imags = vec![0.0; big_n];
     gen_random_signal(&mut reals, &mut imags);
@@ -19,7 +19,7 @@ fn benchmark_fft_64(n: usize) {
 }
 
 fn benchmark_fft_64_dit(n: usize) {
-    let big_n = 1 << n;
+    let big_n = 1 << n; // 2.pow(n)
     let mut reals = vec![0.0; big_n];
     let mut imags = vec![0.0; big_n];
     gen_random_signal(&mut reals, &mut imags);

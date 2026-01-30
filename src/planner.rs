@@ -97,8 +97,8 @@ impl PlannerDit64 {
 
         // Pre-compute twiddles for each stage that needs them
         for stage in 0..log_n {
-            let dist = 1 << stage;
-            let chunk_size = dist << 1;
+            let dist = 1 << stage; // 2.pow(stage)
+            let chunk_size = dist * 2;
 
             // Only stages with chunk_size > 64 need twiddles (we have SIMD kernels up to 64)
             if chunk_size > 64 {
@@ -145,8 +145,8 @@ impl PlannerDit32 {
 
         // Pre-compute twiddles for each stage that needs them
         for stage in 0..log_n {
-            let dist = 1 << stage;
-            let chunk_size = dist << 1;
+            let dist = 1 << stage; // 2.pow(stage)
+            let chunk_size = dist * 2;
 
             // Only stages with chunk_size > 64 need twiddles (we have SIMD kernels up to 64)
             if chunk_size > 64 {

@@ -9,7 +9,7 @@ use utilities::gen_random_signal;
 use utilities::rustfft::num_complex::Complex;
 
 fn benchmark_fftw(n: usize) {
-    let big_n = 1 << n;
+    let big_n = 1 << n; // 2.pow(n)
 
     let mut reals = vec![0.0; big_n];
     let mut imags = vec![0.0; big_n];

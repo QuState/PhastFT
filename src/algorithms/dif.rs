@@ -66,8 +66,8 @@ pub fn fft_64_with_opts_and_plan(
     };
 
     // First stage - no twiddle filtering needed
-    let dist = 1 << (n - 1);
-    let chunk_size = dist << 1;
+    let dist = 1 << (n - 1); // 2.pow(n-1)
+    let chunk_size = dist * 2;
 
     if chunk_size > 4 {
         if chunk_size >= 8 * 2 {
@@ -86,8 +86,8 @@ pub fn fft_64_with_opts_and_plan(
 
     // Subsequent stages with filtered twiddles
     for t in (0..n - 1).rev() {
-        let dist = 1 << t;
-        let chunk_size = dist << 1;
+        let dist = 1 << t; // 2.pow(t)
+        let chunk_size = dist * 2;
 
         if chunk_size > 4 {
             if chunk_size >= 8 * 2 {
@@ -170,8 +170,8 @@ pub fn fft_32_with_opts_and_plan(
     }
 
     // First stage - no twiddle filtering needed
-    let dist = 1 << (n - 1);
-    let chunk_size = dist << 1;
+    let dist = 1 << (n - 1); // 2.pow(n-1)
+    let chunk_size = dist * 2;
 
     if chunk_size > 4 {
         if chunk_size >= 16 * 2 {
@@ -190,8 +190,8 @@ pub fn fft_32_with_opts_and_plan(
 
     // Subsequent stages with filtered twiddles
     for t in (0..n - 1).rev() {
-        let dist = 1 << t;
-        let chunk_size = dist << 1;
+        let dist = 1 << t; // 2.pow(t)
+        let chunk_size = dist * 2;
 
         if chunk_size > 4 {
             if chunk_size >= 16 * 2 {

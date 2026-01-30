@@ -24,7 +24,7 @@ macro_rules! impl_bit_rev_bravo {
             // as of Rust 1.93 we cannot use an associated constant for array lengths
             assert!(<Chunk<S>>::N == LANES);
 
-            let big_n = 1usize << n;
+            let big_n = 1usize << n; // 2.pow(n)
             assert_eq!(data.len(), big_n, "Data length must be 2^n");
 
             // For very small arrays, fall back to scalar bit-reversal
@@ -68,7 +68,7 @@ macro_rules! impl_bit_rev_bravo {
                 for round in 0..log_w {
                     let mut new_chunks: [Chunk<S>; LANES] =
                         [Chunk::splat(simd, Default::default()); LANES];
-                    let stride = 1 << round;
+                    let stride = 1 << round; // 2.pow(round)
 
                     let mut pair_idx = 0;
                     let mut i = 0;
@@ -110,7 +110,7 @@ macro_rules! impl_bit_rev_bravo {
                     for round in 0..log_w {
                         let mut new_chunks: [Chunk<S>; LANES] =
                             [Chunk::splat(simd, Default::default()); LANES];
-                        let stride = 1 << round;
+                        let stride = 1 << round; // 2.pow(round)
 
                         let mut pair_idx = 0;
                         let mut i = 0;
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn test_bravo_bit_reversal_f64() {
         for n in 2..24 {
-            let big_n = 1 << n;
+            let big_n = 1 << n; // 2.pow(n)
             let mut actual_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let mut actual_im: Vec<f64> = (0..big_n).map(f64::from).collect();
             let simd_level = Level::new();
@@ -251,7 +251,7 @@ mod tests {
     #[test]
     fn test_bravo_bit_reversal_f32() {
         for n in 2..24 {
-            let big_n = 1 << n;
+            let big_n = 1 << n; // 2.pow(n)
             let mut actual_re: Vec<f32> = (0..big_n).map(|i| i as f32).collect();
             let mut actual_im: Vec<f32> = (0..big_n).map(|i| i as f32).collect();
             let simd_level = Level::new();

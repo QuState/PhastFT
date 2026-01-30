@@ -6,7 +6,7 @@ use utilities::rustfft::num_complex::Complex64;
 use utilities::rustfft::FftPlanner;
 
 fn benchmark_rustfft(n: usize) {
-    let big_n = 1 << n;
+    let big_n = 1 << n; // 2.pow(n)
 
     let mut reals = vec![0.0f64; big_n];
     let mut imags = vec![0.0f64; big_n];
