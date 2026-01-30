@@ -156,7 +156,7 @@ fn execute_dit_stage_f64<S: Simd>(
     let chunk_size = dist * 2;
 
     if chunk_size == 2 {
-        simd.vectorize(|| fft_dit_chunk_2(simd, reals, imags));
+        simd.vectorize(|| fft_dit_chunk_2_f64(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 4 {
         fft_dit_chunk_4_f64(simd, reals, imags);
@@ -195,7 +195,7 @@ fn execute_dit_stage_f32<S: Simd>(
     let chunk_size = dist * 2;
 
     if chunk_size == 2 {
-        simd.vectorize(|| fft_dit_chunk_2(simd, reals, imags));
+        simd.vectorize(|| fft_dit_chunk_2_f32(simd, reals, imags));
         stage_twiddle_idx
     } else if chunk_size == 4 {
         fft_dit_chunk_4_f32(simd, reals, imags);

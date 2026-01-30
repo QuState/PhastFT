@@ -7,10 +7,38 @@ use core::f32;
 use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8, Simd, SimdBase, SimdFloat, SimdFrom};
 use num_traits::Float;
 
+/// DIT butterfly for chunk_size == 2 (f64)
+#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+pub fn fft_dit_chunk_2_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
+    simd.vectorize(
+        #[inline(always)]
+        || fft_dit_chunk_2_simd_f64(simd, reals, imags),
+    )
+}
+
+/// DIT butterfly for chunk_size == 2 (f32)
+#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+pub fn fft_dit_chunk_2_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
+    simd.vectorize(
+        #[inline(always)]
+        || fft_dit_chunk_2_simd_f32(simd, reals, imags),
+    )
+}
+
+#[inline(always)] // required by fearless_simd
+pub fn fft_dit_chunk_2_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
+    fft_dit_chunk_2(simd, reals, imags)
+}
+
+#[inline(always)] // required by fearless_simd
+pub fn fft_dit_chunk_2_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
+    fft_dit_chunk_2(simd, reals, imags)
+}
+
 /// DIT butterfly for chunk_size == 2
 /// Identical to DIF version (no twiddles at size 2)
 #[inline(always)] // required by fearless_simd
-pub fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut [T]) {
+fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut [T]) {
     reals
         .chunks_exact_mut(2)
         .zip(imags.chunks_exact_mut(2))
