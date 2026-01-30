@@ -232,7 +232,7 @@ mod tests {
             #[test]
             fn $test_name() {
                 let n = 16;
-                let num_points = 1 << n;
+                let num_points = 1 << n; // 2.pow(n)
 
                 // We purposely set n = 16 and pass it to the planner.
                 // n == 16 == 2^{4} is clearly a power of two, so the planner won't throw it out.
@@ -273,7 +273,7 @@ mod tests {
                 };
 
                 for k in range {
-                    let n: usize = 1 << k;
+                    let n: usize = 1 << k; // 2.pow(k)
 
                     let mut reals: Vec<$precision> = (1..=n).map(|i| i as $precision).collect();
                     let mut imags: Vec<$precision> = (1..=n).map(|i| i as $precision).collect();
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn fft_interleaved_correctness() {
         let n = 10;
-        let big_n = 1 << n;
+        let big_n = 1 << n; // 2.pow(n)
         let mut actual_signal: Vec<_> = (1..=big_n).map(|i| Complex::new(i as f64, 0.0)).collect();
         let mut expected_reals: Vec<_> = (1..=big_n).map(|i| i as f64).collect();
         let mut expected_imags = vec![0.0; big_n];
@@ -327,7 +327,7 @@ mod tests {
             });
 
         let n = 10;
-        let big_n = 1 << n;
+        let big_n = 1 << n; // 2.pow(n)
         let mut actual_signal: Vec<_> = (1..=big_n).map(|i| Complex::new(i as f32, 0.0)).collect();
         let mut expected_reals: Vec<_> = (1..=big_n).map(|i| i as f32).collect();
         let mut expected_imags = vec![0.0; big_n];
@@ -348,7 +348,7 @@ mod tests {
     #[test]
     fn fft_round_trip() {
         for i in 4..23 {
-            let big_n = 1 << i;
+            let big_n = 1 << i; // 2.pow(i)
             let mut reals = vec![0.0; big_n];
             let mut imags = vec![0.0; big_n];
 
@@ -407,7 +407,7 @@ mod tests {
     fn test_dit_fft_correctness() {
         // Test DIT FFT against DIF FFT
         for n in 4..12 {
-            let size = 1 << n;
+            let size = 1 << n; // 2.pow(n)
             let mut reals_dit = vec![0.0f64; size];
             let mut imags_dit = vec![0.0f64; size];
             let mut reals_dif = vec![0.0f64; size];
@@ -433,7 +433,7 @@ mod tests {
 
         // Test f32 version
         for n in 4..10 {
-            let size = 1 << n;
+            let size = 1 << n; // 2.pow(n)
             let mut reals_dit = vec![0.0f32; size];
             let mut imags_dit = vec![0.0f32; size];
             let mut reals_dif = vec![0.0f32; size];
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn test_dit_fft_64_followed_by_ifft_correctness() {
         for n in 4..12 {
-            let size = 1 << n;
+            let size = 1 << n; // 2.pow(n)
             let mut reals_original = vec![0.0f64; size];
             let mut imags_original = vec![0.0f64; size];
             let mut reals = vec![0.0f64; size];
@@ -484,7 +484,7 @@ mod tests {
     #[test]
     fn test_dit_fft_32_followed_by_ifft_correctness() {
         for n in 4..12 {
-            let size = 1 << n;
+            let size = 1 << n; // 2.pow(n)
             let mut reals_original = vec![0.0f32; size];
             let mut imags_original = vec![0.0f32; size];
             let mut reals = vec![0.0f32; size];
@@ -510,7 +510,7 @@ mod tests {
 
         for direction in dirs {
             for n in 4..14 {
-                let num_points = 1 << n;
+                let num_points = 1 << n; // 2.pow(n)
                 let mut reals = vec![0.0; num_points];
                 let mut imags = vec![0.0; num_points];
                 gen_random_signal_f32(&mut reals, &mut imags);

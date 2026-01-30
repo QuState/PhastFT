@@ -40,7 +40,7 @@ pub fn fft_dit_chunk_4_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_4_simd_f64<S: Simd>(_simd: S, reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 2;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = 2.0_f64;
 
@@ -90,7 +90,7 @@ pub fn fft_dit_chunk_4_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_4_simd_f32<S: Simd>(_simd: S, reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 2;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = 2.0_f32;
 
@@ -140,7 +140,7 @@ pub fn fft_dit_chunk_8_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 4;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = f64x4::splat(simd, 2.0);
     let sqrt2_2 = f64x4::simd_from(
@@ -202,7 +202,7 @@ pub fn fft_dit_chunk_8_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 4;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = f32x4::splat(simd, 2.0);
     let sqrt2_2 = f32x4::simd_from(
@@ -264,7 +264,7 @@ pub fn fft_dit_chunk_16_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f6
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 8;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = f64x8::splat(simd, 2.0);
 
@@ -336,7 +336,7 @@ pub fn fft_dit_chunk_16_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f3
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_16_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 8;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = f32x8::splat(simd, 2.0);
 
@@ -407,7 +407,7 @@ pub fn fft_dit_chunk_32_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f6
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 16;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = f64x8::splat(simd, 2.0);
 
@@ -532,7 +532,7 @@ pub fn fft_dit_chunk_32_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f3
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 16;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = f32x16::splat(simd, 2.0);
 
@@ -619,7 +619,7 @@ pub fn fft_dit_chunk_64_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f6
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     const DIST: usize = 32;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = f64x8::splat(simd, 2.0);
 
@@ -829,7 +829,7 @@ pub fn fft_dit_chunk_64_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f3
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     const DIST: usize = 32;
-    const CHUNK_SIZE: usize = DIST << 1;
+    const CHUNK_SIZE: usize = DIST * 2;
 
     let two = f32x16::splat(simd, 2.0);
 
@@ -993,7 +993,7 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     dist: usize,
 ) {
     const LANES: usize = 8;
-    let chunk_size = dist << 1;
+    let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
     reals
@@ -1063,7 +1063,7 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
     dist: usize,
 ) {
     const LANES: usize = 16;
-    let chunk_size = dist << 1;
+    let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
     reals

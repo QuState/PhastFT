@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn twiddles_cos_only() {
         let n = 4;
-        let big_n = 1 << n;
+        let big_n = 1 << n; // 2.pow(n)
 
         let dist = big_n >> 1;
 
@@ -277,7 +277,7 @@ mod tests {
             #[test]
             fn $test_name() {
                 for n in 4..25 {
-                    let dist = 1 << n;
+                    let dist = 1 << n; // 2.pow(n)
 
                     let (twiddles_re_ref, twiddles_im_ref) =
                         generate_twiddles(dist, Direction::Forward);
@@ -311,7 +311,7 @@ mod tests {
         let n = 28;
 
         // distance := 2^{n} / 2 == 2^{n-1}
-        let dist = 1 << (n - 1);
+        let dist = 1 << (n - 1); // 2.pow(n-1)
 
         let mut twiddles_iter = Twiddles::new(dist);
 
@@ -326,7 +326,7 @@ mod tests {
         let (mut tw_re, mut tw_im) = (twiddles_re.clone(), twiddles_im.clone());
 
         for t in (0..n - 1).rev() {
-            let dist = 1 << t;
+            let dist = 1 << t; // 2.pow(t)
             let mut twiddles_iter = Twiddles::new(dist);
 
             // Don't re-compute all the twiddles.
@@ -348,7 +348,7 @@ mod tests {
             #[test]
             fn $test_name() {
                 for i in 3..25 {
-                    let num_points = 1 << i;
+                    let num_points = 1 << i; // 2.pow(i)
                     let dist = num_points >> 1;
 
                     let (fwd_twiddles_re, fwd_twiddles_im) = if dist >= 8 * 2 {

@@ -6,7 +6,7 @@ use phastft::{fft_64_dit, fft_64_dit_with_planner};
 use utilities::gen_random_signal;
 
 fn benchmark_dit_with_planner(n: usize, iterations: usize) {
-    let big_n = 1 << n;
+    let big_n = 1 << n; // 2.pow(n)
 
     // Create planner once
     let planner = PlannerDit64::new(big_n, Direction::Forward);
@@ -31,7 +31,7 @@ fn benchmark_dit_with_planner(n: usize, iterations: usize) {
 }
 
 fn benchmark_dit_without_planner(n: usize, iterations: usize) {
-    let big_n = 1 << n;
+    let big_n = 1 << n; // 2.pow(n)
     let mut total_time = 0u128;
 
     for _ in 0..iterations {
@@ -65,7 +65,7 @@ fn main() {
         10
     };
 
-    println!("Benchmarking DIT FFT for size 2^{} = {}", n, 1 << n);
+    println!("Benchmarking DIT FFT for size 2^{} = {}", n, 1 << n); // 1 << n == 2.pow(n)
     println!("Running {} iterations each\n", iterations);
 
     benchmark_dit_with_planner(n, iterations);

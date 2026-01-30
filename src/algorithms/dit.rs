@@ -152,8 +152,8 @@ fn execute_dit_stage_f64<S: Simd>(
     planner: &PlannerDit64,
     stage_twiddle_idx: usize,
 ) -> usize {
-    let dist = 1 << stage;
-    let chunk_size = dist << 1;
+    let dist = 1 << stage; // 2.pow(stage)
+    let chunk_size = dist * 2;
 
     if chunk_size == 2 {
         simd.vectorize(|| fft_dit_chunk_2(simd, reals, imags));
@@ -191,8 +191,8 @@ fn execute_dit_stage_f32<S: Simd>(
     planner: &PlannerDit32,
     stage_twiddle_idx: usize,
 ) -> usize {
-    let dist = 1 << stage;
-    let chunk_size = dist << 1;
+    let dist = 1 << stage; // 2.pow(stage)
+    let chunk_size = dist * 2;
 
     if chunk_size == 2 {
         simd.vectorize(|| fft_dit_chunk_2(simd, reals, imags));
