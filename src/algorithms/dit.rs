@@ -195,13 +195,13 @@ fn execute_dit_stage_f32<S: Simd>(
     let chunk_size = dist * 2;
 
     if chunk_size == 2 {
-        simd.vectorize(|| fft_dit_chunk_2_f32(simd, reals, imags));
+        // skip
         stage_twiddle_idx
     } else if chunk_size == 4 {
-        fft_dit_chunk_4_f32(simd, reals, imags);
+        // skip
         stage_twiddle_idx
     } else if chunk_size == 8 {
-        fft_dit_chunk_8_f32(simd, reals, imags);
+        fft_dit_chunk_2_4_8_f32(simd, reals, imags);
         stage_twiddle_idx
     } else if chunk_size == 16 {
         fft_dit_chunk_16_f32(simd, reals, imags);

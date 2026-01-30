@@ -279,6 +279,27 @@ fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f3
         });
 }
 
+#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+pub fn fft_dit_chunk_2_4_8_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
+    simd.vectorize(
+        #[inline(always)]
+        || fft_dit_chunk_2_4_8_simd_f32(simd, reals, imags),
+    )
+}
+
+#[inline(always)] // required by fearless_simd
+fn fft_dit_chunk_2_4_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
+    const CHUNK_SIZE: usize = 8;
+
+    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+        .for_each(|(reals_chunk, imags_chunk)| {
+            fft_dit_chunk_2_simd_f32(simd, reals_chunk, imags_chunk);
+            fft_dit_chunk_4_simd_f32(simd, reals_chunk, imags_chunk);
+            fft_dit_chunk_8_simd_f32(simd, reals_chunk, imags_chunk);
+        });
+}
+
 /// DIT butterfly for chunk_size == 16 (f64)
 #[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
 pub fn fft_dit_chunk_16_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
