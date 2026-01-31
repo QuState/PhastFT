@@ -7,52 +7,56 @@
 # PhastFT
 
 PhastFT is a high-performance, "quantum-inspired" Fast Fourier
-Transform (FFT) library written in pure Rust.
+Transform (FFT) library written in safe Rust.
+
+Designed for large FFTs, such as in a quantum computer simulator.
 
 ## Features
 
-- Two FFT algorithms: Decimation-in-Frequency (DIF) and Decimation-in-Time (DIT) for different use cases
-- Simple implementation using the Cooley-Tukey FFT algorithm
-- Performance on par with other Rust FFT implementations
+- Simple implementation using the Cooley-Tukey FFT algorithm and [CO-BRAVO](https://dl.acm.org/doi/abs/10.1145/1248377.1248411) bit reversal
+- Optional multi-threading, speeding up FFTs on large arrays
+- Performance competitive with other Rust FFT implementations, outperforming them if multi-threading is enabled
 - Zero `unsafe` code
-- Takes advantage of latest CPU features up to and including `AVX-512`, but performs well even without them
-- Selects the fastest implementation at runtime. No need for `-C target-cpu=native`!
-- Optional parallelization of some steps to 2 threads (with even more planned)
+- SIMD acceleration on SSE4.2, AVX2, NEON and WASM thanks to [`fearless_simd`](https://crates.io/crates/fearless_simd)
+- Selects the fastest SIMD implementation at runtime. No need for `-C target-cpu=native`!
 - Up to 5x lower memory usage than [RustFFT](https://crates.io/crates/rustfft/)
 - Python bindings (via [PyO3](https://github.com/PyO3/pyo3))
 
 ## Limitations
 
-- Only supports input with a length of `2^n` (i.e., a power of 2) -- input should be padded with zeros to the next power
-  of 2
+- Only supports input with a length of `2^n` (i.e., a power of 2) -- input should be padded with zeros to the next power of 2
 
 ## Planned features
 
 - Bluestein's algorithm (to handle arbitrary sized FFTs)
-- More multi-threading
 - More work on cache-optimal FFT
 
 ## How is it so fast?
 
-PhastFT is designed around the capabilities and limitations of modern hardware (that is, anything made in the last 10
+PhastFT is designed around the capabilities and limitations of modern hardware (that is, anything made in the last 15
 years or so).
 
 The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses**.
 
-We picked an efficient and well-known FFT algorithm. Our implementation can make use of latest CPU features such as
-`AVX-512`, but performs well even without them.
+Most literature on FFT focuses on reducing the amount of math operations,
+but today's CPUs are heavily memory-bottlenecked for any amount of data that doesn't fit into the cache.
+It doesn't matter how much or how little CPU instructions you need to execute
+if the CPU spends most of the time just waiting on memory anyway!
 
-Our key insight for speeding up memory accesses is that FFT is equivalent to applying gates to all qubits in `[0, n)`.
-This creates the opportunity to leverage the same memory access patterns as
-a [high-performance quantum state simulator](https://github.com/QuState/spinoza).
+[Notes on FFTs for implementers](https://fgiesen.wordpress.com/2023/03/19/notes-on-ffts-for-implementers/) is a good read
+if you want to understand the trade-offs on modern hardware. The author is not affiliated with PhastFT.
 
-We also use the Cache-Optimal Bit Reversal
-Algorithm ([COBRA](https://csaws.cs.technion.ac.il/~itai/Courses/Cache/bit.pdf))
-on large datasets and optionally run it on 2 parallel threads, accelerating it even further.
+The trade-offs we chose are:
+
+- **In-place** FFT with a separate bit-reversal step instead of an auto-sorter variant reduces memory traffic and peak memory usage.
+- **Radix-2** Cooley-Turkey FFT: radix-4 and split-radix do less math, but require complex and slow bit reversals.
+  - We still need to experiment with fusing multiple radix-2 passes to reduce memory traffic in single-threaded scenarios
+- [**CO-BRAVO**](https://dl.acm.org/doi/abs/10.1145/1248377.1248411) cache-optimal, SIMD-accelerated bit reversal trounces other algorithms.
+- **Decimation in time** maps better to SIMD fused multiply-adds than decimation-in-frequency, and CO-BRAVO makes skipping bit reversal less appealing.
+- **Recursive formulation** enables cache-oblivious FFT and easy parallelism. We switch over to a loop when reaching L1 cache size.
 
 All of this combined results in a fast and efficient FFT implementation competitive with
-the performance of existing Rust FFT crates,
-including [RustFFT](https://crates.io/crates/rustfft/), while using significantly less memory.
+the performance of existing Rust FFT crates on medium to large sizes, while using significantly less memory.
 
 ## Quickstart
 
@@ -212,11 +216,16 @@ PhastFT is licensed under MIT or Apache 2.0 license, at your option.
 [RustFFT](https://crates.io/crates/rustfft/) is another excellent FFT
 implementation in pure Rust. RustFFT and PhastFT make different trade-offs.
 
-RustFFT contains `unsafe` code, while PhastFT contains no `unsafe` blocks
-by leveraging [wide](https://docs.rs/wide/latest/wide/) and `multiversion`.
+### PhastFT advantages
 
-PhastFT uses up to 5x [less memory](https://github.com/astral4/fft-benchmark)
-than RustFFT, which is important for processing large datasets.
+ - Up to 5x lower memory usage, letting you use laptops or much cheaper cloud instances for large FFTs
+ - Multi-threading support, much higher performance on large sizes when using multi-threading
+ - No `unsafe` code
+
+### RustFFT advantages
+
+ - Higher performance for very small sizes thanks to dedicated handwritten kernels for each size
+ - Supports FFT sizes that aren't powers of 2 (with a large performance penalty)
 
 ## What's with the name?
 
