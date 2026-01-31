@@ -28,7 +28,7 @@ Designed for large FFTs, such as in a quantum computer simulator.
 
 ## Planned features
 
-- Bluestein's algorithm (to handle arbitrary sized FFTs)
+- Real-to-complex FFT
 - More work on cache-optimal FFT
 
 ## How is it so fast?
