@@ -6,6 +6,8 @@ use phastft::planner::{Direction, Planner64, PlannerDit64};
 use phastft::{fft_64_dit_with_planner, fft_64_with_opts_and_plan};
 use utilities::gen_random_signal;
 
+const ITERATIONS: usize = 10_000;
+
 fn benchmark_fft_64(n: usize) {
     let big_n = 1 << n; // 2.pow(n)
     let mut reals = vec![0.0; big_n];
@@ -17,9 +19,11 @@ fn benchmark_fft_64(n: usize) {
     let opts = Options::guess_options(reals.len());
 
     let now = std::time::Instant::now();
-    fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
+    for _ in 0..ITERATIONS {
+        fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
+    }
     let elapsed = now.elapsed().as_nanos();
-    println!("{elapsed}");
+    println!("took {elapsed} for {ITERATIONS} iterations");
 }
 
 fn benchmark_fft_64_dit(n: usize) {
@@ -32,9 +36,11 @@ fn benchmark_fft_64_dit(n: usize) {
     let planner = PlannerDit64::new(reals.len(), Direction::Forward);
 
     let now = std::time::Instant::now();
-    fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
+    for _ in 0..ITERATIONS {
+        fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
+    }
     let elapsed = now.elapsed().as_nanos();
-    println!("{elapsed}");
+    println!("took {elapsed} for {ITERATIONS} iterations");
 }
 
 fn main() {
