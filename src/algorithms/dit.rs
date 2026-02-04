@@ -313,6 +313,18 @@ pub fn fft_32_dit_with_planner_and_opts(
     planner: &PlannerDit32,
     opts: &Options,
 ) {
+    // Dynamic dispatch overhead becomes really noticeable at small FFT sizes.
+    // Dispatch only once at the top of the program to
+    dispatch!(planner.simd_level, simd => fft_32_dit_with_planner_and_opts_impl(simd, reals, imags, planner, opts))
+}
+
+fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
+    simd: S,
+    reals: &mut [f32],
+    imags: &mut [f32],
+    planner: &PlannerDit32,
+    opts: &Options,
+) {
     assert_eq!(reals.len(), imags.len());
     assert!(reals.len().is_power_of_two());
 
@@ -320,13 +332,21 @@ pub fn fft_32_dit_with_planner_and_opts(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
-    let simd_level = planner.simd_level;
-
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
-        || dispatch!(simd_level, simd => bit_rev_bravo_f32(simd, reals, log_n)),
-        || dispatch!(simd_level, simd => bit_rev_bravo_f32(simd, imags, log_n)),
+        || {
+            simd.vectorize(
+                #[inline(always)]
+                || bit_rev_bravo_f32(simd, reals, log_n),
+            )
+        },
+        || {
+            simd.vectorize(
+                #[inline(always)]
+                || bit_rev_bravo_f32(simd, imags, log_n),
+            )
+        },
     );
 
     // Handle inverse FFT
@@ -336,7 +356,10 @@ pub fn fft_32_dit_with_planner_and_opts(
         }
     }
 
-    dispatch!(simd_level, simd => recursive_dit_fft_f32(simd, reals, imags, n, planner, opts, 0));
+    simd.vectorize(
+        #[inline(always)]
+        || recursive_dit_fft_f32(simd, reals, imags, n, planner, opts, 0),
+    );
 
     // Scaling for inverse transform
     if let Direction::Reverse = planner.direction {
