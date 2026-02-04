@@ -14,7 +14,7 @@
 //! DIT starts with fine-grained memory access and progressively works with
 //! larger contiguous chunks.
 //!
-use fearless_simd::{dispatch, Simd};
+use fearless_simd::Simd;
 
 use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
 use crate::kernels::dit::*;
@@ -244,9 +244,7 @@ pub fn fft_64_dit_with_planner_and_opts(
     planner: &PlannerDit64,
     opts: &Options,
 ) {
-    // Dynamic dispatch overhead becomes really noticeable at small FFT sizes.
-    // Dispatch only once at the top of the program to
-    dispatch!(planner.simd_level, simd => fft_64_dit_with_planner_and_opts_impl(simd, reals, imags, planner, opts))
+    (planner.fft_impl)(reals, imags, planner, opts)
 }
 
 #[inline(always)] // required by fearless_simd
@@ -313,9 +311,7 @@ pub fn fft_32_dit_with_planner_and_opts(
     planner: &PlannerDit32,
     opts: &Options,
 ) {
-    // Dynamic dispatch overhead becomes really noticeable at small FFT sizes.
-    // Dispatch only once at the top of the program to
-    dispatch!(planner.simd_level, simd => fft_32_dit_with_planner_and_opts_impl(simd, reals, imags, planner, opts))
+    (planner.fft_impl)(reals, imags, planner, opts)
 }
 
 pub(crate) fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
