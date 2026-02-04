@@ -2,6 +2,12 @@
 //! a Fast Fourier Transform (FFT). Currently, the planner is responsible for
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
+use fearless_simd::dispatch_for_later;
+
+use crate::algorithms::dit::{
+    fft_32_dit_with_planner_and_opts_impl, fft_64_dit_with_planner_and_opts_impl,
+};
+use crate::options::Options;
 use crate::twiddles::{generate_twiddles, generate_twiddles_simd_32, generate_twiddles_simd_64};
 
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
@@ -77,7 +83,7 @@ impl_planner_for!(Planner64, f64, generate_twiddles_simd_64);
 impl_planner_for!(Planner32, f32, generate_twiddles_simd_32);
 
 macro_rules! impl_planner_dit_for {
-    ($struct_name:ident, $precision:ident) => {
+    ($struct_name:ident, $precision:ident, $impl_name:ident) => {
         /// DIT-specific planner that pre-computes twiddles for all stages
         pub struct $struct_name {
             /// Twiddles for each stage that needs them (stages with chunk_size > 64)
@@ -89,6 +95,8 @@ macro_rules! impl_planner_dit_for {
             pub log_n: usize,
             /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
             pub simd_level: fearless_simd::Level,
+            /// Selected FFT implementation
+            pub fft_impl: fn (&mut [$precision], &mut [$precision], &Self, &Options) -> (),
         }
 
         impl $struct_name {
@@ -123,19 +131,22 @@ macro_rules! impl_planner_dit_for {
                     }
                 }
 
+                let fft_impl = dispatch_for_later!(simd_level, $impl_name, (reals: &mut [$precision], imags: &mut [$precision], planner: &$struct_name, opts: &Options) -> ());
+
                 Self {
                     stage_twiddles,
                     direction,
                     log_n,
                     simd_level,
+                    fft_impl,
                 }
             }
         }
     };
 }
 
-impl_planner_dit_for!(PlannerDit64, f64);
-impl_planner_dit_for!(PlannerDit32, f32);
+impl_planner_dit_for!(PlannerDit64, f64, fft_64_dit_with_planner_and_opts_impl);
+impl_planner_dit_for!(PlannerDit32, f32, fft_32_dit_with_planner_and_opts_impl);
 
 #[cfg(test)]
 mod tests {
