@@ -9,7 +9,7 @@
 PhastFT is a high-performance, "quantum-inspired" Fast Fourier
 Transform (FFT) library written in safe Rust.
 
-Designed for large FFTs, such as in a quantum computer simulator.
+Designed for large FFTs common in scientific workloads, e.g. in quantum computer simulators.
 
 ## Features
 
@@ -29,12 +29,12 @@ Designed for large FFTs, such as in a quantum computer simulator.
 ## Planned features
 
 - Real-to-complex FFT
-- More work on cache-optimal FFT
+- Even more work on performance
 
 ## How is it so fast?
 
-PhastFT is designed around the capabilities and limitations of modern hardware (that is, anything made in the last 15
-years or so).
+PhastFT is designed around the capabilities and limitations of modern hardware
+(that is, anything made in the last 10 years or so).
 
 The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses**.
 
@@ -44,7 +44,7 @@ It doesn't matter how much or how little CPU instructions you need to execute
 if the CPU spends most of the time just waiting on memory anyway!
 
 [Notes on FFTs for implementers](https://fgiesen.wordpress.com/2023/03/19/notes-on-ffts-for-implementers/) is a good read
-if you want to understand the trade-offs on modern hardware. The author is not affiliated with PhastFT.
+if you want to understand the trade-offs on modern hardware. Its author is not affiliated with PhastFT.
 
 The trade-offs we chose are:
 
