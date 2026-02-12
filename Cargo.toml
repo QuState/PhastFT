@@ -36,6 +36,10 @@ utilities = { path = "utilities" }
 name = "bench"
 harness = false
 
+[[bench]]
+name = "planner"
+harness = false
+
 [profile.profiling]
 inherits = "release"
 debug = true
