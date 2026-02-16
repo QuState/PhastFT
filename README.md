@@ -29,6 +29,7 @@ Designed for large FFTs common in scientific workloads, e.g. in quantum computer
 ## Planned features
 
 - Real-to-complex FFT
+- Additional agorithms for non-power-of-2 FFTs
 - Even more work on performance
 
 ## How is it so fast?
