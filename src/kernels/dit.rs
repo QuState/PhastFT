@@ -28,7 +28,7 @@ pub fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut
 }
 
 /// DIT butterfly for chunk_size == 4 (f64)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_4_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -78,7 +78,7 @@ fn fft_dit_chunk_4_simd_f64<S: Simd>(_simd: S, reals: &mut [f64], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 4 (f32)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_4_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -128,7 +128,7 @@ fn fft_dit_chunk_4_simd_f32<S: Simd>(_simd: S, reals: &mut [f32], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 8 (f64) with SIMD
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_8_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -190,7 +190,7 @@ fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f6
 }
 
 /// DIT butterfly for chunk_size == 8 (f32) with SIMD
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_8_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -252,7 +252,7 @@ fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f3
 }
 
 /// DIT butterfly for chunk_size == 16 (f64)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_16_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -324,7 +324,7 @@ fn fft_dit_chunk_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 16 (f32)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_16_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -395,7 +395,7 @@ fn fft_dit_chunk_16_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
         });
 }
 /// DIT butterfly for chunk_size == 32 (f64)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_32_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -520,7 +520,7 @@ fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 32 (f32)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_32_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -607,7 +607,7 @@ fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 64 (f64)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_64_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -817,7 +817,7 @@ fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 64 (f32)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_64_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -967,7 +967,7 @@ fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
 }
 
 /// General DIT butterfly for f64
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f64<S: Simd>(
     simd: S,
     reals: &mut [f64],
@@ -996,48 +996,55 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
-    reals
+    // The structure of outer for loop with inner for_each is intentional: on x86
+    // fearless_simd needs inlining all the way down to intrinsics to work properly,
+    // and using for_each in the outer scope would require a call to for_each function
+    // that we can't force to be inlined. This brings over the LLVM inlining thresholds
+    // and then we end up with a `call` instruction for every FMA, destroying performance.
+    // However, the inner loop being for_each has better codegen.
+    // I haven't investigated why. Might have something to do with exterior vs interior iteration.
+    for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
         .zip(imags.chunks_exact_mut(chunk_size))
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
-            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-                .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    let two = f64x8::splat(simd, 2.0);
-                    let in0_re = f64x8::simd_from(simd, *re_s0);
-                    let in1_re = f64x8::simd_from(simd, *re_s1);
-                    let in0_im = f64x8::simd_from(simd, *im_s0);
-                    let in1_im = f64x8::simd_from(simd, *im_s1);
+        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
+            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
+            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
+                let two = f64x8::splat(simd, 2.0);
+                let in0_re = f64x8::simd_from(simd, *re_s0);
+                let in1_re = f64x8::simd_from(simd, *re_s1);
+                let in0_im = f64x8::simd_from(simd, *im_s0);
+                let in1_im = f64x8::simd_from(simd, *im_s1);
 
-                    let tw_re = f64x8::simd_from(simd, *tw_re);
-                    let tw_im = f64x8::simd_from(simd, *tw_im);
+                let tw_re = f64x8::simd_from(simd, *tw_re);
+                let tw_im = f64x8::simd_from(simd, *tw_im);
 
-                    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                    let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
-                    // Use FMA for out1 = 2*in0 - out0
-                    let out1_re = two.mul_sub(in0_re, out0_re);
-                    let out1_im = two.mul_sub(in0_im, out0_im);
+                // Use FMA for out1 = 2*in0 - out0
+                let out1_re = two.mul_sub(in0_re, out0_re);
+                let out1_im = two.mul_sub(in0_im, out0_im);
 
-                    out0_re.store_slice(re_s0);
-                    out0_im.store_slice(im_s0);
-                    out1_re.store_slice(re_s1);
-                    out1_im.store_slice(im_s1);
-                });
-        });
+                out0_re.store_slice(re_s0);
+                out0_im.store_slice(im_s0);
+                out1_re.store_slice(re_s1);
+                out1_im.store_slice(im_s1);
+            });
+    }
 }
 
 /// General DIT butterfly for f32
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f32<S: Simd>(
     simd: S,
     reals: &mut [f32],
@@ -1066,42 +1073,43 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
-    reals
+    // see fft_dit_chunk_n_simd_f64 for an explanation of this structure
+    for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
         .zip(imags.chunks_exact_mut(chunk_size))
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
-            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-                .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    let two = f32x16::splat(simd, 2.0);
-                    let in0_re = f32x16::simd_from(simd, *re_s0);
-                    let in1_re = f32x16::simd_from(simd, *re_s1);
-                    let in0_im = f32x16::simd_from(simd, *im_s0);
-                    let in1_im = f32x16::simd_from(simd, *im_s1);
+        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
+            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
+            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
+                let two = f32x16::splat(simd, 2.0);
+                let in0_re = f32x16::simd_from(simd, *re_s0);
+                let in1_re = f32x16::simd_from(simd, *re_s1);
+                let in0_im = f32x16::simd_from(simd, *im_s0);
+                let in1_im = f32x16::simd_from(simd, *im_s1);
 
-                    let tw_re = f32x16::simd_from(simd, *tw_re);
-                    let tw_im = f32x16::simd_from(simd, *tw_im);
+                let tw_re = f32x16::simd_from(simd, *tw_re);
+                let tw_im = f32x16::simd_from(simd, *tw_im);
 
-                    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                    let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
-                    // Use FMA for out1 = 2*in0 - out0
-                    let out1_re = two.mul_sub(in0_re, out0_re);
-                    let out1_im = two.mul_sub(in0_im, out0_im);
+                // Use FMA for out1 = 2*in0 - out0
+                let out1_re = two.mul_sub(in0_re, out0_re);
+                let out1_im = two.mul_sub(in0_im, out0_im);
 
-                    out0_re.store_slice(re_s0);
-                    out0_im.store_slice(im_s0);
-                    out1_re.store_slice(re_s1);
-                    out1_im.store_slice(im_s1);
-                });
-        });
+                out0_re.store_slice(re_s0);
+                out0_im.store_slice(im_s0);
+                out1_re.store_slice(re_s1);
+                out1_im.store_slice(im_s1);
+            });
+    }
 }
