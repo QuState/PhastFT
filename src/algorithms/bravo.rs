@@ -10,7 +10,7 @@
 /// The initial implementation was translated from mathematical notation in the paper
 /// to Rust by Claude 4.5 Opus.
 use fearless_simd::prelude::*;
-use fearless_simd::{f32x4, f32x8, f64x2, f64x4, Simd};
+use fearless_simd::{f32x16, f32x4, f32x8, f64x2, f64x4, f64x8, Simd};
 
 /// Macro to generate bit_rev_bravo implementations for concrete types.
 /// Used instead of generics because `fearless_simd` doesn't let us be generic over the exact float type.
@@ -153,8 +153,10 @@ macro_rules! impl_bit_rev_bravo {
 //    which is necessary for using the native vector width
 impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f32, f32, f32x4<S>, 4);
 impl_bit_rev_bravo!(bit_rev_bravo_chunk_8_f32, f32, f32x8<S>, 8);
+impl_bit_rev_bravo!(bit_rev_bravo_chunk_16_f32, f32, f32x16<S>, 16);
 impl_bit_rev_bravo!(bit_rev_bravo_chunk_2_f64, f64, f64x2<S>, 2);
 impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f64, f64, f64x4<S>, 4);
+impl_bit_rev_bravo!(bit_rev_bravo_chunk_8_f64, f64, f64x8<S>, 8);
 
 /// Performs in-place bit-reversal permutation using the CO-BRAVO algorithm.
 ///
@@ -165,8 +167,8 @@ impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f64, f64, f64x4<S>, 4);
 pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
     match <S::f32s>::N {
         4 => bit_rev_bravo_chunk_4_f32(simd, data, n), // SSE, NEON and fallback
-        _ => bit_rev_bravo_chunk_8_f32(simd, data, n),
-        // fearless_simd has no native support for AVX-512 yet
+        8 => bit_rev_bravo_chunk_8_f32(simd, data, n),
+        _ => bit_rev_bravo_chunk_16_f32(simd, data, n),
     }
 }
 
@@ -179,8 +181,8 @@ pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
 pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
     match <S::f64s>::N {
         2 => bit_rev_bravo_chunk_2_f64(simd, data, n), // SSE, NEON and fallback
-        _ => bit_rev_bravo_chunk_4_f64(simd, data, n),
-        // fearless_simd has no native support for AVX-512 yet
+        4 => bit_rev_bravo_chunk_4_f64(simd, data, n), // AVX2
+        _ => bit_rev_bravo_chunk_8_f64(simd, data, n), // AVX-512, AVX10
     }
 }
 
