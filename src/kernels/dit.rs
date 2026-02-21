@@ -28,7 +28,7 @@ pub fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut
 }
 
 /// DIT butterfly for chunk_size == 4 (f64)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_4_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -78,7 +78,7 @@ fn fft_dit_chunk_4_simd_f64<S: Simd>(_simd: S, reals: &mut [f64], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 4 (f32)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_4_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -128,7 +128,7 @@ fn fft_dit_chunk_4_simd_f32<S: Simd>(_simd: S, reals: &mut [f32], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 8 (f64) with SIMD
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_8_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -190,7 +190,7 @@ fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f6
 }
 
 /// DIT butterfly for chunk_size == 8 (f32) with SIMD
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_8_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -252,7 +252,7 @@ fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f3
 }
 
 /// DIT butterfly for chunk_size == 16 (f64)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_16_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -324,7 +324,7 @@ fn fft_dit_chunk_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 16 (f32)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_16_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -395,7 +395,7 @@ fn fft_dit_chunk_16_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
         });
 }
 /// DIT butterfly for chunk_size == 32 (f64)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_32_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -520,7 +520,7 @@ fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 32 (f32)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_32_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -607,7 +607,7 @@ fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 64 (f64)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_64_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
@@ -817,7 +817,7 @@ fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
 }
 
 /// DIT butterfly for chunk_size == 64 (f32)
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_64_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
@@ -967,7 +967,7 @@ fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
 }
 
 /// General DIT butterfly for f64
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f64<S: Simd>(
     simd: S,
     reals: &mut [f64],
@@ -1044,7 +1044,7 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
 }
 
 /// General DIT butterfly for f32
-#[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
+#[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f32<S: Simd>(
     simd: S,
     reals: &mut [f32],
