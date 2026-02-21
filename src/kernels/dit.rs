@@ -996,6 +996,13 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
+    // The structure of outer for loop with inner for_each is intentional: on x86
+    // fearless_simd needs inlining all the way down to intrinsics to work properly,
+    // and using for_each in the outer scope would require a call to for_each function
+    // that we can't force to be inlined. This brings over the LLVM inlining thresholds
+    // and then we end up with a `call` instruction for every FMA, destroying performance.
+    // However, the inner loop being for_each has better codegen.
+    // I haven't investigated why. Might have something to do with exterior vs interior iteration.
     for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
         .zip(imags.chunks_exact_mut(chunk_size))
@@ -1066,6 +1073,7 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
+    // see fft_dit_chunk_n_simd_f64 for an explanation of this structure
     for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
         .zip(imags.chunks_exact_mut(chunk_size))
