@@ -996,44 +996,44 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
-    reals
+    for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
         .zip(imags.chunks_exact_mut(chunk_size))
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
-            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-                .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    let two = f64x8::splat(simd, 2.0);
-                    let in0_re = f64x8::simd_from(simd, *re_s0);
-                    let in1_re = f64x8::simd_from(simd, *re_s1);
-                    let in0_im = f64x8::simd_from(simd, *im_s0);
-                    let in1_im = f64x8::simd_from(simd, *im_s1);
+        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
+            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
+            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
+                let two = f64x8::splat(simd, 2.0);
+                let in0_re = f64x8::simd_from(simd, *re_s0);
+                let in1_re = f64x8::simd_from(simd, *re_s1);
+                let in0_im = f64x8::simd_from(simd, *im_s0);
+                let in1_im = f64x8::simd_from(simd, *im_s1);
 
-                    let tw_re = f64x8::simd_from(simd, *tw_re);
-                    let tw_im = f64x8::simd_from(simd, *tw_im);
+                let tw_re = f64x8::simd_from(simd, *tw_re);
+                let tw_im = f64x8::simd_from(simd, *tw_im);
 
-                    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                    let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
-                    // Use FMA for out1 = 2*in0 - out0
-                    let out1_re = two.mul_sub(in0_re, out0_re);
-                    let out1_im = two.mul_sub(in0_im, out0_im);
+                // Use FMA for out1 = 2*in0 - out0
+                let out1_re = two.mul_sub(in0_re, out0_re);
+                let out1_im = two.mul_sub(in0_im, out0_im);
 
-                    out0_re.store_slice(re_s0);
-                    out0_im.store_slice(im_s0);
-                    out1_re.store_slice(re_s1);
-                    out1_im.store_slice(im_s1);
-                });
-        });
+                out0_re.store_slice(re_s0);
+                out0_im.store_slice(im_s0);
+                out1_re.store_slice(re_s1);
+                out1_im.store_slice(im_s1);
+            });
+    }
 }
 
 /// General DIT butterfly for f32
@@ -1066,42 +1066,42 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
-    reals
+    for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
         .zip(imags.chunks_exact_mut(chunk_size))
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
-            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-                .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-                .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    let two = f32x16::splat(simd, 2.0);
-                    let in0_re = f32x16::simd_from(simd, *re_s0);
-                    let in1_re = f32x16::simd_from(simd, *re_s1);
-                    let in0_im = f32x16::simd_from(simd, *im_s0);
-                    let in1_im = f32x16::simd_from(simd, *im_s1);
+        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
+            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
+            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
+            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
+                let two = f32x16::splat(simd, 2.0);
+                let in0_re = f32x16::simd_from(simd, *re_s0);
+                let in1_re = f32x16::simd_from(simd, *re_s1);
+                let in0_im = f32x16::simd_from(simd, *im_s0);
+                let in1_im = f32x16::simd_from(simd, *im_s1);
 
-                    let tw_re = f32x16::simd_from(simd, *tw_re);
-                    let tw_im = f32x16::simd_from(simd, *tw_im);
+                let tw_re = f32x16::simd_from(simd, *tw_re);
+                let tw_im = f32x16::simd_from(simd, *tw_im);
 
-                    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                    let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
-                    // Use FMA for out1 = 2*in0 - out0
-                    let out1_re = two.mul_sub(in0_re, out0_re);
-                    let out1_im = two.mul_sub(in0_im, out0_im);
+                // Use FMA for out1 = 2*in0 - out0
+                let out1_re = two.mul_sub(in0_re, out0_re);
+                let out1_im = two.mul_sub(in0_im, out0_im);
 
-                    out0_re.store_slice(re_s0);
-                    out0_im.store_slice(im_s0);
-                    out1_re.store_slice(re_s1);
-                    out1_im.store_slice(im_s1);
-                });
-        });
+                out0_re.store_slice(re_s0);
+                out0_im.store_slice(im_s0);
+                out1_re.store_slice(re_s1);
+                out1_im.store_slice(im_s1);
+            });
+    }
 }
