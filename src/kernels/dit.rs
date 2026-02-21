@@ -11,20 +11,17 @@ use num_traits::Float;
 /// Identical to DIF version (no twiddles at size 2)
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut [T]) {
-    reals
-        .chunks_exact_mut(2)
-        .zip(imags.chunks_exact_mut(2))
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let z0_re = reals_chunk[0];
-            let z0_im = imags_chunk[0];
-            let z1_re = reals_chunk[1];
-            let z1_im = imags_chunk[1];
+    for (reals_chunk, imags_chunk) in reals.chunks_exact_mut(2).zip(imags.chunks_exact_mut(2)) {
+        let z0_re = reals_chunk[0];
+        let z0_im = imags_chunk[0];
+        let z1_re = reals_chunk[1];
+        let z1_im = imags_chunk[1];
 
-            reals_chunk[0] = z0_re + z1_re;
-            imags_chunk[0] = z0_im + z1_im;
-            reals_chunk[1] = z0_re - z1_re;
-            imags_chunk[1] = z0_im - z1_im;
-        });
+        reals_chunk[0] = z0_re + z1_re;
+        imags_chunk[0] = z0_im + z1_im;
+        reals_chunk[1] = z0_re - z1_re;
+        imags_chunk[1] = z0_im - z1_im;
+    }
 }
 
 /// DIT butterfly for chunk_size == 4 (f64)
@@ -44,37 +41,37 @@ fn fft_dit_chunk_4_simd_f64<S: Simd>(_simd: S, reals: &mut [f64], imags: &mut [f
 
     let two = 2.0_f64;
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // First pair (W_4^0 = 1)
-            let in0_re = reals_s0[0];
-            let in1_re = reals_s1[0];
-            let in0_im = imags_s0[0];
-            let in1_im = imags_s1[0];
+        // First pair (W_4^0 = 1)
+        let in0_re = reals_s0[0];
+        let in1_re = reals_s1[0];
+        let in0_im = imags_s0[0];
+        let in1_im = imags_s1[0];
 
-            reals_s0[0] = in0_re + in1_re;
-            imags_s0[0] = in0_im + in1_im;
-            // out1 = 2*in0 - out0
-            reals_s1[0] = in0_re.mul_add(two, -reals_s0[0]);
-            imags_s1[0] = in0_im.mul_add(two, -imags_s0[0]);
+        reals_s0[0] = in0_re + in1_re;
+        imags_s0[0] = in0_im + in1_im;
+        // out1 = 2*in0 - out0
+        reals_s1[0] = in0_re.mul_add(two, -reals_s0[0]);
+        imags_s1[0] = in0_im.mul_add(two, -imags_s0[0]);
 
-            // Second pair (W_4^1 = -i)
-            let in0_re = reals_s0[1];
-            let in1_re = reals_s1[1];
-            let in0_im = imags_s0[1];
-            let in1_im = imags_s1[1];
+        // Second pair (W_4^1 = -i)
+        let in0_re = reals_s0[1];
+        let in1_re = reals_s1[1];
+        let in0_im = imags_s0[1];
+        let in1_im = imags_s1[1];
 
-            // W_4^1 = -i
-            reals_s0[1] = in0_re + in1_im;
-            imags_s0[1] = in0_im - in1_re;
-            // out1 = 2*in0 - out0
-            reals_s1[1] = in0_re.mul_add(two, -reals_s0[1]);
-            imags_s1[1] = in0_im.mul_add(two, -imags_s0[1]);
-        });
+        // W_4^1 = -i
+        reals_s0[1] = in0_re + in1_im;
+        imags_s0[1] = in0_im - in1_re;
+        // out1 = 2*in0 - out0
+        reals_s1[1] = in0_re.mul_add(two, -reals_s0[1]);
+        imags_s1[1] = in0_im.mul_add(two, -imags_s0[1]);
+    }
 }
 
 /// DIT butterfly for chunk_size == 4 (f32)
@@ -94,37 +91,37 @@ fn fft_dit_chunk_4_simd_f32<S: Simd>(_simd: S, reals: &mut [f32], imags: &mut [f
 
     let two = 2.0_f32;
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // First pair (W_4^0 = 1)
-            let in0_re = reals_s0[0];
-            let in1_re = reals_s1[0];
-            let in0_im = imags_s0[0];
-            let in1_im = imags_s1[0];
+        // First pair (W_4^0 = 1)
+        let in0_re = reals_s0[0];
+        let in1_re = reals_s1[0];
+        let in0_im = imags_s0[0];
+        let in1_im = imags_s1[0];
 
-            reals_s0[0] = in0_re + in1_re;
-            imags_s0[0] = in0_im + in1_im;
-            // out1 = 2*in0 - out0
-            reals_s1[0] = in0_re.mul_add(two, -reals_s0[0]);
-            imags_s1[0] = in0_im.mul_add(two, -imags_s0[0]);
+        reals_s0[0] = in0_re + in1_re;
+        imags_s0[0] = in0_im + in1_im;
+        // out1 = 2*in0 - out0
+        reals_s1[0] = in0_re.mul_add(two, -reals_s0[0]);
+        imags_s1[0] = in0_im.mul_add(two, -imags_s0[0]);
 
-            // Second pair (W_4^1 = -i)
-            let in0_re = reals_s0[1];
-            let in1_re = reals_s1[1];
-            let in0_im = imags_s0[1];
-            let in1_im = imags_s1[1];
+        // Second pair (W_4^1 = -i)
+        let in0_re = reals_s0[1];
+        let in1_re = reals_s1[1];
+        let in0_im = imags_s0[1];
+        let in1_im = imags_s1[1];
 
-            // W_4^1 = -i
-            reals_s0[1] = in0_re + in1_im;
-            imags_s0[1] = in0_im - in1_re;
-            // out1 = 2*in0 - out0
-            reals_s1[1] = in0_re.mul_add(two, -reals_s0[1]);
-            imags_s1[1] = in0_im.mul_add(two, -imags_s0[1]);
-        });
+        // W_4^1 = -i
+        reals_s0[1] = in0_re + in1_im;
+        imags_s0[1] = in0_im - in1_re;
+        // out1 = 2*in0 - out0
+        reals_s1[1] = in0_re.mul_add(two, -reals_s0[1]);
+        imags_s1[1] = in0_im.mul_add(two, -imags_s0[1]);
+    }
 }
 
 /// DIT butterfly for chunk_size == 8 (f64) with SIMD
@@ -162,31 +159,31 @@ fn fft_dit_chunk_8_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f6
         ],
     );
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            let in0_re = f64x4::from_slice(simd, &reals_s0[0..4]);
-            let in1_re = f64x4::from_slice(simd, &reals_s1[0..4]);
-            let in0_im = f64x4::from_slice(simd, &imags_s0[0..4]);
-            let in1_im = f64x4::from_slice(simd, &imags_s1[0..4]);
+        let in0_re = f64x4::from_slice(simd, &reals_s0[0..4]);
+        let in1_re = f64x4::from_slice(simd, &reals_s1[0..4]);
+        let in0_im = f64x4::from_slice(simd, &imags_s0[0..4]);
+        let in1_im = f64x4::from_slice(simd, &imags_s1[0..4]);
 
-            // out0.re = (in0.re + w.re * in1.re) - w.im * in1.im
-            let out0_re = sqrt2_2_im.mul_add(-in1_im, sqrt2_2.mul_add(in1_re, in0_re));
-            // out0.im = (in0.im + w.re*in1.im) + w.im*in1.re
-            let out0_im = sqrt2_2_im.mul_add(in1_re, sqrt2_2.mul_add(in1_im, in0_im));
+        // out0.re = (in0.re + w.re * in1.re) - w.im * in1.im
+        let out0_re = sqrt2_2_im.mul_add(-in1_im, sqrt2_2.mul_add(in1_re, in0_re));
+        // out0.im = (in0.im + w.re*in1.im) + w.im*in1.re
+        let out0_im = sqrt2_2_im.mul_add(in1_re, sqrt2_2.mul_add(in1_im, in0_im));
 
-            // out1 = 2*in0 - out0
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        // out1 = 2*in0 - out0
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(reals_s0);
-            out0_im.store_slice(imags_s0);
-            out1_re.store_slice(reals_s1);
-            out1_im.store_slice(imags_s1);
-        });
+        out0_re.store_slice(reals_s0);
+        out0_im.store_slice(imags_s0);
+        out1_re.store_slice(reals_s1);
+        out1_im.store_slice(imags_s1);
+    }
 }
 
 /// DIT butterfly for chunk_size == 8 (f32) with SIMD
@@ -224,31 +221,31 @@ fn fft_dit_chunk_8_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f3
         ],
     );
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            let in0_re = f32x4::from_slice(simd, &reals_s0[0..4]);
-            let in1_re = f32x4::from_slice(simd, &reals_s1[0..4]);
-            let in0_im = f32x4::from_slice(simd, &imags_s0[0..4]);
-            let in1_im = f32x4::from_slice(simd, &imags_s1[0..4]);
+        let in0_re = f32x4::from_slice(simd, &reals_s0[0..4]);
+        let in1_re = f32x4::from_slice(simd, &reals_s1[0..4]);
+        let in0_im = f32x4::from_slice(simd, &imags_s0[0..4]);
+        let in1_im = f32x4::from_slice(simd, &imags_s1[0..4]);
 
-            // out0.re = (in0.re + w.re * in1.re) - w.im * in1.im
-            let out0_re = sqrt2_2_im.mul_add(-in1_im, sqrt2_2.mul_add(in1_re, in0_re));
-            // out0.im = (in0.im + w.re * in1.im) + w.im * in1.re
-            let out0_im = sqrt2_2_im.mul_add(in1_re, sqrt2_2.mul_add(in1_im, in0_im));
+        // out0.re = (in0.re + w.re * in1.re) - w.im * in1.im
+        let out0_re = sqrt2_2_im.mul_add(-in1_im, sqrt2_2.mul_add(in1_re, in0_re));
+        // out0.im = (in0.im + w.re * in1.im) + w.im * in1.re
+        let out0_im = sqrt2_2_im.mul_add(in1_re, sqrt2_2.mul_add(in1_im, in0_im));
 
-            // out1 = 2*in0 - out0
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        // out1 = 2*in0 - out0
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(reals_s0);
-            out0_im.store_slice(imags_s0);
-            out1_re.store_slice(reals_s1);
-            out1_im.store_slice(imags_s1);
-        });
+        out0_re.store_slice(reals_s0);
+        out0_im.store_slice(imags_s0);
+        out1_re.store_slice(reals_s1);
+        out1_im.store_slice(imags_s1);
+    }
 }
 
 /// DIT butterfly for chunk_size == 16 (f64)
@@ -297,30 +294,30 @@ fn fft_dit_chunk_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
         ],
     );
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // Load all 8 elements at once
-            let in0_re = f64x8::from_slice(simd, &reals_s0[0..8]);
-            let in1_re = f64x8::from_slice(simd, &reals_s1[0..8]);
-            let in0_im = f64x8::from_slice(simd, &imags_s0[0..8]);
-            let in1_im = f64x8::from_slice(simd, &imags_s1[0..8]);
+        // Load all 8 elements at once
+        let in0_re = f64x8::from_slice(simd, &reals_s0[0..8]);
+        let in1_re = f64x8::from_slice(simd, &reals_s1[0..8]);
+        let in0_im = f64x8::from_slice(simd, &imags_s0[0..8]);
+        let in1_im = f64x8::from_slice(simd, &imags_s1[0..8]);
 
-            let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
-            let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
+        let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
 
-            // out1 = 2*in0 - out0
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        // out1 = 2*in0 - out0
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(reals_s0);
-            out0_im.store_slice(imags_s0);
-            out1_re.store_slice(reals_s1);
-            out1_im.store_slice(imags_s1);
-        });
+        out0_re.store_slice(reals_s0);
+        out0_im.store_slice(imags_s0);
+        out1_re.store_slice(reals_s1);
+        out1_im.store_slice(imags_s1);
+    }
 }
 
 /// DIT butterfly for chunk_size == 16 (f32)
@@ -369,30 +366,30 @@ fn fft_dit_chunk_16_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
         ],
     );
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // Load all 8 elements at once
-            let in0_re = f32x8::from_slice(simd, &reals_s0[0..8]);
-            let in1_re = f32x8::from_slice(simd, &reals_s1[0..8]);
-            let in0_im = f32x8::from_slice(simd, &imags_s0[0..8]);
-            let in1_im = f32x8::from_slice(simd, &imags_s1[0..8]);
+        // Load all 8 elements at once
+        let in0_re = f32x8::from_slice(simd, &reals_s0[0..8]);
+        let in1_re = f32x8::from_slice(simd, &reals_s1[0..8]);
+        let in0_im = f32x8::from_slice(simd, &imags_s0[0..8]);
+        let in1_im = f32x8::from_slice(simd, &imags_s1[0..8]);
 
-            let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
-            let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
+        let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
 
-            // out1 = 2*in0 - out0
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        // out1 = 2*in0 - out0
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(reals_s0);
-            out0_im.store_slice(imags_s0);
-            out1_re.store_slice(reals_s1);
-            out1_im.store_slice(imags_s1);
-        });
+        out0_re.store_slice(reals_s0);
+        out0_im.store_slice(imags_s0);
+        out1_re.store_slice(reals_s1);
+        out1_im.store_slice(imags_s1);
+    }
 }
 /// DIT butterfly for chunk_size == 32 (f64)
 #[inline(never)] // otherwise every kernel gets inlined into the parent and ARM perf drops due to register pressure
@@ -469,54 +466,54 @@ fn fft_dit_chunk_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
         ],
     );
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // Process first 8 butterflies
-            let in0_re_0_7 = f64x8::from_slice(simd, &reals_s0[0..8]);
-            let in1_re_0_7 = f64x8::from_slice(simd, &reals_s1[0..8]);
-            let in0_im_0_7 = f64x8::from_slice(simd, &imags_s0[0..8]);
-            let in1_im_0_7 = f64x8::from_slice(simd, &imags_s1[0..8]);
+        // Process first 8 butterflies
+        let in0_re_0_7 = f64x8::from_slice(simd, &reals_s0[0..8]);
+        let in1_re_0_7 = f64x8::from_slice(simd, &reals_s1[0..8]);
+        let in0_im_0_7 = f64x8::from_slice(simd, &imags_s0[0..8]);
+        let in1_im_0_7 = f64x8::from_slice(simd, &imags_s1[0..8]);
 
-            let out0_re_0_7 =
-                twiddle_im_0_7.mul_add(-in1_im_0_7, twiddle_re_0_7.mul_add(in1_re_0_7, in0_re_0_7));
-            let out0_im_0_7 =
-                twiddle_im_0_7.mul_add(in1_re_0_7, twiddle_re_0_7.mul_add(in1_im_0_7, in0_im_0_7));
+        let out0_re_0_7 =
+            twiddle_im_0_7.mul_add(-in1_im_0_7, twiddle_re_0_7.mul_add(in1_re_0_7, in0_re_0_7));
+        let out0_im_0_7 =
+            twiddle_im_0_7.mul_add(in1_re_0_7, twiddle_re_0_7.mul_add(in1_im_0_7, in0_im_0_7));
 
-            let out1_re_0_7 = two.mul_sub(in0_re_0_7, out0_re_0_7);
-            let out1_im_0_7 = two.mul_sub(in0_im_0_7, out0_im_0_7);
+        let out1_re_0_7 = two.mul_sub(in0_re_0_7, out0_re_0_7);
+        let out1_im_0_7 = two.mul_sub(in0_im_0_7, out0_im_0_7);
 
-            out0_re_0_7.store_slice(&mut reals_s0[0..8]);
-            out0_im_0_7.store_slice(&mut imags_s0[0..8]);
-            out1_re_0_7.store_slice(&mut reals_s1[0..8]);
-            out1_im_0_7.store_slice(&mut imags_s1[0..8]);
+        out0_re_0_7.store_slice(&mut reals_s0[0..8]);
+        out0_im_0_7.store_slice(&mut imags_s0[0..8]);
+        out1_re_0_7.store_slice(&mut reals_s1[0..8]);
+        out1_im_0_7.store_slice(&mut imags_s1[0..8]);
 
-            // Process second 8 butterflies
-            let in0_re_8_15 = f64x8::from_slice(simd, &reals_s0[8..16]);
-            let in1_re_8_15 = f64x8::from_slice(simd, &reals_s1[8..16]);
-            let in0_im_8_15 = f64x8::from_slice(simd, &imags_s0[8..16]);
-            let in1_im_8_15 = f64x8::from_slice(simd, &imags_s1[8..16]);
+        // Process second 8 butterflies
+        let in0_re_8_15 = f64x8::from_slice(simd, &reals_s0[8..16]);
+        let in1_re_8_15 = f64x8::from_slice(simd, &reals_s1[8..16]);
+        let in0_im_8_15 = f64x8::from_slice(simd, &imags_s0[8..16]);
+        let in1_im_8_15 = f64x8::from_slice(simd, &imags_s1[8..16]);
 
-            let out0_re_8_15 = twiddle_im_8_15.mul_add(
-                -in1_im_8_15,
-                twiddle_re_8_15.mul_add(in1_re_8_15, in0_re_8_15),
-            );
-            let out0_im_8_15 = twiddle_im_8_15.mul_add(
-                in1_re_8_15,
-                twiddle_re_8_15.mul_add(in1_im_8_15, in0_im_8_15),
-            );
+        let out0_re_8_15 = twiddle_im_8_15.mul_add(
+            -in1_im_8_15,
+            twiddle_re_8_15.mul_add(in1_re_8_15, in0_re_8_15),
+        );
+        let out0_im_8_15 = twiddle_im_8_15.mul_add(
+            in1_re_8_15,
+            twiddle_re_8_15.mul_add(in1_im_8_15, in0_im_8_15),
+        );
 
-            let out1_re_8_15 = two.mul_sub(in0_re_8_15, out0_re_8_15);
-            let out1_im_8_15 = two.mul_sub(in0_im_8_15, out0_im_8_15);
+        let out1_re_8_15 = two.mul_sub(in0_re_8_15, out0_re_8_15);
+        let out1_im_8_15 = two.mul_sub(in0_im_8_15, out0_im_8_15);
 
-            out0_re_8_15.store_slice(&mut reals_s0[8..16]);
-            out0_im_8_15.store_slice(&mut imags_s0[8..16]);
-            out1_re_8_15.store_slice(&mut reals_s1[8..16]);
-            out1_im_8_15.store_slice(&mut imags_s1[8..16]);
-        });
+        out0_re_8_15.store_slice(&mut reals_s0[8..16]);
+        out0_im_8_15.store_slice(&mut imags_s0[8..16]);
+        out1_re_8_15.store_slice(&mut reals_s1[8..16]);
+        out1_im_8_15.store_slice(&mut imags_s1[8..16]);
+    }
 }
 
 /// DIT butterfly for chunk_size == 32 (f32)
@@ -581,29 +578,29 @@ fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
         ],
     );
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // Process all 16 butterflies at once with f32x16
-            let in0_re = f32x16::from_slice(simd, &reals_s0[0..16]);
-            let in1_re = f32x16::from_slice(simd, &reals_s1[0..16]);
-            let in0_im = f32x16::from_slice(simd, &imags_s0[0..16]);
-            let in1_im = f32x16::from_slice(simd, &imags_s1[0..16]);
+        // Process all 16 butterflies at once with f32x16
+        let in0_re = f32x16::from_slice(simd, &reals_s0[0..16]);
+        let in1_re = f32x16::from_slice(simd, &reals_s1[0..16]);
+        let in0_im = f32x16::from_slice(simd, &imags_s0[0..16]);
+        let in1_im = f32x16::from_slice(simd, &imags_s1[0..16]);
 
-            let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
-            let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
+        let out0_re = twiddle_im.mul_add(-in1_im, twiddle_re.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im.mul_add(in1_re, twiddle_re.mul_add(in1_im, in0_im));
 
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(reals_s0);
-            out0_im.store_slice(imags_s0);
-            out1_re.store_slice(reals_s1);
-            out1_im.store_slice(imags_s1);
-        });
+        out0_re.store_slice(reals_s0);
+        out0_im.store_slice(imags_s0);
+        out1_re.store_slice(reals_s1);
+        out1_im.store_slice(imags_s1);
+    }
 }
 
 /// DIT butterfly for chunk_size == 64 (f64)
@@ -740,80 +737,76 @@ fn fft_dit_chunk_64_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f
         ],
     );
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // Process butterflies 0..7
-            let in0_re = f64x8::from_slice(simd, &reals_s0[0..8]);
-            let in1_re = f64x8::from_slice(simd, &reals_s1[0..8]);
-            let in0_im = f64x8::from_slice(simd, &imags_s0[0..8]);
-            let in1_im = f64x8::from_slice(simd, &imags_s1[0..8]);
+        // Process butterflies 0..7
+        let in0_re = f64x8::from_slice(simd, &reals_s0[0..8]);
+        let in1_re = f64x8::from_slice(simd, &reals_s1[0..8]);
+        let in0_im = f64x8::from_slice(simd, &imags_s0[0..8]);
+        let in1_im = f64x8::from_slice(simd, &imags_s1[0..8]);
 
-            let out0_re = twiddle_im_0_7.mul_add(-in1_im, twiddle_re_0_7.mul_add(in1_re, in0_re));
-            let out0_im = twiddle_im_0_7.mul_add(in1_re, twiddle_re_0_7.mul_add(in1_im, in0_im));
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        let out0_re = twiddle_im_0_7.mul_add(-in1_im, twiddle_re_0_7.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im_0_7.mul_add(in1_re, twiddle_re_0_7.mul_add(in1_im, in0_im));
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(&mut reals_s0[0..8]);
-            out0_im.store_slice(&mut imags_s0[0..8]);
-            out1_re.store_slice(&mut reals_s1[0..8]);
-            out1_im.store_slice(&mut imags_s1[0..8]);
+        out0_re.store_slice(&mut reals_s0[0..8]);
+        out0_im.store_slice(&mut imags_s0[0..8]);
+        out1_re.store_slice(&mut reals_s1[0..8]);
+        out1_im.store_slice(&mut imags_s1[0..8]);
 
-            // Process butterflies 8..15
-            let in0_re = f64x8::from_slice(simd, &reals_s0[8..16]);
-            let in1_re = f64x8::from_slice(simd, &reals_s1[8..16]);
-            let in0_im = f64x8::from_slice(simd, &imags_s0[8..16]);
-            let in1_im = f64x8::from_slice(simd, &imags_s1[8..16]);
+        // Process butterflies 8..15
+        let in0_re = f64x8::from_slice(simd, &reals_s0[8..16]);
+        let in1_re = f64x8::from_slice(simd, &reals_s1[8..16]);
+        let in0_im = f64x8::from_slice(simd, &imags_s0[8..16]);
+        let in1_im = f64x8::from_slice(simd, &imags_s1[8..16]);
 
-            let out0_re = twiddle_im_8_15.mul_add(-in1_im, twiddle_re_8_15.mul_add(in1_re, in0_re));
-            let out0_im = twiddle_im_8_15.mul_add(in1_re, twiddle_re_8_15.mul_add(in1_im, in0_im));
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        let out0_re = twiddle_im_8_15.mul_add(-in1_im, twiddle_re_8_15.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im_8_15.mul_add(in1_re, twiddle_re_8_15.mul_add(in1_im, in0_im));
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(&mut reals_s0[8..16]);
-            out0_im.store_slice(&mut imags_s0[8..16]);
-            out1_re.store_slice(&mut reals_s1[8..16]);
-            out1_im.store_slice(&mut imags_s1[8..16]);
+        out0_re.store_slice(&mut reals_s0[8..16]);
+        out0_im.store_slice(&mut imags_s0[8..16]);
+        out1_re.store_slice(&mut reals_s1[8..16]);
+        out1_im.store_slice(&mut imags_s1[8..16]);
 
-            // Process butterflies 16..23
-            let in0_re = f64x8::from_slice(simd, &reals_s0[16..24]);
-            let in1_re = f64x8::from_slice(simd, &reals_s1[16..24]);
-            let in0_im = f64x8::from_slice(simd, &imags_s0[16..24]);
-            let in1_im = f64x8::from_slice(simd, &imags_s1[16..24]);
+        // Process butterflies 16..23
+        let in0_re = f64x8::from_slice(simd, &reals_s0[16..24]);
+        let in1_re = f64x8::from_slice(simd, &reals_s1[16..24]);
+        let in0_im = f64x8::from_slice(simd, &imags_s0[16..24]);
+        let in1_im = f64x8::from_slice(simd, &imags_s1[16..24]);
 
-            let out0_re =
-                twiddle_im_16_23.mul_add(-in1_im, twiddle_re_16_23.mul_add(in1_re, in0_re));
-            let out0_im =
-                twiddle_im_16_23.mul_add(in1_re, twiddle_re_16_23.mul_add(in1_im, in0_im));
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        let out0_re = twiddle_im_16_23.mul_add(-in1_im, twiddle_re_16_23.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im_16_23.mul_add(in1_re, twiddle_re_16_23.mul_add(in1_im, in0_im));
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(&mut reals_s0[16..24]);
-            out0_im.store_slice(&mut imags_s0[16..24]);
-            out1_re.store_slice(&mut reals_s1[16..24]);
-            out1_im.store_slice(&mut imags_s1[16..24]);
+        out0_re.store_slice(&mut reals_s0[16..24]);
+        out0_im.store_slice(&mut imags_s0[16..24]);
+        out1_re.store_slice(&mut reals_s1[16..24]);
+        out1_im.store_slice(&mut imags_s1[16..24]);
 
-            // Process butterflies 24..31
-            let in0_re = f64x8::from_slice(simd, &reals_s0[24..32]);
-            let in1_re = f64x8::from_slice(simd, &reals_s1[24..32]);
-            let in0_im = f64x8::from_slice(simd, &imags_s0[24..32]);
-            let in1_im = f64x8::from_slice(simd, &imags_s1[24..32]);
+        // Process butterflies 24..31
+        let in0_re = f64x8::from_slice(simd, &reals_s0[24..32]);
+        let in1_re = f64x8::from_slice(simd, &reals_s1[24..32]);
+        let in0_im = f64x8::from_slice(simd, &imags_s0[24..32]);
+        let in1_im = f64x8::from_slice(simd, &imags_s1[24..32]);
 
-            let out0_re =
-                twiddle_im_24_31.mul_add(-in1_im, twiddle_re_24_31.mul_add(in1_re, in0_re));
-            let out0_im =
-                twiddle_im_24_31.mul_add(in1_re, twiddle_re_24_31.mul_add(in1_im, in0_im));
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        let out0_re = twiddle_im_24_31.mul_add(-in1_im, twiddle_re_24_31.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im_24_31.mul_add(in1_re, twiddle_re_24_31.mul_add(in1_im, in0_im));
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(&mut reals_s0[24..32]);
-            out0_im.store_slice(&mut imags_s0[24..32]);
-            out1_re.store_slice(&mut reals_s1[24..32]);
-            out1_im.store_slice(&mut imags_s1[24..32]);
-        });
+        out0_re.store_slice(&mut reals_s0[24..32]);
+        out0_im.store_slice(&mut imags_s0[24..32]);
+        out1_re.store_slice(&mut reals_s1[24..32]);
+        out1_im.store_slice(&mut imags_s1[24..32]);
+    }
 }
 
 /// DIT butterfly for chunk_size == 64 (f32)
@@ -924,46 +917,44 @@ fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
         ],
     );
 
-    (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
+    for (reals_chunk, imags_chunk) in (reals.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
         .zip(imags.as_chunks_mut::<CHUNK_SIZE>().0.iter_mut())
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(DIST);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(DIST);
 
-            // Process butterflies 0..15
-            let in0_re = f32x16::from_slice(simd, &reals_s0[0..16]);
-            let in1_re = f32x16::from_slice(simd, &reals_s1[0..16]);
-            let in0_im = f32x16::from_slice(simd, &imags_s0[0..16]);
-            let in1_im = f32x16::from_slice(simd, &imags_s1[0..16]);
+        // Process butterflies 0..15
+        let in0_re = f32x16::from_slice(simd, &reals_s0[0..16]);
+        let in1_re = f32x16::from_slice(simd, &reals_s1[0..16]);
+        let in0_im = f32x16::from_slice(simd, &imags_s0[0..16]);
+        let in1_im = f32x16::from_slice(simd, &imags_s1[0..16]);
 
-            let out0_re = twiddle_im_0_15.mul_add(-in1_im, twiddle_re_0_15.mul_add(in1_re, in0_re));
-            let out0_im = twiddle_im_0_15.mul_add(in1_re, twiddle_re_0_15.mul_add(in1_im, in0_im));
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        let out0_re = twiddle_im_0_15.mul_add(-in1_im, twiddle_re_0_15.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im_0_15.mul_add(in1_re, twiddle_re_0_15.mul_add(in1_im, in0_im));
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(&mut reals_s0[0..16]);
-            out0_im.store_slice(&mut imags_s0[0..16]);
-            out1_re.store_slice(&mut reals_s1[0..16]);
-            out1_im.store_slice(&mut imags_s1[0..16]);
+        out0_re.store_slice(&mut reals_s0[0..16]);
+        out0_im.store_slice(&mut imags_s0[0..16]);
+        out1_re.store_slice(&mut reals_s1[0..16]);
+        out1_im.store_slice(&mut imags_s1[0..16]);
 
-            // Process butterflies 16..31
-            let in0_re = f32x16::from_slice(simd, &reals_s0[16..32]);
-            let in1_re = f32x16::from_slice(simd, &reals_s1[16..32]);
-            let in0_im = f32x16::from_slice(simd, &imags_s0[16..32]);
-            let in1_im = f32x16::from_slice(simd, &imags_s1[16..32]);
+        // Process butterflies 16..31
+        let in0_re = f32x16::from_slice(simd, &reals_s0[16..32]);
+        let in1_re = f32x16::from_slice(simd, &reals_s1[16..32]);
+        let in0_im = f32x16::from_slice(simd, &imags_s0[16..32]);
+        let in1_im = f32x16::from_slice(simd, &imags_s1[16..32]);
 
-            let out0_re =
-                twiddle_im_16_31.mul_add(-in1_im, twiddle_re_16_31.mul_add(in1_re, in0_re));
-            let out0_im =
-                twiddle_im_16_31.mul_add(in1_re, twiddle_re_16_31.mul_add(in1_im, in0_im));
-            let out1_re = two.mul_sub(in0_re, out0_re);
-            let out1_im = two.mul_sub(in0_im, out0_im);
+        let out0_re = twiddle_im_16_31.mul_add(-in1_im, twiddle_re_16_31.mul_add(in1_re, in0_re));
+        let out0_im = twiddle_im_16_31.mul_add(in1_re, twiddle_re_16_31.mul_add(in1_im, in0_im));
+        let out1_re = two.mul_sub(in0_re, out0_re);
+        let out1_im = two.mul_sub(in0_im, out0_im);
 
-            out0_re.store_slice(&mut reals_s0[16..32]);
-            out0_im.store_slice(&mut imags_s0[16..32]);
-            out1_re.store_slice(&mut reals_s1[16..32]);
-            out1_im.store_slice(&mut imags_s1[16..32]);
-        });
+        out0_re.store_slice(&mut reals_s0[16..32]);
+        out0_im.store_slice(&mut imags_s0[16..32]);
+        out1_re.store_slice(&mut reals_s1[16..32]);
+        out1_im.store_slice(&mut imags_s1[16..32]);
+    }
 }
 
 /// General DIT butterfly for f64
@@ -996,44 +987,45 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
-    reals
+    for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
         .zip(imags.chunks_exact_mut(chunk_size))
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
+        for (((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im) in
             (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
                 .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
                 .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
                 .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
                 .zip(twiddles_re.as_chunks::<LANES>().0.iter())
                 .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    let two = f64x8::splat(simd, 2.0);
-                    let in0_re = f64x8::simd_from(simd, *re_s0);
-                    let in1_re = f64x8::simd_from(simd, *re_s1);
-                    let in0_im = f64x8::simd_from(simd, *im_s0);
-                    let in1_im = f64x8::simd_from(simd, *im_s1);
+        {
+            let two = f64x8::splat(simd, 2.0);
+            let in0_re = f64x8::simd_from(simd, *re_s0);
+            let in1_re = f64x8::simd_from(simd, *re_s1);
+            let in0_im = f64x8::simd_from(simd, *im_s0);
+            let in1_im = f64x8::simd_from(simd, *im_s1);
 
-                    let tw_re = f64x8::simd_from(simd, *tw_re);
-                    let tw_im = f64x8::simd_from(simd, *tw_im);
+            let tw_re = f64x8::simd_from(simd, *tw_re);
+            let tw_im = f64x8::simd_from(simd, *tw_im);
 
-                    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                    let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+            // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+            let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+            // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+            let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
-                    // Use FMA for out1 = 2*in0 - out0
-                    let out1_re = two.mul_sub(in0_re, out0_re);
-                    let out1_im = two.mul_sub(in0_im, out0_im);
+            // Use FMA for out1 = 2*in0 - out0
+            let out1_re = two.mul_sub(in0_re, out0_re);
+            let out1_im = two.mul_sub(in0_im, out0_im);
 
-                    out0_re.store_slice(re_s0);
-                    out0_im.store_slice(im_s0);
-                    out1_re.store_slice(re_s1);
-                    out1_im.store_slice(im_s1);
-                });
-        });
+            out0_re.store_slice(re_s0);
+            out0_im.store_slice(im_s0);
+            out1_re.store_slice(re_s1);
+            out1_im.store_slice(im_s1);
+        }
+    }
 }
 
 /// General DIT butterfly for f32
@@ -1066,42 +1058,43 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
 
-    reals
+    for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
         .zip(imags.chunks_exact_mut(chunk_size))
-        .for_each(|(reals_chunk, imags_chunk)| {
-            let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-            let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
+        for (((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im) in
             (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
                 .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
                 .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
                 .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
                 .zip(twiddles_re.as_chunks::<LANES>().0.iter())
                 .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-                .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                    let two = f32x16::splat(simd, 2.0);
-                    let in0_re = f32x16::simd_from(simd, *re_s0);
-                    let in1_re = f32x16::simd_from(simd, *re_s1);
-                    let in0_im = f32x16::simd_from(simd, *im_s0);
-                    let in1_im = f32x16::simd_from(simd, *im_s1);
+        {
+            let two = f32x16::splat(simd, 2.0);
+            let in0_re = f32x16::simd_from(simd, *re_s0);
+            let in1_re = f32x16::simd_from(simd, *re_s1);
+            let in0_im = f32x16::simd_from(simd, *im_s0);
+            let in1_im = f32x16::simd_from(simd, *im_s1);
 
-                    let tw_re = f32x16::simd_from(simd, *tw_re);
-                    let tw_im = f32x16::simd_from(simd, *tw_im);
+            let tw_re = f32x16::simd_from(simd, *tw_re);
+            let tw_im = f32x16::simd_from(simd, *tw_im);
 
-                    // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                    let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                    // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                    let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+            // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+            let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+            // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+            let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
-                    // Use FMA for out1 = 2*in0 - out0
-                    let out1_re = two.mul_sub(in0_re, out0_re);
-                    let out1_im = two.mul_sub(in0_im, out0_im);
+            // Use FMA for out1 = 2*in0 - out0
+            let out1_re = two.mul_sub(in0_re, out0_re);
+            let out1_im = two.mul_sub(in0_im, out0_im);
 
-                    out0_re.store_slice(re_s0);
-                    out0_im.store_slice(im_s0);
-                    out1_re.store_slice(re_s1);
-                    out1_im.store_slice(im_s1);
-                });
-        });
+            out0_re.store_slice(re_s0);
+            out0_im.store_slice(im_s0);
+            out1_re.store_slice(re_s1);
+            out1_im.store_slice(im_s1);
+        }
+    }
 }
