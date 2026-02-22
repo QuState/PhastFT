@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
-use num_traits::Float;
+use num_traits::{Float, Zero};
 use phastft::options::Options;
 use phastft::planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64};
 use phastft::{
@@ -114,12 +114,13 @@ fn benchmark_forward_f32(c: &mut Criterion) {
         let id = "RustFFT";
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(len);
+        let mut scratch = vec![Complex::<f32>::zero(); fft.get_inplace_scratch_len()];
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
                 || generate_complex_numbers::<f32>(len),
                 |mut signal| {
-                    fft.process(&mut signal);
+                    fft.process_with_scratch(&mut signal, &mut scratch);
                 },
                 BatchSize::SmallInput,
             );
@@ -178,12 +179,13 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
         let id = "RustFFT";
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_inverse(len);
+        let mut scratch = vec![Complex::<f32>::zero(); fft.get_inplace_scratch_len()];
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
                 || generate_complex_numbers::<f32>(len),
                 |mut signal| {
-                    fft.process(&mut signal);
+                    fft.process_with_scratch(&mut signal, &mut scratch);
                 },
                 BatchSize::SmallInput,
             );
@@ -242,12 +244,13 @@ fn benchmark_forward_f64(c: &mut Criterion) {
         let id = "RustFFT";
         let mut planner = FftPlanner::<f64>::new();
         let fft = planner.plan_fft_forward(len);
+        let mut scratch = vec![Complex::<f64>::zero(); fft.get_inplace_scratch_len()];
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
                 || generate_complex_numbers::<f64>(len),
                 |mut signal| {
-                    fft.process(&mut signal);
+                    fft.process_with_scratch(&mut signal, &mut scratch);
                 },
                 BatchSize::SmallInput,
             );
@@ -306,12 +309,13 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
         let id = "RustFFT";
         let mut planner = FftPlanner::<f64>::new();
         let fft = planner.plan_fft_inverse(len);
+        let mut scratch = vec![Complex::<f64>::zero(); fft.get_inplace_scratch_len()];
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
                 || generate_complex_numbers::<f64>(len),
                 |mut signal| {
-                    fft.process(&mut signal);
+                    fft.process_with_scratch(&mut signal, &mut scratch);
                 },
                 BatchSize::SmallInput,
             );
