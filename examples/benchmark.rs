@@ -3,13 +3,13 @@ use std::str::FromStr;
 
 use phastft::fft_64_dit_with_planner;
 use phastft::planner::{Direction, PlannerDit64};
-use utilities::gen_random_signal;
+use utilities::gen_random_signal_f64;
 
 fn benchmark_fft_64_dit(n: usize, iterations: usize) {
     let big_n = 1 << n; // 2.pow(n)
     let mut reals = vec![0.0; big_n];
     let mut imags = vec![0.0; big_n];
-    gen_random_signal(&mut reals, &mut imags);
+    gen_random_signal_f64(&mut reals, &mut imags);
 
     // Pre-create planner for DIT
     let planner = PlannerDit64::new(reals.len(), Direction::Forward);
@@ -19,7 +19,8 @@ fn benchmark_fft_64_dit(n: usize, iterations: usize) {
         fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
     }
     let elapsed = now.elapsed().as_nanos();
-    println!("took {elapsed} for {iterations} iterations");
+    let elapsed_per_iteration = elapsed / iterations as u128;
+    println!("{elapsed_per_iteration}");
 }
 
 fn main() {
