@@ -6,7 +6,7 @@ use utilities::rustfft::num_complex::Complex64;
 use utilities::rustfft::num_traits::Zero;
 use utilities::rustfft::FftPlanner;
 
-fn benchmark_rustfft(n: usize) {
+fn benchmark_rustfft(n: usize, iterations: usize) {
     let big_n = 1 << n; // 2.pow(n)
 
     let mut reals = vec![0.0f64; big_n];
@@ -28,15 +28,19 @@ fn benchmark_rustfft(n: usize) {
     let mut scratch = vec![Complex64::zero(); fft.get_inplace_scratch_len()];
 
     let now = std::time::Instant::now();
-    fft.process_with_scratch(&mut signal, scratch.as_mut_slice());
+    for _ in 0..iterations {
+        fft.process_with_scratch(&mut signal, scratch.as_mut_slice());
+    }
     let elapsed = now.elapsed().as_nanos();
     println!("{elapsed}");
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    assert_eq!(args.len(), 2, "Usage {} <n>", args[0]);
+    assert!(args.len() >= 3, "Usage {} <n> <iterations>", args[0]);
 
     let n = usize::from_str(&args[1]).unwrap();
-    benchmark_rustfft(n);
+    let iterations = usize::from_str(&args[2]).unwrap();
+
+    benchmark_rustfft(n, iterations);
 }
