@@ -15,27 +15,6 @@ pub struct Options {
     /// This option is ignored if the `parallel` feature is disabled.
     pub multithreaded_bit_reversal: bool,
 
-    /// Controls bit reversal behavior for DIF FFT algorithms.
-    ///
-    /// **This option only affects DIF (Decimation-in-Frequency) algorithms** (`fft_32`, `fft_64`).
-    /// **DIT algorithms ignore this setting** as they always require bit reversal for correctness.
-    ///
-    /// For DIF FFT:
-    /// - `true` (default): Output is bit-reversed (standard FFT output)
-    /// - `false`: Output remains in decimated order (useful when chaining operations or
-    ///   when you need the output in the natural DIF order)
-    ///
-    /// For DIT FFT:
-    /// - This option is ignored. DIT always performs bit reversal on input.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let mut opts = Options::default();
-    /// opts.dif_perform_bit_reversal = false;  // Keep DIF output in decimated order
-    /// fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
-    /// ```
-    pub dif_perform_bit_reversal: bool,
-
     /// Do not split the input any further to run in parallel below this size
     ///
     /// Set to `usize::MAX` to disable parallelism in the recursive FFT step.
@@ -48,7 +27,6 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             multithreaded_bit_reversal: false,
-            dif_perform_bit_reversal: true, // Default to standard FFT behavior
             smallest_parallel_chunk_size: usize::MAX,
         }
     }
