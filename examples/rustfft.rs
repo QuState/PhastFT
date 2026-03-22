@@ -1,7 +1,7 @@
 use std::env;
 use std::str::FromStr;
 
-use utilities::gen_random_signal;
+use utilities::gen_random_signal_f64;
 use utilities::rustfft::num_complex::Complex64;
 use utilities::rustfft::num_traits::Zero;
 use utilities::rustfft::FftPlanner;
@@ -12,7 +12,7 @@ fn benchmark_rustfft(n: usize, iterations: usize) {
     let mut reals = vec![0.0f64; big_n];
     let mut imags = vec![0.0f64; big_n];
 
-    gen_random_signal(&mut reals, &mut imags);
+    gen_random_signal_f64(&mut reals, &mut imags);
     let mut signal = vec![Complex64::default(); big_n];
     reals
         .drain(..)

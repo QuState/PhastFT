@@ -155,7 +155,7 @@ mod tests {
 
     use utilities::rustfft::num_complex::Complex;
     use utilities::rustfft::FftPlanner;
-    use utilities::{assert_float_closeness, gen_random_signal, gen_random_signal_f32};
+    use utilities::{assert_float_closeness, gen_random_signal_f32, gen_random_signal_f64};
 
     use super::*;
 
@@ -304,7 +304,7 @@ mod tests {
             let mut reals = vec![0.0f64; size];
             let mut imags = vec![0.0f64; size];
 
-            gen_random_signal(&mut reals_original, &mut imags_original);
+            gen_random_signal_f64(&mut reals_original, &mut imags_original);
             reals.copy_from_slice(&reals_original);
             imags.copy_from_slice(&imags_original);
 

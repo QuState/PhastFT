@@ -5,7 +5,7 @@ use std::str::FromStr;
 use fftw::array::AlignedVec;
 use fftw::plan::{C2CPlan, C2CPlan64};
 use fftw::types::{Flag, Sign};
-use utilities::gen_random_signal;
+use utilities::gen_random_signal_f64;
 use utilities::rustfft::num_complex::Complex;
 
 fn benchmark_fftw(n: usize) {
@@ -14,7 +14,7 @@ fn benchmark_fftw(n: usize) {
     let mut reals = vec![0.0; big_n];
     let mut imags = vec![0.0; big_n];
 
-    gen_random_signal(&mut reals, &mut imags);
+    gen_random_signal_f64(&mut reals, &mut imags);
     let mut nums = AlignedVec::new(big_n);
     reals
         .drain(..)

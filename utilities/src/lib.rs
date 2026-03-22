@@ -59,7 +59,7 @@ pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`
-pub fn gen_random_signal(reals: &mut [f64], imags: &mut [f64]) {
+pub fn gen_random_signal_f64(reals: &mut [f64], imags: &mut [f64]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
     let mut rng = SmallRng::from_os_rng();
     let between = Uniform::try_from(0.0..1.0).unwrap();
@@ -99,7 +99,7 @@ mod tests {
         let mut reals = vec![0.0; big_n];
         let mut imags = vec![0.0; big_n];
 
-        gen_random_signal(&mut reals, &mut imags);
+        gen_random_signal_f64(&mut reals, &mut imags);
 
         let sum: f64 = reals
             .iter()
