@@ -44,6 +44,11 @@ macro_rules! impl_bit_rev_bravo {
             // For in-place operation, we handle class pairs that swap with each other.
             // We only process when class_idx <= class_idx_rev to avoid double processing.
 
+            // Hoisted out of the loop to avoid re-initializing on every iteration.
+            // Every element is overwritten by from_slice before being read.
+            let mut chunks_a: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
+            let mut chunks_b: [Chunk<S>; LANES] = [Chunk::splat(simd, Default::default()); LANES];
+
             for class_idx in 0..num_classes {
                 let class_idx_rev = if class_bits > 0 {
                     class_idx.reverse_bits() >> (usize::BITS - class_bits as u32)
@@ -57,8 +62,6 @@ macro_rules! impl_bit_rev_bravo {
                 }
 
                 // Load vectors for class A
-                let mut chunks_a: [Chunk<S>; LANES] =
-                    [Chunk::splat(simd, Default::default()); LANES];
                 for j in 0..w {
                     let base_idx = (class_idx + j * num_classes) * w;
                     chunks_a[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
@@ -92,8 +95,6 @@ macro_rules! impl_bit_rev_bravo {
                     }
                 } else {
                     // Swapping pair - load class B, process it, then swap both
-                    let mut chunks_b: [Chunk<S>; LANES] =
-                        [Chunk::splat(simd, Default::default()); LANES];
                     for j in 0..w {
                         let base_idx = (class_idx_rev + j * num_classes) * w;
                         chunks_b[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
