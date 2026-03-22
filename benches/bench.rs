@@ -1,11 +1,8 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
-use num_traits::Float;
+use num_traits::{Float, Zero};
 use phastft::options::Options;
-use phastft::planner::{Direction, Planner32, Planner64, PlannerDit32, PlannerDit64};
-use phastft::{
-    fft_32_dit_with_planner_and_opts, fft_32_with_opts_and_plan, fft_64_dit_with_planner_and_opts,
-    fft_64_with_opts_and_plan,
-};
+use phastft::planner::{Direction, PlannerDit32, PlannerDit64};
+use phastft::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
 use rand::distr::StandardUniform;
 use rand::prelude::Distribution;
 use rand::rngs::SmallRng;
@@ -78,20 +75,6 @@ fn benchmark_forward_f32(c: &mut Criterion) {
             bytes: (len * size_of::<f32>()) as u64,
         });
 
-        let id = "PhastFT DIF";
-        let options = Options::guess_options(len);
-        let planner = Planner32::new(len, Direction::Forward);
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || generate_numbers::<f32>(len),
-                |(mut reals, mut imags)| {
-                    fft_32_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
-                },
-                BatchSize::SmallInput,
-            );
-        });
-
         let id = "PhastFT DIT";
         let options = Options::guess_options(len);
         let planner_dit = PlannerDit32::new(len, Direction::Forward);
@@ -114,12 +97,13 @@ fn benchmark_forward_f32(c: &mut Criterion) {
         let id = "RustFFT";
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_forward(len);
+        let mut scratch = vec![Complex::<f32>::zero(); fft.get_inplace_scratch_len()];
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
                 || generate_complex_numbers::<f32>(len),
                 |mut signal| {
-                    fft.process(&mut signal);
+                    fft.process_with_scratch(&mut signal, &mut scratch);
                 },
                 BatchSize::SmallInput,
             );
@@ -140,20 +124,6 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
         group.throughput(Throughput::ElementsAndBytes {
             elements: len as u64,
             bytes: (len * size_of::<f32>()) as u64,
-        });
-
-        let id = "PhastFT DIF";
-        let options = Options::guess_options(len);
-        let planner = Planner32::new(len, Direction::Reverse);
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || generate_numbers::<f32>(len),
-                |(mut reals, mut imags)| {
-                    fft_32_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
-                },
-                BatchSize::SmallInput,
-            );
         });
 
         let id = "PhastFT DIT";
@@ -178,12 +148,13 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
         let id = "RustFFT";
         let mut planner = FftPlanner::<f32>::new();
         let fft = planner.plan_fft_inverse(len);
+        let mut scratch = vec![Complex::<f32>::zero(); fft.get_inplace_scratch_len()];
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
                 || generate_complex_numbers::<f32>(len),
                 |mut signal| {
-                    fft.process(&mut signal);
+                    fft.process_with_scratch(&mut signal, &mut scratch);
                 },
                 BatchSize::SmallInput,
             );
@@ -204,20 +175,6 @@ fn benchmark_forward_f64(c: &mut Criterion) {
         group.throughput(Throughput::ElementsAndBytes {
             elements: len as u64,
             bytes: (len * size_of::<f64>()) as u64,
-        });
-
-        let id = "PhastFT DIF";
-        let options = Options::guess_options(len);
-        let planner = Planner64::new(len, Direction::Forward);
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || generate_numbers::<f64>(len),
-                |(mut reals, mut imags)| {
-                    fft_64_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
-                },
-                BatchSize::SmallInput,
-            );
         });
 
         let id = "PhastFT DIT";
@@ -242,12 +199,13 @@ fn benchmark_forward_f64(c: &mut Criterion) {
         let id = "RustFFT";
         let mut planner = FftPlanner::<f64>::new();
         let fft = planner.plan_fft_forward(len);
+        let mut scratch = vec![Complex::<f64>::zero(); fft.get_inplace_scratch_len()];
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
                 || generate_complex_numbers::<f64>(len),
                 |mut signal| {
-                    fft.process(&mut signal);
+                    fft.process_with_scratch(&mut signal, &mut scratch);
                 },
                 BatchSize::SmallInput,
             );
@@ -268,20 +226,6 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
         group.throughput(Throughput::ElementsAndBytes {
             elements: len as u64,
             bytes: (len * size_of::<f64>()) as u64,
-        });
-
-        let id = "PhastFT DIF";
-        let options = Options::guess_options(len);
-        let planner = Planner64::new(len, Direction::Reverse);
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || generate_numbers::<f64>(len),
-                |(mut reals, mut imags)| {
-                    fft_64_with_opts_and_plan(&mut reals, &mut imags, &options, &planner);
-                },
-                BatchSize::SmallInput,
-            );
         });
 
         let id = "PhastFT DIT";
@@ -306,12 +250,13 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
         let id = "RustFFT";
         let mut planner = FftPlanner::<f64>::new();
         let fft = planner.plan_fft_inverse(len);
+        let mut scratch = vec![Complex::<f64>::zero(); fft.get_inplace_scratch_len()];
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
                 || generate_complex_numbers::<f64>(len),
                 |mut signal| {
-                    fft.process(&mut signal);
+                    fft.process_with_scratch(&mut signal, &mut scratch);
                 },
                 BatchSize::SmallInput,
             );

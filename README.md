@@ -11,7 +11,7 @@ Transform (FFT) library written in pure Rust.
 
 ## Features
 
-- Two FFT algorithms: Decimation-in-Frequency (DIF) and Decimation-in-Time (DIT) for different use cases
+- Decimation-in-Time (DIT) FFT algorithm with recursive cache-blocked implementation
 - Simple implementation using the Cooley-Tukey FFT algorithm
 - Performance on par with other Rust FFT implementations
 - Zero `unsafe` code
@@ -59,21 +59,8 @@ including [RustFFT](https://crates.io/crates/rustfft/), while using significantl
 ### Rust
 
 ```rust
-use phastft::{planner::Direction, fft_64};
-
-// Using the default DIF algorithm
-let big_n = 1 << 10;
-let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
-let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
-fft_64(&mut reals, &mut imags, Direction::Forward);
-```
-
-### Using DIT Algorithm
-
-```rust
 use phastft::{fft_64_dit, fft_64_dit_with_planner, planner::{Direction, PlannerDit64}};
 
-// Using DIT algorithm - may have better cache performance for some sizes
 let big_n = 1 << 20;
 let mut reals: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
 let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
@@ -137,43 +124,11 @@ don't hesitate to create an issue.
 
 ### Bit Reversal and Output Order
 
-PhastFT provides two FFT algorithms with different bit reversal behaviors:
-
-#### DIF (Decimation-in-Frequency) - Default Algorithm
-
-- Input: Normal order
-- Output: Bit-reversed order (by default)
-- Bit Reversal: Can be disabled using `Options::dif_perform_bit_reversal = false`
-
-The ability to skip bit reversal in the DIF FFT is useful in cases such as:
-
-- Bit-reversed output is not required, potentially leading to significantly better run-times.
-- You need the output in decimated order for specific algorithms
-- Simulating the QFT
-
-```rust
-use phastft::{fft_64_with_opts_and_plan, options::Options, planner::{Direction, Planner64}};
-
-let size = 1024;
-let mut reals = vec![0.0f64; size];
-let mut imags = vec![0.0f64; size];
-
-// Skip bit reversal for DIF FFT
-let mut opts = Options::default();
-opts.dif_perform_bit_reversal = false;  // Output stays in decimated order
-let planner = Planner64::new(size, Direction::Forward);
-fft_64_with_opts_and_plan(&mut reals, &mut imags, &opts, &planner);
-```
-
-#### DIT (Decimation-in-Time)  
-
 - Input: Normal order (bit-reversed internally)
 - Output: Normal order
 - Bit Reversal: Always performed on input (required for correctness)
 
 ## Performance Notes
-
-**Use DIT for speed.** The DIT algorithm is faster than DIF in most cases due to better memory access patterns. The performance gap is largest for FFTs that fit in L1/L2 cache (up to ~2^17 elements). For huge transforms that blow past cache, both algorithms perform similarly.
 
 **Reuse planners.** If you're doing multiple FFTs of the same size, create the planner once and reuse it.
 
