@@ -32,7 +32,7 @@ fn benchmark_rustfft(n: usize, iterations: usize) {
         fft.process_with_scratch(&mut signal, scratch.as_mut_slice());
     }
     let elapsed = now.elapsed().as_nanos();
-    println!("{elapsed}");
+    println!("took {elapsed} for {iterations} iterations");
 }
 
 fn main() {
