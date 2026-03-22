@@ -65,12 +65,11 @@ macro_rules! impl_bit_rev_bravo {
                 }
 
                 // Perform interleave rounds for class A
+                // Each pair reads (idx0, idx1) and writes to the same (idx0, idx1),
+                // so no aliasing conflict occurs within a round.
                 for round in 0..log_w {
-                    let mut new_chunks: [Chunk<S>; LANES] =
-                        [Chunk::splat(simd, Default::default()); LANES];
                     let stride = 1 << round; // 2.pow(round)
 
-                    let mut pair_idx = 0;
                     let mut i = 0;
                     while i < w {
                         for offset in 0..stride {
@@ -78,17 +77,11 @@ macro_rules! impl_bit_rev_bravo {
                             let idx1 = i + offset + stride;
                             let vec0 = chunks_a[idx0];
                             let vec1 = chunks_a[idx1];
-                            let lo = vec0.zip_low(vec1);
-                            let hi = vec0.zip_high(vec1);
-                            let base = (pair_idx % stride) + (pair_idx / stride) * stride * 2;
-                            new_chunks[base] = lo;
-                            new_chunks[base + stride] = hi;
-                            pair_idx += 1;
+                            chunks_a[idx0] = vec0.zip_low(vec1);
+                            chunks_a[idx1] = vec0.zip_high(vec1);
                         }
                         i += stride * 2;
                     }
-
-                    chunks_a = new_chunks;
                 }
 
                 if class_idx == class_idx_rev {
@@ -108,11 +101,8 @@ macro_rules! impl_bit_rev_bravo {
 
                     // Perform interleave rounds for class B
                     for round in 0..log_w {
-                        let mut new_chunks: [Chunk<S>; LANES] =
-                            [Chunk::splat(simd, Default::default()); LANES];
                         let stride = 1 << round; // 2.pow(round)
 
-                        let mut pair_idx = 0;
                         let mut i = 0;
                         while i < w {
                             for offset in 0..stride {
@@ -120,17 +110,11 @@ macro_rules! impl_bit_rev_bravo {
                                 let idx1 = i + offset + stride;
                                 let vec0 = chunks_b[idx0];
                                 let vec1 = chunks_b[idx1];
-                                let lo = vec0.zip_low(vec1);
-                                let hi = vec0.zip_high(vec1);
-                                let base = (pair_idx % stride) + (pair_idx / stride) * stride * 2;
-                                new_chunks[base] = lo;
-                                new_chunks[base + stride] = hi;
-                                pair_idx += 1;
+                                chunks_b[idx0] = vec0.zip_low(vec1);
+                                chunks_b[idx1] = vec0.zip_high(vec1);
                             }
                             i += stride * 2;
                         }
-
-                        chunks_b = new_chunks;
                     }
 
                     // Swap: write A's result to B's location and vice versa
