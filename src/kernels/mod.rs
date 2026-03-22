@@ -6,10 +6,8 @@
 //!
 //! ## Organization
 //!
-//! - `dif`: Decimation-in-Frequency kernels
 //! - `dit`: Decimation-in-Time kernels
-//! - `common`: Shared utilities and simple kernels used by both, DIF FFT and DIT FFT
+//! - `common`: Shared utilities and simple kernels
 
 pub mod common;
-pub mod dif;
 pub mod dit;
