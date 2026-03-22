@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use utilities::gen_random_signal;
 use utilities::rustfft::num_complex::Complex64;
+use utilities::rustfft::num_traits::Zero;
 use utilities::rustfft::FftPlanner;
 
 fn benchmark_rustfft(n: usize) {
@@ -24,9 +25,10 @@ fn benchmark_rustfft(n: usize) {
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(signal.len());
+    let mut scratch = vec![Complex64::zero(); fft.get_inplace_scratch_len()];
 
     let now = std::time::Instant::now();
-    fft.process(&mut signal);
+    fft.process_with_scratch(&mut signal, scratch.as_mut_slice());
     let elapsed = now.elapsed().as_nanos();
     println!("{elapsed}");
 }
