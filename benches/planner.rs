@@ -15,10 +15,6 @@ fn benchmark_planner_f32(c: &mut Criterion) {
     for n in LENGTHS.iter() {
         let len = 1 << n;
 
-        group.bench_function(BenchmarkId::new("PhastFT DIF", len), |b| {
-            b.iter(|| PlannerDit32::new(len, Direction::Forward));
-        });
-
         group.bench_function(BenchmarkId::new("PhastFT DIT", len), |b| {
             b.iter(|| PlannerDit32::new(len, Direction::Forward));
         });
@@ -41,10 +37,6 @@ fn benchmark_planner_f64(c: &mut Criterion) {
 
     for n in LENGTHS.iter() {
         let len = 1 << n;
-
-        group.bench_function(BenchmarkId::new("PhastFT DIF", len), |b| {
-            b.iter(|| PlannerDit64::new(len, Direction::Forward));
-        });
 
         group.bench_function(BenchmarkId::new("PhastFT DIT", len), |b| {
             b.iter(|| PlannerDit64::new(len, Direction::Forward));
