@@ -32,33 +32,6 @@ Designed for large FFTs (gigabytes of data) common in scientific workloads, e.g.
 - Additional agorithms for non-power-of-2 FFTs
 - Even more work on performance
 
-## How is it so fast?
-
-PhastFT is designed around the capabilities and limitations of modern hardware
-(that is, anything made in the last 10 years or so).
-
-The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses**.
-
-Most literature on FFT focuses on reducing the amount of math operations,
-but today's CPUs are heavily memory-bottlenecked for any amount of data that doesn't fit into the cache.
-It doesn't matter how much or how little CPU instructions you need to execute
-if the CPU spends most of the time just waiting on memory anyway!
-
-[Notes on FFTs for implementers](https://fgiesen.wordpress.com/2023/03/19/notes-on-ffts-for-implementers/) is a good read
-if you want to understand the trade-offs on modern hardware. Its author is not affiliated with PhastFT.
-
-The trade-offs we chose are:
-
-- **In-place** FFT with a separate bit-reversal step reduces memory traffic and peak memory usage compared to out-of-place and auto-sorter FFTs
-- **Radix-2** Cooley-Turkey FFT: radix-4 and split-radix do less math, but require complex and slow bit reversals.
-  - We still need to experiment with fusing multiple radix-2 passes to reduce memory traffic in single-threaded scenarios
-- [**CO-BRAVO**](https://dl.acm.org/doi/abs/10.1145/1248377.1248411) cache-optimal, SIMD-accelerated bit reversal trounces other algorithms.
-- **Decimation in time** maps better to SIMD fused multiply-adds than decimation-in-frequency, and CO-BRAVO makes skipping bit reversal less appealing.
-- **Recursive formulation** enables cache-oblivious FFT and easy parallelism. We switch over to a loop when reaching L1 cache size.
-
-All of this combined results in a fast and efficient FFT implementation competitive with
-the performance of existing Rust FFT crates on medium to large sizes, while using significantly less memory.
-
 ## Quickstart
 
 ### Rust
@@ -156,6 +129,33 @@ plots are available [here](https://github.com/QuState/PhastFT/tree/main/benches#
   <img src="https://raw.githubusercontent.com/QuState/PhastFT/main/assets/py_benchmarks_bar_plot_0_8.png" width="400" title="PhastFT vs. NumPy FFT vs. pyFFTW" alt="PhastFT vs. NumPy FFT vs. pyFFTW">
   <img src="https://raw.githubusercontent.com/QuState/PhastFT/main/assets/py_benchmarks_bar_plot_9_28.png" width="400" title="PhastFT vs. NumPy FFT vs. pyFFTW" alt="PhastFT vs. NumPy FFT vs. pyFFTW">
 </p>
+
+## How is it so fast?
+
+PhastFT is designed around the capabilities and limitations of modern hardware
+(that is, anything made in the last 10 years or so).
+
+The two major bottlenecks in FFT are the **CPU cycles** and **memory accesses**.
+
+Most literature on FFT focuses on reducing the amount of math operations,
+but today's CPUs are heavily memory-bottlenecked for any amount of data that doesn't fit into the cache.
+It doesn't matter how much or how little CPU instructions you need to execute
+if the CPU spends most of the time just waiting on memory anyway!
+
+[Notes on FFTs for implementers](https://fgiesen.wordpress.com/2023/03/19/notes-on-ffts-for-implementers/) is a good read
+if you want to understand the trade-offs on modern hardware. Its author is not affiliated with PhastFT.
+
+The trade-offs we chose are:
+
+- **In-place** FFT with a separate bit-reversal step reduces memory traffic and peak memory usage compared to out-of-place and auto-sorter FFTs
+- **Radix-2** Cooley-Turkey FFT: radix-4 and split-radix do less math, but require complex and slow bit reversals.
+  - We still need to experiment with fusing multiple radix-2 passes to reduce memory traffic in single-threaded scenarios
+- [**CO-BRAVO**](https://dl.acm.org/doi/abs/10.1145/1248377.1248411) cache-optimal, SIMD-accelerated bit reversal trounces other algorithms.
+- **Decimation in time** maps better to SIMD fused multiply-adds than decimation-in-frequency, and CO-BRAVO makes skipping bit reversal less appealing.
+- **Recursive formulation** enables cache-oblivious FFT and easy parallelism. We switch over to a loop when reaching L1 cache size.
+
+All of this combined results in a fast and efficient FFT implementation competitive with
+the performance of existing Rust FFT crates on medium to large sizes, while using significantly less memory.
 
 ## Contributing
 
