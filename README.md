@@ -9,18 +9,18 @@
 PhastFT is a high-performance, "quantum-inspired" Fast Fourier
 Transform (FFT) library written in safe Rust.
 
-Designed for large FFTs common in scientific workloads, e.g. in quantum computer simulators.
+Designed for large FFTs (think gigabytes of data) common in scientific workloads, e.g. in quantum computer simulators.
 
 ## Features
 
+- Performance competitive with other Rust implementations in a single thread, and much faster when multi-threaded
+- In-place algorithm for low memory usage, allows running large FFTs on cheaper hardware
 - Simple implementation using the Cooley-Tukey FFT algorithm and [CO-BRAVO](https://dl.acm.org/doi/abs/10.1145/1248377.1248411) bit reversal
-- Optional multi-threading, speeding up FFTs on large arrays
-- Performance competitive with other Rust FFT implementations, outperforming them if multi-threading is enabled
-- Zero `unsafe` code
+- No `unsafe` code
+- Optional multi-threading
 - SIMD acceleration on SSE4.2, AVX2, NEON and WASM thanks to [`fearless_simd`](https://crates.io/crates/fearless_simd)
 - Selects the fastest SIMD implementation at runtime. No need for `-C target-cpu=native`!
-- Up to 5x lower memory usage than [RustFFT](https://crates.io/crates/rustfft/)
-- Python bindings (via [PyO3](https://github.com/PyO3/pyo3))
+- Coming soon: Python bindings (via [PyO3](https://github.com/PyO3/pyo3))
 
 ## Limitations
 
