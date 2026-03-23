@@ -100,7 +100,7 @@ fft_64_interleaved(&mut signal, Direction::Forward);
 Both `fft_32_interleaved` and `fft_64_interleaved` are available for `f32` and
 `f64` precision respectively.
 
-### Python
+### Python (coming soon)
 
 Follow the instructions at <https://rustup.rs/> to install Rust.
 
@@ -137,9 +137,9 @@ don't hesitate to create an issue.
 
 **Reuse planners.** If you're doing multiple FFTs of the same size, create the planner once and reuse it.
 
-**Threading.** The library automatically uses 2 threads for bit reversal on inputs ≥ 2^22 elements. This threshold was determined empirically.
+**Threading.** If the `parallel` feature is enabled, the library uses 2 threads for bit reversal and all available threads for FFT calculation when it seems profitable.
 
-**Complex numbers.** The separate real/imaginary array API is faster than the interleaved complex API, which currently allocates temporary buffers.
+**Complex numbers.** The separate real/imaginary array API is faster and uses less memory than the interleaved complex API which allocates temporary buffers.
 
 ## Benchmarks
 
