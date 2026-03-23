@@ -1,11 +1,8 @@
-//! Utility functions such as interleave/deinterleave
+//! Functions for complex numbers such as interleave/deinterleave
 
-#[cfg(feature = "complex-nums")]
 use bytemuck::cast_slice;
 use fearless_simd::Simd;
-#[cfg(feature = "complex-nums")]
 use num_complex::Complex;
-#[cfg(feature = "complex-nums")]
 use num_traits::Float;
 
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
@@ -60,7 +57,6 @@ pub(crate) fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) ->
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-#[cfg(feature = "complex-nums")]
 #[inline(always)] // required by fearless_simd
 pub(crate) fn deinterleave_complex64<S: Simd>(
     simd: S,
@@ -76,7 +72,6 @@ pub(crate) fn deinterleave_complex64<S: Simd>(
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-#[cfg(feature = "complex-nums")]
 #[inline(always)] // required by fearless_simd
 pub(crate) fn deinterleave_complex32<S: Simd>(
     simd: S,
@@ -92,7 +87,6 @@ pub(crate) fn deinterleave_complex32<S: Simd>(
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-#[cfg(feature = "complex-nums")]
 pub(crate) fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
     assert_eq!(reals.len(), imags.len());
 
@@ -131,7 +125,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "complex-nums")]
     #[test]
     fn test_separate_and_combine_re_im() {
         let complex_vec: Vec<_> = vec![

@@ -18,6 +18,7 @@ use crate::options::Options;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
 mod algorithms;
+#[cfg(feature = "complex-nums")]
 mod complex_nums;
 mod kernels;
 pub mod options;
