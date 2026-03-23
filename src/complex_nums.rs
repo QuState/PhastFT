@@ -61,9 +61,13 @@ pub(crate) fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) ->
 ///
 /// Panics if `reals.len() != imags.len()`.
 #[cfg(feature = "complex-nums")]
-pub(crate) fn deinterleave_complex64(signal: &[Complex<f64>]) -> (Vec<f64>, Vec<f64>) {
+#[inline(always)] // required by fearless_simd
+pub(crate) fn deinterleave_complex64<S: Simd>(
+    simd: S,
+    signal: &[Complex<f64>],
+) -> (Vec<f64>, Vec<f64>) {
     let complex_t: &[f64] = cast_slice(signal);
-    deinterleave(complex_t)
+    deinterleave(simd, complex_t)
 }
 
 /// Utility function to separate a slice of [`Complex32``]
@@ -73,9 +77,13 @@ pub(crate) fn deinterleave_complex64(signal: &[Complex<f64>]) -> (Vec<f64>, Vec<
 ///
 /// Panics if `reals.len() != imags.len()`.
 #[cfg(feature = "complex-nums")]
-pub(crate) fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
+#[inline(always)] // required by fearless_simd
+pub(crate) fn deinterleave_complex32<S: Simd>(
+    simd: S,
+    signal: &[Complex<f32>],
+) -> (Vec<f32>, Vec<f32>) {
     let complex_t: &[f32] = cast_slice(signal);
-    deinterleave(complex_t)
+    deinterleave(simd, complex_t)
 }
 
 /// Utility function to combine separate vectors of real and imaginary components
@@ -133,7 +141,9 @@ mod tests {
             Complex::new(7.0, 8.0),
         ];
 
-        let (reals, imags) = deinterleave_complex64(&complex_vec);
+        let level = fearless_simd::Level::new();
+
+        let (reals, imags) = dispatch!(level, simd => deinterleave_complex64(simd, &complex_vec));
 
         let recombined_vec = combine_re_im(&reals, &imags);
 
