@@ -10,6 +10,12 @@ use rand::{Rng, SeedableRng};
 use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 
+// IMPORTANT NOTE:
+// This benchmark only measures small sizes, which are not the focus of PhastFT.
+//
+// Criterion is not a good fit for measuring long-running tasks.
+// See examples/benchmark.rs for the benchmarking harness for large sizes.
+
 const LENGTHS: &[usize] = &[
     6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
 ];
