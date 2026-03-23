@@ -63,6 +63,64 @@ impl_fft_interleaved_for!(
     PlannerDit64
 );
 
+#[cfg(feature = "complex-nums")]
+macro_rules! impl_fft_interleaved_with_planner {
+    ($func_name:ident, $precision:ty, $fft_with_opts_func:ident, $planner:ty) => {
+        /// FFT Interleaved with pre-computed planner -- convenience wrapper around
+        /// the `_with_planner_and_opts` variant that automatically guesses options.
+        ///
+        /// For better control over options, use the `_with_planner_and_opts` variant.
+        pub fn $func_name(signal: &mut [Complex<$precision>], planner: &$planner) {
+            let opts = Options::guess_options(signal.len());
+            $fft_with_opts_func(signal, planner, &opts);
+        }
+    };
+}
+
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved_with_planner!(
+    fft_32_interleaved_with_planner,
+    f32,
+    fft_32_interleaved_with_planner_and_opts,
+    PlannerDit32
+);
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved_with_planner!(
+    fft_64_interleaved_with_planner,
+    f64,
+    fft_64_interleaved_with_planner_and_opts,
+    PlannerDit64
+);
+
+#[cfg(feature = "complex-nums")]
+macro_rules! impl_fft_interleaved {
+    ($func_name:ident, $precision:ty, $fft_with_planner_func:ident, $planner:ty) => {
+        /// FFT Interleaved -- convenience wrapper that creates a planner automatically.
+        ///
+        /// For better performance when running multiple FFTs of the same size,
+        /// consider using the `_with_planner` variant.
+        pub fn $func_name(signal: &mut [Complex<$precision>], direction: Direction) {
+            let planner = <$planner>::new(signal.len(), direction);
+            $fft_with_planner_func(signal, &planner);
+        }
+    };
+}
+
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved!(
+    fft_32_interleaved,
+    f32,
+    fft_32_interleaved_with_planner,
+    PlannerDit32
+);
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved!(
+    fft_64_interleaved,
+    f64,
+    fft_64_interleaved_with_planner,
+    PlannerDit64
+);
+
 /// FFT using Decimation-In-Time (DIT) algorithm for f64 with pre-computed planner
 pub fn fft_64_dit_with_planner(reals: &mut [f64], imags: &mut [f64], planner: &PlannerDit64) {
     let opts = Options::guess_options(reals.len());
