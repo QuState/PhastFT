@@ -2,23 +2,14 @@
 
 #[cfg(feature = "complex-nums")]
 use bytemuck::cast_slice;
+use fearless_simd::Simd;
 #[cfg(feature = "complex-nums")]
 use num_complex::Complex;
 #[cfg(feature = "complex-nums")]
 use num_traits::Float;
 
-// Note: Since wide doesn't have simd_swizzle equivalent, we use an optimized scalar approach
-// The compiler should still be able to vectorize this pattern when beneficial
-#[multiversion::multiversion(
-    targets(
-    "x86_64+avx2+fma", // x86_64-v3
-    "x86_64+sse4.2", // x86_64-v2
-    "x86+avx2+fma",
-    "x86+sse4.2",
-    "x86+sse2",
-    ))]
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
-pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
+pub(crate) fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 4;
     const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
 
@@ -34,6 +25,8 @@ pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
         .zip(out_even.chunks_exact_mut(CHUNK_SIZE))
         .for_each(|((in_chunk, odds), evens)| {
             // Manual deinterleaving that compiler can often vectorize
+            // TODO: optimize further with specialized f32/f64 codepaths,
+            // explicit unzip_low/unzip_high and chunk width matching native vector width
             odds[0] = in_chunk[0];
             odds[1] = in_chunk[2];
             odds[2] = in_chunk[4];
@@ -103,6 +96,8 @@ pub(crate) fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T
 
 #[cfg(test)]
 mod tests {
+    use fearless_simd::dispatch;
+
     use super::*;
 
     fn gen_test_vec(len: usize) -> Vec<usize> {
@@ -117,10 +112,11 @@ mod tests {
 
     #[test]
     fn deinterleaving_correctness() {
+        let level = fearless_simd::Level::new();
         for len in [0, 1, 2, 3, 15, 16, 17, 127, 128, 129, 130, 135, 100500] {
             let input = gen_test_vec(len);
             let (naive_a, naive_b) = deinterleave_naive(&input);
-            let (opt_a, opt_b) = deinterleave(&input);
+            let (opt_a, opt_b) = dispatch!(level, simd => deinterleave(simd, &input));
             assert_eq!(naive_a, opt_a);
             assert_eq!(naive_b, opt_b);
         }

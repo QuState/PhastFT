@@ -7,7 +7,5 @@
 //! ## Organization
 //!
 //! - `dit`: Decimation-in-Time kernels
-//! - `common`: Shared utilities and simple kernels
 
-pub mod common;
 pub mod dit;
