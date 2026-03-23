@@ -12,48 +12,115 @@
 #[cfg(feature = "complex-nums")]
 use num_complex::Complex;
 
+#[cfg(feature = "complex-nums")]
+use crate::complex_nums::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 use crate::options::Options;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
-#[cfg(feature = "complex-nums")]
-use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 
 mod algorithms;
+#[cfg(feature = "complex-nums")]
+mod complex_nums;
 mod kernels;
 pub mod options;
 mod parallel;
 pub mod planner;
 #[cfg(test)]
 mod twiddles;
-mod utils;
 
 pub use algorithms::dit::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
 
 #[cfg(feature = "complex-nums")]
 macro_rules! impl_fft_interleaved_for {
-    ($func_name:ident, $precision:ty, $fft_func:ident, $deinterleaving_func: ident) => {
+    ($func_name:ident, $precision:ty, $fft_func:ident, $deinterleaving_func: ident, $planner:ty) => {
         /// FFT Interleaved -- this is an alternative to [`fft_64`]/[`fft_32`] in the case where
         /// the input data is a array of [`Complex`].
         ///
-        /// The input should be provided in normal order, and then the modified input is
-        /// bit-reversed.
+        /// Analogous to [fft_64_dit_with_planner_and_opts] except for the input format.
         ///
-        /// **Note**: This function currently allocates temporary buffers for deinterleaving.
-        /// For maximum performance with minimal allocations, use the separate real/imaginary APIs.
-        ///
-        /// ## References
-        /// <https://inst.eecs.berkeley.edu/~ee123/sp15/Notes/Lecture08_FFT_and_SpectAnalysis.key.pdf>
-        pub fn $func_name(signal: &mut [Complex<$precision>], direction: Direction) {
-            let (mut reals, mut imags) = $deinterleaving_func(signal);
-            $fft_func(&mut reals, &mut imags, direction);
+        /// **Note**: This function has to make a deinterleaved copy of the data.
+        /// For maximum performance with minimal memory usage, use [fft_64_dit_with_planner_and_opts].
+        pub fn $func_name(signal: &mut [Complex<$precision>], planner: &$planner, opts: &Options) {
+            let (mut reals, mut imags) = fearless_simd::dispatch!(planner.simd_level, simd => $deinterleaving_func(simd, signal));
+            $fft_func(&mut reals, &mut imags, planner, opts);
             signal.copy_from_slice(&combine_re_im(&reals, &imags))
         }
     };
 }
 
 #[cfg(feature = "complex-nums")]
-impl_fft_interleaved_for!(fft_32_interleaved, f32, fft_32_dit, deinterleave_complex32);
+impl_fft_interleaved_for!(
+    fft_32_interleaved_with_planner_and_opts,
+    f32,
+    fft_32_dit_with_planner_and_opts,
+    deinterleave_complex32,
+    PlannerDit32
+);
 #[cfg(feature = "complex-nums")]
-impl_fft_interleaved_for!(fft_64_interleaved, f64, fft_64_dit, deinterleave_complex64);
+impl_fft_interleaved_for!(
+    fft_64_interleaved_with_planner_and_opts,
+    f64,
+    fft_64_dit_with_planner_and_opts,
+    deinterleave_complex64,
+    PlannerDit64
+);
+
+#[cfg(feature = "complex-nums")]
+macro_rules! impl_fft_interleaved_with_planner {
+    ($func_name:ident, $precision:ty, $fft_with_opts_func:ident, $planner:ty) => {
+        /// FFT Interleaved with pre-computed planner -- convenience wrapper around
+        /// the `_with_planner_and_opts` variant that automatically guesses options.
+        ///
+        /// For better control over options, use the `_with_planner_and_opts` variant.
+        pub fn $func_name(signal: &mut [Complex<$precision>], planner: &$planner) {
+            let opts = Options::guess_options(signal.len());
+            $fft_with_opts_func(signal, planner, &opts);
+        }
+    };
+}
+
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved_with_planner!(
+    fft_32_interleaved_with_planner,
+    f32,
+    fft_32_interleaved_with_planner_and_opts,
+    PlannerDit32
+);
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved_with_planner!(
+    fft_64_interleaved_with_planner,
+    f64,
+    fft_64_interleaved_with_planner_and_opts,
+    PlannerDit64
+);
+
+#[cfg(feature = "complex-nums")]
+macro_rules! impl_fft_interleaved {
+    ($func_name:ident, $precision:ty, $fft_with_planner_func:ident, $planner:ty) => {
+        /// FFT Interleaved -- convenience wrapper that creates a planner automatically.
+        ///
+        /// For better performance when running multiple FFTs of the same size,
+        /// consider using the `_with_planner` variant.
+        pub fn $func_name(signal: &mut [Complex<$precision>], direction: Direction) {
+            let planner = <$planner>::new(signal.len(), direction);
+            $fft_with_planner_func(signal, &planner);
+        }
+    };
+}
+
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved!(
+    fft_32_interleaved,
+    f32,
+    fft_32_interleaved_with_planner,
+    PlannerDit32
+);
+#[cfg(feature = "complex-nums")]
+impl_fft_interleaved!(
+    fft_64_interleaved,
+    f64,
+    fft_64_interleaved_with_planner,
+    PlannerDit64
+);
 
 /// FFT using Decimation-In-Time (DIT) algorithm for f64 with pre-computed planner
 pub fn fft_64_dit_with_planner(reals: &mut [f64], imags: &mut [f64], planner: &PlannerDit64) {
@@ -66,15 +133,6 @@ pub fn fft_64_dit_with_planner(reals: &mut [f64], imags: &mut [f64], planner: &P
 /// This is a convenient wrapper that creates a planner automatically.
 /// For better performance when running multiple FFTs of the same size,
 /// consider using [`fft_64_dit_with_planner`].
-///
-/// # Algorithm Overview
-///
-/// The DIT algorithm:
-/// 1. Applies bit-reversal to the input (reordering)
-/// 2. Processes from small butterflies (size 2) to large
-/// 3. Output is in natural order
-///
-/// This is the dual of the DIF algorithm, with opposite data flow.
 ///
 /// # Arguments
 ///
@@ -113,15 +171,6 @@ pub fn fft_32_dit_with_planner(reals: &mut [f32], imags: &mut [f32], planner: &P
 /// This is a convenient wrapper that creates a planner automatically.
 /// For better performance when running multiple FFTs of the same size,
 /// consider using [`fft_32_dit_with_planner`].
-///
-/// # Algorithm Overview
-///
-/// The DIT algorithm:
-/// 1. Applies bit-reversal to the input (reordering)
-/// 2. Processes from small butterflies (size 2) to large
-/// 3. Output is in natural order
-///
-/// This is the dual of the DIF algorithm, with opposite data flow.
 ///
 /// # Arguments
 ///

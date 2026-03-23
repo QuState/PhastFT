@@ -1,24 +1,13 @@
-//! Utility functions such as interleave/deinterleave
+//! Functions for complex numbers such as interleave/deinterleave
 
-#[cfg(feature = "complex-nums")]
 use bytemuck::cast_slice;
-#[cfg(feature = "complex-nums")]
+use fearless_simd::Simd;
 use num_complex::Complex;
-#[cfg(feature = "complex-nums")]
 use num_traits::Float;
 
-// Note: Since wide doesn't have simd_swizzle equivalent, we use an optimized scalar approach
-// The compiler should still be able to vectorize this pattern when beneficial
-#[multiversion::multiversion(
-    targets(
-    "x86_64+avx2+fma", // x86_64-v3
-    "x86_64+sse4.2", // x86_64-v2
-    "x86+avx2+fma",
-    "x86+sse4.2",
-    "x86+sse2",
-    ))]
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
-pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
+#[inline(always)] // required by fearless_simd
+pub(crate) fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 4;
     const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
 
@@ -34,6 +23,8 @@ pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
         .zip(out_even.chunks_exact_mut(CHUNK_SIZE))
         .for_each(|((in_chunk, odds), evens)| {
             // Manual deinterleaving that compiler can often vectorize
+            // TODO: optimize further with specialized f32/f64 codepaths,
+            // explicit unzip_low/unzip_high and chunk width matching native vector width
             odds[0] = in_chunk[0];
             odds[1] = in_chunk[2];
             odds[2] = in_chunk[4];
@@ -66,10 +57,13 @@ pub(crate) fn deinterleave<T: Copy + Default>(input: &[T]) -> (Vec<T>, Vec<T>) {
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-#[cfg(feature = "complex-nums")]
-pub(crate) fn deinterleave_complex64(signal: &[Complex<f64>]) -> (Vec<f64>, Vec<f64>) {
+#[inline(always)] // required by fearless_simd
+pub(crate) fn deinterleave_complex64<S: Simd>(
+    simd: S,
+    signal: &[Complex<f64>],
+) -> (Vec<f64>, Vec<f64>) {
     let complex_t: &[f64] = cast_slice(signal);
-    deinterleave(complex_t)
+    deinterleave(simd, complex_t)
 }
 
 /// Utility function to separate a slice of [`Complex32``]
@@ -78,10 +72,13 @@ pub(crate) fn deinterleave_complex64(signal: &[Complex<f64>]) -> (Vec<f64>, Vec<
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-#[cfg(feature = "complex-nums")]
-pub(crate) fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
+#[inline(always)] // required by fearless_simd
+pub(crate) fn deinterleave_complex32<S: Simd>(
+    simd: S,
+    signal: &[Complex<f32>],
+) -> (Vec<f32>, Vec<f32>) {
     let complex_t: &[f32] = cast_slice(signal);
-    deinterleave(complex_t)
+    deinterleave(simd, complex_t)
 }
 
 /// Utility function to combine separate vectors of real and imaginary components
@@ -90,7 +87,6 @@ pub(crate) fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-#[cfg(feature = "complex-nums")]
 pub(crate) fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
     assert_eq!(reals.len(), imags.len());
 
@@ -103,6 +99,8 @@ pub(crate) fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T
 
 #[cfg(test)]
 mod tests {
+    use fearless_simd::dispatch;
+
     use super::*;
 
     fn gen_test_vec(len: usize) -> Vec<usize> {
@@ -117,16 +115,16 @@ mod tests {
 
     #[test]
     fn deinterleaving_correctness() {
+        let level = fearless_simd::Level::new();
         for len in [0, 1, 2, 3, 15, 16, 17, 127, 128, 129, 130, 135, 100500] {
             let input = gen_test_vec(len);
             let (naive_a, naive_b) = deinterleave_naive(&input);
-            let (opt_a, opt_b) = deinterleave(&input);
+            let (opt_a, opt_b) = dispatch!(level, simd => deinterleave(simd, &input));
             assert_eq!(naive_a, opt_a);
             assert_eq!(naive_b, opt_b);
         }
     }
 
-    #[cfg(feature = "complex-nums")]
     #[test]
     fn test_separate_and_combine_re_im() {
         let complex_vec: Vec<_> = vec![
@@ -136,7 +134,9 @@ mod tests {
             Complex::new(7.0, 8.0),
         ];
 
-        let (reals, imags) = deinterleave_complex64(&complex_vec);
+        let level = fearless_simd::Level::new();
+
+        let (reals, imags) = dispatch!(level, simd => deinterleave_complex64(simd, &complex_vec));
 
         let recombined_vec = combine_re_im(&reals, &imags);
 
