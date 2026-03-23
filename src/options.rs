@@ -27,18 +27,18 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             multithreaded_bit_reversal: false,
-            smallest_parallel_chunk_size: usize::MAX,
+            smallest_parallel_chunk_size: 16384,
         }
     }
 }
 
 impl Options {
     /// Attempt to guess the best settings to use for optimal FFT
+    /// `input_size` is measured in number of elements (floats)
     pub fn guess_options(input_size: usize) -> Options {
         let mut options = Options::default();
         let n: usize = input_size.ilog2() as usize;
         options.multithreaded_bit_reversal = n >= 16;
-        options.smallest_parallel_chunk_size = 16384;
         options
     }
 }
