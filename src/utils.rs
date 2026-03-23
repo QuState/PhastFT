@@ -9,6 +9,7 @@ use num_complex::Complex;
 use num_traits::Float;
 
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
+#[inline(always)] // required by fearless_simd
 pub(crate) fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 4;
     const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
