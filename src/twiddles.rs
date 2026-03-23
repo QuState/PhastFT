@@ -1,5 +1,4 @@
-use num_traits::{Float, FloatConst, One, Zero};
-use wide::{f32x8, f64x8};
+use num_traits::{Float, FloatConst};
 
 use crate::planner::Direction;
 
@@ -87,114 +86,6 @@ pub fn generate_twiddles<T: Float + FloatConst>(
     (twiddles_re, twiddles_im)
 }
 
-macro_rules! generate_twiddles_simd {
-    ($func_name:ident, $precision:ty, $lanes:literal, $simd_vector:ty) => {
-        pub(crate) fn $func_name(
-            dist: usize,
-            direction: Direction,
-        ) -> (Vec<$precision>, Vec<$precision>) {
-            const CHUNK_SIZE: usize = 8; // TODO: make this a const generic?
-            assert!(dist >= CHUNK_SIZE * 2);
-            assert_eq!(dist % CHUNK_SIZE, 0);
-            let mut twiddles_re = vec![0.0; dist];
-            let mut twiddles_im = vec![0.0; dist];
-            twiddles_re[0] = 1.0;
-
-            let sign = match direction {
-                Direction::Forward => 1.0,
-                Direction::Reverse => -1.0,
-            };
-
-            let angle = sign * -<$precision>::PI() / dist as $precision;
-            let (st, ct) = angle.sin_cos();
-            let (mut w_re, mut w_im) = (<$precision>::one(), <$precision>::zero());
-
-            let mut next_twiddle = || {
-                let temp = w_re;
-                w_re = w_re * ct - w_im * st;
-                w_im = temp * st + w_im * ct;
-                (w_re, w_im)
-            };
-
-            let apply_symmetry_re = |input: &[$precision], output: &mut [$precision]| {
-                let arr: [$precision; CHUNK_SIZE] = input[0..CHUNK_SIZE].try_into().unwrap();
-                let first_re = <$simd_vector>::new(arr);
-                let minus_one = <$simd_vector>::splat(-1.0);
-                let negated = first_re * minus_one;
-                let mut arr = negated.to_array();
-                arr.reverse();
-                output.copy_from_slice(&arr);
-            };
-
-            let apply_symmetry_im = |input: &[$precision], output: &mut [$precision]| {
-                let mut buf: [$precision; CHUNK_SIZE] = [0.0; CHUNK_SIZE];
-                buf.copy_from_slice(input);
-                buf.reverse();
-                output.copy_from_slice(&buf);
-            };
-
-            // Split the twiddles into two halves. There is a cheaper way to calculate the second half
-            let (first_half_re, second_half_re) = twiddles_re[1..].split_at_mut(dist / 2);
-            assert_eq!(first_half_re.len(), second_half_re.len() + 1);
-            let (first_half_im, second_half_im) = twiddles_im[1..].split_at_mut(dist / 2);
-            assert_eq!(first_half_im.len(), second_half_im.len() + 1);
-
-            first_half_re
-                .chunks_exact_mut(CHUNK_SIZE)
-                .zip(first_half_im.chunks_exact_mut(CHUNK_SIZE))
-                .zip(
-                    second_half_re[CHUNK_SIZE - 1..]
-                        .chunks_exact_mut(CHUNK_SIZE)
-                        .rev(),
-                )
-                .zip(
-                    second_half_im[CHUNK_SIZE - 1..]
-                        .chunks_exact_mut(CHUNK_SIZE)
-                        .rev(),
-                )
-                .for_each(
-                    |(((first_ch_re, first_ch_im), second_ch_re), second_ch_im)| {
-                        // Calculate a chunk of the first half in a plain old scalar way
-                        first_ch_re
-                            .iter_mut()
-                            .zip(first_ch_im.iter_mut())
-                            .for_each(|(re, im)| {
-                                (*re, *im) = next_twiddle();
-                            });
-                        // Calculate a chunk of the second half in a clever way by copying the first chunk
-                        // This avoids data dependencies of the regular calculation and gets vectorized.
-                        // We do it up front while the values we just calculated are still in the cache,
-                        // so we don't have to re-load them from memory later, which would be slow.
-                        apply_symmetry_re(first_ch_re, second_ch_re);
-                        apply_symmetry_im(first_ch_im, second_ch_im);
-                    },
-                );
-
-            // Fill in the middle that the SIMD loop didn't
-            twiddles_re[dist / 2 - CHUNK_SIZE + 1..][..(CHUNK_SIZE * 2) - 1]
-                .iter_mut()
-                .zip(twiddles_im[dist / 2 - CHUNK_SIZE + 1..][..(CHUNK_SIZE * 2) - 1].iter_mut())
-                .for_each(|(re, im)| {
-                    (*re, *im) = next_twiddle();
-                });
-
-            (twiddles_re, twiddles_im)
-        }
-    };
-}
-
-generate_twiddles_simd!(generate_twiddles_simd_64, f64, 8, f64x8);
-generate_twiddles_simd!(generate_twiddles_simd_32, f32, 8, f32x8);
-
-#[multiversion::multiversion(
-                            targets("x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
-                                    "x86_64+avx2+fma", // x86_64-v3
-                                    "x86_64+sse4.2", // x86_64-v2
-                                    "x86+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+gfni",
-                                    "x86+avx2+fma",
-                                    "x86+sse4.2",
-                                    "x86+sse2",
-))]
 pub(crate) fn filter_twiddles<T: Float>(twiddles_re: &[T], twiddles_im: &[T]) -> (Vec<T>, Vec<T>) {
     assert_eq!(twiddles_re.len(), twiddles_im.len());
     let dist = twiddles_re.len();
@@ -226,11 +117,7 @@ mod tests {
 
         let dist = big_n >> 1;
 
-        let (fwd_twiddles_re, fwd_twiddles_im) = if dist >= 8 * 2 {
-            generate_twiddles_simd_64(dist, Direction::Forward)
-        } else {
-            generate_twiddles(dist, Direction::Forward)
-        };
+        let (fwd_twiddles_re, fwd_twiddles_im) = generate_twiddles::<f64>(dist, Direction::Forward);
 
         assert!(fwd_twiddles_re.len() == dist && fwd_twiddles_im.len() == dist);
 
@@ -272,39 +159,6 @@ mod tests {
         assert_float_closeness(w_im, -FRAC_1_SQRT_2, 1e-10);
     }
 
-    macro_rules! test_twiddles_simd {
-        ($test_name:ident, $generate_twiddles_simd:ident, $epsilon:literal) => {
-            #[test]
-            fn $test_name() {
-                for n in 4..25 {
-                    let dist = 1 << n; // 2.pow(n)
-
-                    let (twiddles_re_ref, twiddles_im_ref) =
-                        generate_twiddles(dist, Direction::Forward);
-                    let (twiddles_re, twiddles_im) =
-                        $generate_twiddles_simd(dist, Direction::Forward);
-
-                    twiddles_re
-                        .iter()
-                        .zip(twiddles_re_ref.iter())
-                        .for_each(|(simd, reference)| {
-                            assert_float_closeness(*simd, *reference, $epsilon);
-                        });
-
-                    twiddles_im
-                        .iter()
-                        .zip(twiddles_im_ref.iter())
-                        .for_each(|(simd, reference)| {
-                            assert_float_closeness(*simd, *reference, $epsilon);
-                        });
-                }
-            }
-        };
-    }
-
-    test_twiddles_simd!(twiddles_simd_32, generate_twiddles_simd_32, 1e-1);
-    test_twiddles_simd!(twiddles_simd_64, generate_twiddles_simd_64, 1e-10);
-
     #[test]
     fn twiddles_filter() {
         // Assume n = 28
@@ -344,26 +198,20 @@ mod tests {
     }
 
     macro_rules! forward_mul_inverse_eq_identity {
-        ($test_name:ident, $generate_twiddles_simd_fn:ident) => {
+        ($test_name:ident, $precision:ty) => {
             #[test]
             fn $test_name() {
                 for i in 3..25 {
                     let num_points = 1 << i; // 2.pow(i)
                     let dist = num_points >> 1;
 
-                    let (fwd_twiddles_re, fwd_twiddles_im) = if dist >= 8 * 2 {
-                        $generate_twiddles_simd_fn(dist, Direction::Forward)
-                    } else {
-                        generate_twiddles(dist, Direction::Forward)
-                    };
+                    let (fwd_twiddles_re, fwd_twiddles_im) =
+                        generate_twiddles::<$precision>(dist, Direction::Forward);
 
                     assert_eq!(fwd_twiddles_re.len(), fwd_twiddles_im.len());
 
-                    let (rev_twiddles_re, rev_twiddles_im) = if dist >= 8 * 2 {
-                        $generate_twiddles_simd_fn(dist, Direction::Reverse)
-                    } else {
-                        generate_twiddles(dist, Direction::Reverse)
-                    };
+                    let (rev_twiddles_re, rev_twiddles_im) =
+                        generate_twiddles::<$precision>(dist, Direction::Reverse);
 
                     assert_eq!(rev_twiddles_re.len(), rev_twiddles_im.len());
 
@@ -385,6 +233,6 @@ mod tests {
         };
     }
 
-    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_64, generate_twiddles_simd_64);
-    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_32, generate_twiddles_simd_32);
+    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_64, f64);
+    forward_mul_inverse_eq_identity!(forward_reverse_eq_identity_32, f32);
 }

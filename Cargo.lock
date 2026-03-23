@@ -728,7 +728,6 @@ dependencies = [
  "rand",
  "rayon",
  "utilities",
- "wide",
 ]
 
 [[package]]
@@ -941,15 +940,6 @@ name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
-
-[[package]]
-name = "safe_arch"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f7caad094bd561859bcd467734a720c3c1f5d1f338995351fefe2190c45efed"
-dependencies = [
- "bytemuck",
-]
 
 [[package]]
 name = "same-file"
@@ -1265,16 +1255,6 @@ checksum = "312e32e551d92129218ea9a2452120f4aabc03529ef03e4d0d82fb2780608598"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "wide"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac11b009ebeae802ed758530b6496784ebfee7a87b9abfbcaf3bbe25b814eb25"
-dependencies = [
- "bytemuck",
- "safe_arch",
 ]
 
 [[package]]
