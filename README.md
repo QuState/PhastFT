@@ -9,7 +9,7 @@
 PhastFT is a high-performance, "quantum-inspired" Fast Fourier
 Transform (FFT) library written in safe Rust.
 
-Designed for large FFTs (think gigabytes of data) common in scientific workloads, e.g. in quantum computer simulators.
+Designed for large FFTs (gigabytes of data) common in scientific workloads, e.g. in quantum computer simulators.
 
 ## Features
 
