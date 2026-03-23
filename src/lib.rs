@@ -15,7 +15,7 @@ use num_complex::Complex;
 use crate::options::Options;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 #[cfg(feature = "complex-nums")]
-use crate::utils::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
+use crate::complex_nums::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 
 mod algorithms;
 mod kernels;
@@ -24,7 +24,7 @@ mod parallel;
 pub mod planner;
 #[cfg(test)]
 mod twiddles;
-mod utils;
+mod complex_nums;
 
 pub use algorithms::dit::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
 
