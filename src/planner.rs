@@ -19,13 +19,13 @@ macro_rules! impl_planner_dit_for {
         pub struct $struct_name {
             /// Twiddles for each stage that needs them (stages with chunk_size > 64)
             /// Each element contains (twiddles_re, twiddles_im) for that stage
-            pub stage_twiddles: Vec<(Vec<$precision>, Vec<$precision>)>,
+            pub(crate) stage_twiddles: Vec<(Vec<$precision>, Vec<$precision>)>,
             /// The direction of the FFT
-            pub direction: Direction,
+            pub(crate) direction: Direction,
             /// The log2 of the FFT size
-            pub log_n: usize,
+            pub(crate) log_n: usize,
             /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
-            pub simd_level: fearless_simd::Level,
+            pub(crate) simd_level: fearless_simd::Level,
         }
 
         impl $struct_name {
