@@ -174,7 +174,7 @@ implementation in pure Rust. RustFFT and PhastFT make different trade-offs.
 
 ### PhastFT advantages
 
- - Up to 2x lower memory usage, letting you use laptops or much cheaper cloud instances for large FFTs
+ - Up to 2x lower memory usage, letting you use laptops or cheaper cloud instances for large FFTs
  - Multi-threading support, much higher performance on large sizes when using multi-threading
  - No `unsafe` code
 
