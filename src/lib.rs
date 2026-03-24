@@ -18,8 +18,10 @@ use crate::options::Options;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
 mod algorithms;
-#[cfg(feature = "complex-nums")]
+#[cfg(all(feature = "complex-nums", not(phastft_bench)))]
 mod complex_nums;
+#[cfg(all(feature = "complex-nums", phastft_bench))]
+pub mod complex_nums;
 mod kernels;
 pub mod options;
 mod parallel;
@@ -40,7 +42,7 @@ macro_rules! impl_fft_interleaved_for {
         /// **Note**: This function has to make a deinterleaved copy of the data.
         /// For maximum performance with minimal memory usage, use [fft_64_dit_with_planner_and_opts].
         pub fn $func_name(signal: &mut [Complex<$precision>], planner: &$planner, opts: &Options) {
-            let (mut reals, mut imags) = fearless_simd::dispatch!(planner.simd_level, simd => $deinterleaving_func(simd, signal));
+            let (mut reals, mut imags) = $deinterleaving_func(signal);
             $fft_func(&mut reals, &mut imags, planner, opts);
             signal.copy_from_slice(&combine_re_im(&reals, &imags))
         }
