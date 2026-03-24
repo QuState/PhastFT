@@ -11,7 +11,7 @@ use rand::{Rng, SeedableRng};
 // RUSTFLAGS="--cfg phastft_bench" cargo bench --bench interleave --features complex-nums
 
 const LENGTHS: &[usize] = &[
-    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 ];
 
 fn generate_interleaved_f32(n: usize) -> Vec<f32> {
