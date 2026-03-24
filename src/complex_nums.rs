@@ -38,6 +38,23 @@ pub fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
     deinterleave(complex_t)
 }
 
+/// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length,
+/// writing to existing output slices instead of allocating new Vecs.
+///
+/// # Panics
+///
+/// Panics if `output_a.len()` or `output_b.len()` does not equal `input.len() / 2`.
+pub fn deinterleave_into<T: Copy>(input: &[T], output_a: &mut [T], output_b: &mut [T]) {
+    let half = input.len() / 2;
+    assert_eq!(output_a.len(), half);
+    assert_eq!(output_b.len(), half);
+
+    for (i, c) in input.chunks_exact(2).enumerate() {
+        output_a[i] = c[0];
+        output_b[i] = c[1];
+    }
+}
+
 /// Utility function to combine separate vectors of real and imaginary components
 /// into a single vector of Complex Number Structs.
 ///
@@ -52,6 +69,21 @@ pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
         .zip(imags.iter())
         .map(|(z_re, z_im)| Complex::new(*z_re, *z_im))
         .collect()
+}
+
+/// Combines separate slices of real and imaginary components into an existing
+/// output slice of Complex Number Structs.
+///
+/// # Panics
+///
+/// Panics if `reals.len() != imags.len()` or `output.len() != reals.len()`.
+pub fn combine_re_im_into<T: Float>(reals: &[T], imags: &[T], output: &mut [Complex<T>]) {
+    assert_eq!(reals.len(), imags.len());
+    assert_eq!(output.len(), reals.len());
+
+    for ((out, z_re), z_im) in output.iter_mut().zip(reals.iter()).zip(imags.iter()) {
+        *out = Complex::new(*z_re, *z_im);
+    }
 }
 
 #[cfg(test)]
@@ -84,6 +116,20 @@ mod tests {
     }
 
     #[test]
+    fn deinterleave_into_correctness() {
+        for len in [0, 1, 2, 3, 15, 16, 17, 127, 128, 129, 130, 135, 100500] {
+            let input = gen_test_vec(len);
+            let half = len / 2;
+            let mut out_a = vec![0usize; half];
+            let mut out_b = vec![0usize; half];
+            deinterleave_into(&input, &mut out_a, &mut out_b);
+            let (expected_a, expected_b) = deinterleave(&input);
+            assert_eq!(out_a, expected_a);
+            assert_eq!(out_b, expected_b);
+        }
+    }
+
+    #[test]
     fn test_separate_and_combine_re_im() {
         let mut rng = SmallRng::from_os_rng();
         let complex_vec: Vec<f32> = (&mut rng)
@@ -97,5 +143,22 @@ mod tests {
 
         let recombined_flat: &[f32] = cast_slice(recombined_vec.as_slice());
         assert_eq!(complex_vec, recombined_flat);
+    }
+
+    #[test]
+    fn test_separate_and_combine_re_im_into() {
+        let mut rng = SmallRng::from_os_rng();
+        let complex_vec: Vec<f32> = (&mut rng)
+            .sample_iter(StandardUniform)
+            .take(16384)
+            .collect();
+
+        let (reals, imags) = deinterleave(&complex_vec);
+
+        let mut output = vec![Complex::new(0.0f32, 0.0f32); reals.len()];
+        combine_re_im_into(&reals, &imags, &mut output);
+
+        let output_flat: &[f32] = cast_slice(output.as_slice());
+        assert_eq!(complex_vec, output_flat);
     }
 }
