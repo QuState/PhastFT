@@ -11,47 +11,11 @@ use num_traits::Float;
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
 #[inline(always)] // required by fearless_simd
 pub fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T>, Vec<T>) {
-    const CHUNK_SIZE: usize = 4;
-    const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
-
-    let out_len = input.len() / 2;
-    // We've benchmarked, and it turns out that this approach with zeroed memory
-    // is faster than using uninit memory and bumping the length once in a while!
-    let mut out_odd = vec![T::default(); out_len];
-    let mut out_even = vec![T::default(); out_len];
-
-    input
-        .chunks_exact(DOUBLE_CHUNK)
-        .zip(out_odd.chunks_exact_mut(CHUNK_SIZE))
-        .zip(out_even.chunks_exact_mut(CHUNK_SIZE))
-        .for_each(|((in_chunk, odds), evens)| {
-            // Manual deinterleaving that compiler can often vectorize
-            // TODO: optimize further with specialized f32/f64 codepaths,
-            // explicit unzip_low/unzip_high and chunk width matching native vector width
-            odds[0] = in_chunk[0];
-            odds[1] = in_chunk[2];
-            odds[2] = in_chunk[4];
-            odds[3] = in_chunk[6];
-            evens[0] = in_chunk[1];
-            evens[1] = in_chunk[3];
-            evens[2] = in_chunk[5];
-            evens[3] = in_chunk[7];
-        });
-
-    // Process the remainder, too small for the vectorized loop
-    let input_rem = input.chunks_exact(DOUBLE_CHUNK).remainder();
-    let odds_rem = out_odd.chunks_exact_mut(CHUNK_SIZE).into_remainder();
-    let evens_rem = out_even.chunks_exact_mut(CHUNK_SIZE).into_remainder();
-    input_rem
-        .chunks_exact(2)
-        .zip(odds_rem.iter_mut())
-        .zip(evens_rem.iter_mut())
-        .for_each(|((inp, odd), even)| {
-            *odd = inp[0];
-            *even = inp[1];
-        });
-
-    (out_odd, out_even)
+    // Despite relying on autovectorization, this is the fastest approach
+    // because we don't need to initialize the output Vecs.
+    // The Vecs are also allocated up front without intermediate reallocations.
+    // This is faster than any implementation we could write without `unsafe`.
+    input.chunks_exact(2).map(|c| (c[0], c[1])).unzip()
 }
 
 /// Utility function to separate a slice of [`Complex64``]
