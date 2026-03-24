@@ -185,16 +185,6 @@ pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: 
     }
 }
 
-/// Phase 2 of in-place block-based interleaving. Single-threaded.
-fn interleave_blocks_inplace<T: Copy + Default>(data: &mut [T], block_size: usize) {
-    let mut temp_pair = vec![T::default(); 2 * block_size];
-    for chunk in data.chunks_exact_mut(2 * block_size) {
-        let (reals, imags) = chunk.split_at(block_size);
-        combine_re_im_into(reals, imags, &mut temp_pair);
-        chunk.copy_from_slice(&temp_pair);
-    }
-}
-
 #[cfg(feature = "parallel")]
 /// Performs an in-place interleaving of `[Reals | Imags]` into `[Re, Im, Re, Im...]`.
 /// `data.len()` and `block_size` must both be powers of 2.
@@ -281,20 +271,6 @@ pub fn interleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], blo
     // Phase 2: Local SIMD Interleave (parallel)
     // Reassemble data from the cycle slices — they're already written back
     // into the original data buffer since &mut [T] pointed into it.
-    data.par_chunks_exact_mut(2 * block_size).for_each_init(
-        || vec![T::default(); 2 * block_size],
-        |temp_pair, chunk| {
-            let (reals, imags) = chunk.split_at(block_size);
-            combine_re_im_into(reals, imags, temp_pair);
-            chunk.copy_from_slice(&temp_pair);
-        },
-    );
-}
-
-#[cfg(feature = "parallel")]
-/// Phase 2 of in-place block-based interleaving. Multi-threaded through Rayon.
-fn interleave_blocks_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
-    use rayon::prelude::*;
     data.par_chunks_exact_mut(2 * block_size).for_each_init(
         || vec![T::default(); 2 * block_size],
         |temp_pair, chunk| {
