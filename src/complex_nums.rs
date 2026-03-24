@@ -196,7 +196,7 @@ fn interleave_blocks_inplace<T: Copy + Default>(data: &mut [T], block_size: usiz
 #[cfg(feature = "parallel")]
 /// Performs an in-place interleaving of `[Reals | Imags]` into `[Re, Im, Re, Im...]`.
 /// `data.len()` and `block_size` must both be powers of 2.
-pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
+pub fn interleave_inplace<T: bytemuck::Pod + Send>(data: &mut [T], block_size: usize) {
     interleave_inplace_parallel(data, block_size)
 }
 
@@ -204,7 +204,9 @@ pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: 
 /// Both phases are parallelized via Rayon.
 /// `data.len()` and `block_size` must both be powers of 2.
 #[cfg(feature = "parallel")]
-pub fn interleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
+pub fn interleave_inplace_parallel<T: bytemuck::Pod + Send>(data: &mut [T], block_size: usize) {
+    use std::cell::RefCell;
+
     let len = data.len();
     assert!(len.is_power_of_two(), "Data length must be a power of 2");
     assert!(
@@ -232,6 +234,11 @@ pub fn interleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], blo
     // loops back after exactly k steps).
     let max_cycle_len = k as usize;
 
+    // Thread-local byte buffer reused across spawned tasks on the same thread.
+    thread_local! {
+        static TEMP_BUF: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    }
+
     rayon::scope(|s| {
         for i in 0..num_blocks {
             if is_cycle_leader(i, k) {
@@ -255,17 +262,24 @@ pub fn interleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], blo
                     if cycle_len <= 1 {
                         return;
                     }
-                    let mut temp = vec![T::default(); block_size];
+                    TEMP_BUF.with(|cell| {
+                        let mut buf = cell.borrow_mut();
+                        let needed = block_size * std::mem::size_of::<T>();
+                        if buf.len() < needed {
+                            buf.resize(needed, 0);
+                        }
+                        let temp: &mut [T] = bytemuck::cast_slice_mut(&mut buf[..needed]);
 
-                    // Save the last block
-                    temp.copy_from_slice(&cycle_slices[cycle_len - 1]);
-                    // Shift each block one position forward (from the end)
-                    for idx in (1..cycle_len).rev() {
-                        let (left, right) = cycle_slices.split_at_mut(idx);
-                        right[0].copy_from_slice(&left[idx - 1]);
-                    }
-                    // Place saved block at position 0
-                    cycle_slices[0].copy_from_slice(&temp);
+                        // Save the last block
+                        temp.copy_from_slice(&cycle_slices[cycle_len - 1]);
+                        // Shift each block one position forward (from the end)
+                        for idx in (1..cycle_len).rev() {
+                            let (left, right) = cycle_slices.split_at_mut(idx);
+                            right[0].copy_from_slice(&left[idx - 1]);
+                        }
+                        // Place saved block at position 0
+                        cycle_slices[0].copy_from_slice(temp);
+                    });
                 });
             }
         }
@@ -279,10 +293,10 @@ pub fn interleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], blo
 
 #[cfg(feature = "parallel")]
 /// Phase 2 of in-place block-based interleaving. Multi-threaded through Rayon.
-fn interleave_blocks_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
+fn interleave_blocks_inplace_parallel<T: bytemuck::Pod + Send>(data: &mut [T], block_size: usize) {
     use rayon::prelude::*;
     data.par_chunks_exact_mut(2 * block_size).for_each_init(
-        || vec![T::default(); 2 * block_size],
+        || vec![T::zeroed(); 2 * block_size],
         |temp_pair, chunk| {
             let (reals, imags) = chunk.split_at(block_size);
             combine_re_im_into(reals, imags, temp_pair);
