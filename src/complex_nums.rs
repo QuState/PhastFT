@@ -1,6 +1,7 @@
 //! Functions for complex numbers such as interleave/deinterleave
-//! 
+//!
 //! They are not part of the public API because the module they're in is private.
+//! They can be accessed with `--cfg phastft_bench` for benchmarking only.
 
 use bytemuck::cast_slice;
 use fearless_simd::Simd;
@@ -60,10 +61,7 @@ pub fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T
 ///
 /// Panics if `reals.len() != imags.len()`.
 #[inline(always)] // required by fearless_simd
-pub fn deinterleave_complex64<S: Simd>(
-    simd: S,
-    signal: &[Complex<f64>],
-) -> (Vec<f64>, Vec<f64>) {
+pub fn deinterleave_complex64<S: Simd>(simd: S, signal: &[Complex<f64>]) -> (Vec<f64>, Vec<f64>) {
     let complex_t: &[f64] = cast_slice(signal);
     deinterleave(simd, complex_t)
 }
@@ -75,10 +73,7 @@ pub fn deinterleave_complex64<S: Simd>(
 ///
 /// Panics if `reals.len() != imags.len()`.
 #[inline(always)] // required by fearless_simd
-pub fn deinterleave_complex32<S: Simd>(
-    simd: S,
-    signal: &[Complex<f32>],
-) -> (Vec<f32>, Vec<f32>) {
+pub fn deinterleave_complex32<S: Simd>(simd: S, signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
     let complex_t: &[f32] = cast_slice(signal);
     deinterleave(simd, complex_t)
 }

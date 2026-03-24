@@ -38,6 +38,11 @@ harness = false
 name = "planner"
 harness = false
 
+[[bench]]
+name = "interleave"
+harness = false
+required-features = ["complex-nums"]
+
 [profile.profiling]
 inherits = "release"
 debug = true
@@ -47,4 +52,4 @@ all-features = true
 
 [lints.rust]
 # suppresses warnings about 'bench' cfg that we do genuinely use
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(bench)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(phastft_bench)'] }
