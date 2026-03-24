@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn test_perfect_round_trip() {
+    fn test_perfect_round_trip_inplace() {
         let n = 2048;
         let block_size = 32; // Try tweaking this block size! (Must be a power of 2)
         let half = n / 2;
