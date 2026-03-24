@@ -177,8 +177,7 @@ pub fn interleave_inplace<T: Copy + Default>(data: &mut [T], block_size: usize) 
 
     // Phase 2: Local SIMD Interleave
     let mut temp_pair = vec![T::default(); 2 * block_size];
-    for i in 0..(num_blocks / 2) {
-        let window = &mut data[2 * i * block_size..2 * (i + 1) * block_size];
+    for window in data.chunks_exact_mut(2 * block_size) {
         let (reals, imags) = window.split_at(block_size);
         combine_re_im_into(reals, imags, &mut temp_pair);
         window.copy_from_slice(&temp_pair);
@@ -202,8 +201,7 @@ pub fn deinterleave_inplace<T: Copy + Default>(data: &mut [T], block_size: usize
     let mut temp_re = vec![T::default(); block_size];
     let mut temp_im = vec![T::default(); block_size];
 
-    for i in 0..(num_blocks / 2) {
-        let window = &mut data[2 * i * block_size..2 * (i + 1) * block_size];
+    for window in data.chunks_exact_mut(2 * block_size) {
         deinterleave_into(window, &mut temp_re, &mut temp_im);
 
         // Write the newly split arrays back over the combined window
