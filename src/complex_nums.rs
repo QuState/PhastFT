@@ -1,4 +1,6 @@
 //! Functions for complex numbers such as interleave/deinterleave
+//! 
+//! They are not part of the public API because the module they're in is private.
 
 use bytemuck::cast_slice;
 use fearless_simd::Simd;
@@ -7,7 +9,7 @@ use num_traits::Float;
 
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
 #[inline(always)] // required by fearless_simd
-pub(crate) fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T>, Vec<T>) {
+pub fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T>, Vec<T>) {
     const CHUNK_SIZE: usize = 4;
     const DOUBLE_CHUNK: usize = CHUNK_SIZE * 2;
 
@@ -58,7 +60,7 @@ pub(crate) fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) ->
 ///
 /// Panics if `reals.len() != imags.len()`.
 #[inline(always)] // required by fearless_simd
-pub(crate) fn deinterleave_complex64<S: Simd>(
+pub fn deinterleave_complex64<S: Simd>(
     simd: S,
     signal: &[Complex<f64>],
 ) -> (Vec<f64>, Vec<f64>) {
@@ -73,7 +75,7 @@ pub(crate) fn deinterleave_complex64<S: Simd>(
 ///
 /// Panics if `reals.len() != imags.len()`.
 #[inline(always)] // required by fearless_simd
-pub(crate) fn deinterleave_complex32<S: Simd>(
+pub fn deinterleave_complex32<S: Simd>(
     simd: S,
     signal: &[Complex<f32>],
 ) -> (Vec<f32>, Vec<f32>) {
@@ -87,7 +89,7 @@ pub(crate) fn deinterleave_complex32<S: Simd>(
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-pub(crate) fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
+pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
     assert_eq!(reals.len(), imags.len());
 
     reals

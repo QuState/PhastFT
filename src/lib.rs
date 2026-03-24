@@ -18,8 +18,10 @@ use crate::options::Options;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
 mod algorithms;
-#[cfg(feature = "complex-nums")]
+#[cfg(all(feature = "complex-nums", not(bench)))]
 mod complex_nums;
+#[cfg(all(feature = "complex-nums", bench))]
+pub mod complex_nums;
 mod kernels;
 pub mod options;
 mod parallel;
