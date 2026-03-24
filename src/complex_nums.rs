@@ -281,8 +281,9 @@ pub fn interleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], blo
     );
 }
 
+#[cfg(not(feature = "parallel"))]
 /// Reverses the in-place interleaving, returning `[Re, Im, ...]` back to `[Reals | Imags]`.
-pub fn deinterleave_inplace<T: Copy + Default>(data: &mut [T], block_size: usize) {
+pub fn deinterleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
     let len = data.len();
     assert!(len.is_power_of_two(), "Data length must be a power of 2");
     assert!(
@@ -314,7 +315,7 @@ pub fn deinterleave_inplace<T: Copy + Default>(data: &mut [T], block_size: usize
     for i in 0..num_blocks {
         // We use the EXACT same cycle leader logic. The sets are identical!
         if is_cycle_leader(i, k) {
-            temp_block.copy_from_slice(&data[i * block_size..(i + 1) * block_size]);
+            temp_block.copy_from_slice(&data[i * block_size..][..block_size]);
 
             let mut hole = i;
             loop {
@@ -322,7 +323,7 @@ pub fn deinterleave_inplace<T: Copy + Default>(data: &mut [T], block_size: usize
                 let source = left_rotate(hole, k);
 
                 if source == i {
-                    data[hole * block_size..(hole + 1) * block_size].copy_from_slice(&temp_block);
+                    data[hole * block_size..][..block_size].copy_from_slice(&temp_block);
                     break;
                 }
 
@@ -334,6 +335,108 @@ pub fn deinterleave_inplace<T: Copy + Default>(data: &mut [T], block_size: usize
             }
         }
     }
+}
+
+#[cfg(feature = "parallel")]
+/// Reverses the in-place interleaving, returning `[Re, Im, ...]` back to `[Reals | Imags]`.
+/// `data.len()` and `block_size` must both be powers of 2.
+pub fn deinterleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
+    deinterleave_inplace_parallel(data, block_size)
+}
+
+/// Reverses the in-place interleaving, returning `[Re, Im, ...]` back to `[Reals | Imags]`.
+/// Both phases are parallelized via Rayon.
+/// `data.len()` and `block_size` must both be powers of 2.
+#[cfg(feature = "parallel")]
+pub fn deinterleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
+    use rayon::prelude::*;
+
+    let len = data.len();
+    assert!(len.is_power_of_two(), "Data length must be a power of 2");
+    assert!(
+        block_size.is_power_of_two(),
+        "Block size must be a power of 2"
+    );
+    assert!(len >= block_size * 2, "Data must contain at least 2 blocks");
+
+    let num_blocks = len / block_size;
+    let k = num_blocks.trailing_zeros();
+
+    // Phase 1: Local SIMD Deinterleave (parallel)
+    data.par_chunks_exact_mut(2 * block_size).for_each_init(
+        || {
+            (
+                vec![T::default(); block_size],
+                vec![T::default(); block_size],
+            )
+        },
+        |(temp_re, temp_im), window| {
+            deinterleave_into(window, temp_re, temp_im);
+
+            let (reals, imags) = window.split_at_mut(block_size);
+            reals.copy_from_slice(temp_re);
+            imags.copy_from_slice(temp_im);
+        },
+    );
+
+    // Phase 2: Block Perfect Unshuffle (Reverse), parallelized.
+    // Destination: block at position j moves to right_rotate(j, k).
+    //
+    // We pre-compute all permutation cycles on the main thread by collecting
+    // disjoint &mut slices for each cycle. Then rayon applies each cycle's
+    // permutation in parallel, which is safe because cycles touch disjoint blocks.
+
+    // Split data into one &mut slice per block.
+    let mut block_slices: Vec<Option<&mut [T]>> =
+        data.chunks_exact_mut(block_size).map(|s| Some(s)).collect();
+
+    // Collect cycles: for each cycle leader, gather its block slices.
+    // Every cycle has length at most k (since multiplying by 2 mod 2^k-1
+    // loops back after exactly k steps), so there are at most num_blocks/k cycles.
+    let max_cycle_len = k as usize;
+    let mut cycles: Vec<Vec<&mut [T]>> = Vec::with_capacity(num_blocks / max_cycle_len.max(1));
+    for i in 0..num_blocks {
+        if is_cycle_leader(i, k) {
+            let mut cycle_slices = Vec::with_capacity(max_cycle_len);
+            let mut j = i;
+            loop {
+                cycle_slices.push(
+                    block_slices[j]
+                        .take()
+                        .expect("block already taken by another cycle"),
+                );
+                j = left_rotate(j, k);
+                if j == i {
+                    break;
+                }
+            }
+            cycles.push(cycle_slices);
+        }
+    }
+
+    // Apply each cycle's permutation in parallel.
+    // For deinterleaving the permutation is the INVERSE of interleaving:
+    // content moves from cycle[n+1] to cycle[n], wrapping around.
+    // So we rotate slice contents LEFT: save the first, shift everything left by one,
+    // then place the saved first into the last position.
+    cycles.into_par_iter().for_each_init(
+        || vec![T::default(); block_size],
+        |temp, mut cycle_slices| {
+            let cycle_len = cycle_slices.len();
+            if cycle_len <= 1 {
+                return;
+            }
+            // Save the first block
+            temp.copy_from_slice(&cycle_slices[0]);
+            // Shift each block one position backward (from the start)
+            for idx in 0..cycle_len - 1 {
+                let (left, right) = cycle_slices.split_at_mut(idx + 1);
+                left[idx].copy_from_slice(&right[0]);
+            }
+            // Place saved block at the last position
+            cycle_slices[cycle_len - 1].copy_from_slice(temp);
+        },
+    );
 }
 
 #[cfg(test)]
@@ -454,6 +557,44 @@ mod tests {
                 assert_eq!(
                     data, data_seq,
                     "Parallel and sequential interleave differ for n={n}, block_size={block_size}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "parallel")]
+    fn test_perfect_round_trip_deinterleave_parallel() {
+        for &block_size in &[1, 2, 4, 8, 16, 32] {
+            for &n in &[8, 16, 64, 256, 2048] {
+                if n < block_size * 2 {
+                    continue;
+                }
+                let half = n / 2;
+
+                let mut original = vec![0.0f32; n];
+                for i in 0..n {
+                    original[i] = i as f32;
+                }
+
+                // Interleave first, then test that parallel deinterleave reverses it
+                let expected_interleaved =
+                    interleave_out_of_place(&original[..half], &original[half..]);
+
+                let mut data = expected_interleaved.clone();
+                deinterleave_inplace_parallel(&mut data, block_size);
+
+                assert_eq!(
+                    data, original,
+                    "Parallel deinterleave failed for n={n}, block_size={block_size}"
+                );
+
+                // Verify the parallel version matches the sequential version
+                let mut data_seq = expected_interleaved.clone();
+                deinterleave_inplace(&mut data_seq, block_size);
+                assert_eq!(
+                    data, data_seq,
+                    "Parallel and sequential deinterleave differ for n={n}, block_size={block_size}"
                 );
             }
         }
