@@ -144,6 +144,7 @@ impl_bit_rev_bravo!(bit_rev_bravo_chunk_8_f64, f64, f64x8<S>, 8);
 /// # Arguments
 /// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
 /// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
+#[cfg(not(feature = "parallel"))]
 #[inline(always)] // required by fearless_simd
 pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
     match <S::f32s>::N {
@@ -158,6 +159,7 @@ pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
 /// # Arguments
 /// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
 /// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
+#[cfg(not(feature = "parallel"))]
 #[inline(always)] // required by fearless_simd
 pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
     match <S::f64s>::N {
@@ -166,6 +168,194 @@ pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
         2 => bit_rev_bravo_chunk_4_f64(simd, data, n), // SSE, NEON and fallback
         _ => bit_rev_bravo_chunk_8_f64(simd, data, n),
         // fearless_simd has no native support for AVX-512 yet
+    }
+}
+
+#[cfg(feature = "parallel")]
+#[inline(always)] // required by fearless_simd
+pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
+    bit_rev_bravo_f32_parallel(simd, data, n)
+}
+
+#[cfg(feature = "parallel")]
+#[inline(always)] // required by fearless_simd
+pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
+    bit_rev_bravo_f64_parallel(simd, data, n)
+}
+
+/// Parallel macro variant. Splits data chunks into disjoint work items
+/// and processes equivalence class pairs via rayon.
+#[cfg(feature = "parallel")]
+macro_rules! impl_bit_rev_bravo_parallel {
+    ($fn_name:ident, $elem_ty:ty, $vec_ty:ty, $lanes:expr) => {
+        #[inline(always)] // required by fearless_simd
+        fn $fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
+            use rayon::prelude::*;
+
+            type Chunk<S> = $vec_ty;
+            const LANES: usize = $lanes;
+
+            assert!(<Chunk<S>>::N == LANES);
+
+            let big_n = 1usize << n;
+            assert_eq!(data.len(), big_n, "Data length must be 2^n");
+
+            if big_n < LANES * LANES {
+                scalar_bit_reversal(data, n);
+                return;
+            }
+
+            let log_w = LANES.ilog2() as usize;
+            let num_classes = big_n / (LANES * LANES);
+            let class_bits = n - 2 * log_w;
+
+            let (data_chunks, _) = data.as_chunks_mut::<LANES>();
+
+            // Split into Option<&mut> slots so we can .take() disjoint refs
+            let mut chunk_slots: Vec<Option<&mut [$elem_ty; LANES]>> =
+                data_chunks.iter_mut().map(|c| Some(c)).collect();
+
+            // Collect work items: (chunks_a, Option<chunks_b>)
+            // Each is a Vec of LANES mutable refs to disjoint chunks.
+            let mut work_items: Vec<(
+                Vec<&mut [$elem_ty; LANES]>,
+                Option<Vec<&mut [$elem_ty; LANES]>>,
+            )> = Vec::new();
+
+            for class_idx in 0..num_classes {
+                let class_idx_rev = if class_bits > 0 {
+                    class_idx.reverse_bits() >> (usize::BITS - class_bits as u32)
+                } else {
+                    0
+                };
+
+                if class_idx > class_idx_rev {
+                    continue;
+                }
+
+                let mut a_refs = Vec::with_capacity(LANES);
+                for j in 0..LANES {
+                    a_refs.push(
+                        chunk_slots[class_idx + j * num_classes]
+                            .take()
+                            .expect("chunk already taken"),
+                    );
+                }
+
+                let b_refs = if class_idx != class_idx_rev {
+                    let mut b = Vec::with_capacity(LANES);
+                    for j in 0..LANES {
+                        b.push(
+                            chunk_slots[class_idx_rev + j * num_classes]
+                                .take()
+                                .expect("chunk already taken"),
+                        );
+                    }
+                    Some(b)
+                } else {
+                    None
+                };
+
+                work_items.push((a_refs, b_refs));
+            }
+
+            // Process all work items in parallel
+            work_items.into_par_iter().for_each(|(mut a_refs, b_refs)| {
+                simd.vectorize(
+                    #[inline(always)]
+                    || {
+                        let mut chunks_a: [Chunk<S>; LANES] =
+                            [Chunk::splat(simd, Default::default()); LANES];
+
+                        // Load class A
+                        for j in 0..LANES {
+                            chunks_a[j] = Chunk::from_slice(simd, &*a_refs[j]);
+                        }
+
+                        // Interleave rounds for class A
+                        for round in 0..log_w {
+                            let stride = 1 << round;
+                            let mut i = 0;
+                            while i < LANES {
+                                for offset in 0..stride {
+                                    let idx0 = i + offset;
+                                    let idx1 = i + offset + stride;
+                                    let vec0 = chunks_a[idx0];
+                                    let vec1 = chunks_a[idx1];
+                                    chunks_a[idx0] = vec0.zip_low(vec1);
+                                    chunks_a[idx1] = vec0.zip_high(vec1);
+                                }
+                                i += stride * 2;
+                            }
+                        }
+
+                        if let Some(mut b_refs) = b_refs {
+                            // Swapping pair
+                            let mut chunks_b: [Chunk<S>; LANES] =
+                                [Chunk::splat(simd, Default::default()); LANES];
+
+                            for j in 0..LANES {
+                                chunks_b[j] = Chunk::from_slice(simd, &*b_refs[j]);
+                            }
+
+                            for round in 0..log_w {
+                                let stride = 1 << round;
+                                let mut i = 0;
+                                while i < LANES {
+                                    for offset in 0..stride {
+                                        let idx0 = i + offset;
+                                        let idx1 = i + offset + stride;
+                                        let vec0 = chunks_b[idx0];
+                                        let vec1 = chunks_b[idx1];
+                                        chunks_b[idx0] = vec0.zip_low(vec1);
+                                        chunks_b[idx1] = vec0.zip_high(vec1);
+                                    }
+                                    i += stride * 2;
+                                }
+                            }
+
+                            // Swap: A's result to B's location, B's result to A's location
+                            for j in 0..LANES {
+                                chunks_a[j].store_slice(b_refs[j]);
+                                chunks_b[j].store_slice(a_refs[j]);
+                            }
+                        } else {
+                            // Self-mapping class
+                            for j in 0..LANES {
+                                chunks_a[j].store_slice(a_refs[j]);
+                            }
+                        }
+                    },
+                );
+            });
+        }
+    };
+}
+
+#[cfg(feature = "parallel")]
+impl_bit_rev_bravo_parallel!(bit_rev_bravo_chunk_4_f32_parallel, f32, f32x4<S>, 4);
+#[cfg(feature = "parallel")]
+impl_bit_rev_bravo_parallel!(bit_rev_bravo_chunk_8_f32_parallel, f32, f32x8<S>, 8);
+#[cfg(feature = "parallel")]
+impl_bit_rev_bravo_parallel!(bit_rev_bravo_chunk_4_f64_parallel, f64, f64x4<S>, 4);
+#[cfg(feature = "parallel")]
+impl_bit_rev_bravo_parallel!(bit_rev_bravo_chunk_8_f64_parallel, f64, f64x8<S>, 8);
+
+#[cfg(feature = "parallel")]
+#[inline(always)] // required by fearless_simd
+pub fn bit_rev_bravo_f32_parallel<S: Simd>(simd: S, data: &mut [f32], n: usize) {
+    match <S::f32s>::N {
+        4 => bit_rev_bravo_chunk_4_f32_parallel(simd, data, n),
+        _ => bit_rev_bravo_chunk_8_f32_parallel(simd, data, n),
+    }
+}
+
+#[cfg(feature = "parallel")]
+#[inline(always)] // required by fearless_simd
+pub fn bit_rev_bravo_f64_parallel<S: Simd>(simd: S, data: &mut [f64], n: usize) {
+    match <S::f64s>::N {
+        2 => bit_rev_bravo_chunk_4_f64_parallel(simd, data, n),
+        _ => bit_rev_bravo_chunk_8_f64_parallel(simd, data, n),
     }
 }
 
