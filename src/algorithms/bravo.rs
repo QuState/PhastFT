@@ -220,7 +220,7 @@ macro_rules! impl_bit_rev_bravo_parallel {
             let mut work_items: Vec<(
                 Vec<&mut [$elem_ty; LANES]>,
                 Option<Vec<&mut [$elem_ty; LANES]>>,
-            )> = Vec::new();
+            )> = Vec::with_capacity((num_classes + 1) / 2);
 
             for class_idx in 0..num_classes {
                 let class_idx_rev = if class_bits > 0 {
@@ -259,45 +259,21 @@ macro_rules! impl_bit_rev_bravo_parallel {
                 work_items.push((a_refs, b_refs));
             }
 
-            // Process all work items in parallel
-            work_items.into_par_iter().for_each(|(mut a_refs, b_refs)| {
-                simd.vectorize(
-                    #[inline(always)]
-                    || {
-                        let mut chunks_a: [Chunk<S>; LANES] =
-                            [Chunk::splat(simd, Default::default()); LANES];
-
-                        // Load class A
-                        for j in 0..LANES {
-                            chunks_a[j] = Chunk::from_slice(simd, &*a_refs[j]);
-                        }
-
-                        // Interleave rounds for class A
-                        for round in 0..log_w {
-                            let stride = 1 << round;
-                            let mut i = 0;
-                            while i < LANES {
-                                for offset in 0..stride {
-                                    let idx0 = i + offset;
-                                    let idx1 = i + offset + stride;
-                                    let vec0 = chunks_a[idx0];
-                                    let vec1 = chunks_a[idx1];
-                                    chunks_a[idx0] = vec0.zip_low(vec1);
-                                    chunks_a[idx1] = vec0.zip_high(vec1);
-                                }
-                                i += stride * 2;
-                            }
-                        }
-
-                        if let Some(mut b_refs) = b_refs {
-                            // Swapping pair
-                            let mut chunks_b: [Chunk<S>; LANES] =
-                                [Chunk::splat(simd, Default::default()); LANES];
-
+            // Process all work items in parallel.
+            // Thread-local scratch Vecs avoid re-initializing SIMD registers per work item.
+            let zero = Chunk::splat(simd, Default::default());
+            work_items.into_par_iter().for_each_init(
+                || (vec![zero; LANES], vec![zero; LANES]),
+                |(chunks_a, chunks_b), (mut a_refs, b_refs)| {
+                    simd.vectorize(
+                        #[inline(always)]
+                        || {
+                            // Load class A
                             for j in 0..LANES {
-                                chunks_b[j] = Chunk::from_slice(simd, &*b_refs[j]);
+                                chunks_a[j] = Chunk::from_slice(simd, &*a_refs[j]);
                             }
 
+                            // Interleave rounds for class A
                             for round in 0..log_w {
                                 let stride = 1 << round;
                                 let mut i = 0;
@@ -305,29 +281,52 @@ macro_rules! impl_bit_rev_bravo_parallel {
                                     for offset in 0..stride {
                                         let idx0 = i + offset;
                                         let idx1 = i + offset + stride;
-                                        let vec0 = chunks_b[idx0];
-                                        let vec1 = chunks_b[idx1];
-                                        chunks_b[idx0] = vec0.zip_low(vec1);
-                                        chunks_b[idx1] = vec0.zip_high(vec1);
+                                        let vec0 = chunks_a[idx0];
+                                        let vec1 = chunks_a[idx1];
+                                        chunks_a[idx0] = vec0.zip_low(vec1);
+                                        chunks_a[idx1] = vec0.zip_high(vec1);
                                     }
                                     i += stride * 2;
                                 }
                             }
 
-                            // Swap: A's result to B's location, B's result to A's location
-                            for j in 0..LANES {
-                                chunks_a[j].store_slice(b_refs[j]);
-                                chunks_b[j].store_slice(a_refs[j]);
+                            if let Some(mut b_refs) = b_refs {
+                                // Swapping pair
+                                for j in 0..LANES {
+                                    chunks_b[j] = Chunk::from_slice(simd, &*b_refs[j]);
+                                }
+
+                                for round in 0..log_w {
+                                    let stride = 1 << round;
+                                    let mut i = 0;
+                                    while i < LANES {
+                                        for offset in 0..stride {
+                                            let idx0 = i + offset;
+                                            let idx1 = i + offset + stride;
+                                            let vec0 = chunks_b[idx0];
+                                            let vec1 = chunks_b[idx1];
+                                            chunks_b[idx0] = vec0.zip_low(vec1);
+                                            chunks_b[idx1] = vec0.zip_high(vec1);
+                                        }
+                                        i += stride * 2;
+                                    }
+                                }
+
+                                // Swap: A's result to B's location, B's result to A's location
+                                for j in 0..LANES {
+                                    chunks_a[j].store_slice(b_refs[j]);
+                                    chunks_b[j].store_slice(a_refs[j]);
+                                }
+                            } else {
+                                // Self-mapping class
+                                for j in 0..LANES {
+                                    chunks_a[j].store_slice(a_refs[j]);
+                                }
                             }
-                        } else {
-                            // Self-mapping class
-                            for j in 0..LANES {
-                                chunks_a[j].store_slice(a_refs[j]);
-                            }
-                        }
-                    },
-                );
-            });
+                        },
+                    );
+                },
+            );
         }
     };
 }
