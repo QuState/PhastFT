@@ -4,13 +4,11 @@
 //! They can be accessed with `--cfg phastft_bench` for benchmarking only.
 
 use bytemuck::cast_slice;
-use fearless_simd::Simd;
 use num_complex::Complex;
 use num_traits::Float;
 
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
-#[inline(always)] // required by fearless_simd
-pub fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T>, Vec<T>) {
+pub fn deinterleave<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
     // Despite relying on autovectorization, this is the fastest approach
     // because we don't need to initialize the output Vecs.
     // The Vecs are also allocated up front without intermediate reallocations.
@@ -24,10 +22,9 @@ pub fn deinterleave<T: Copy + Default, S: Simd>(_simd: S, input: &[T]) -> (Vec<T
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-#[inline(always)] // required by fearless_simd
-pub fn deinterleave_complex64<S: Simd>(simd: S, signal: &[Complex<f64>]) -> (Vec<f64>, Vec<f64>) {
+pub fn deinterleave_complex64(signal: &[Complex<f64>]) -> (Vec<f64>, Vec<f64>) {
     let complex_t: &[f64] = cast_slice(signal);
-    deinterleave(simd, complex_t)
+    deinterleave(complex_t)
 }
 
 /// Utility function to separate a slice of [`Complex32``]
@@ -36,10 +33,9 @@ pub fn deinterleave_complex64<S: Simd>(simd: S, signal: &[Complex<f64>]) -> (Vec
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-#[inline(always)] // required by fearless_simd
-pub fn deinterleave_complex32<S: Simd>(simd: S, signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
+pub fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
     let complex_t: &[f32] = cast_slice(signal);
-    deinterleave(simd, complex_t)
+    deinterleave(complex_t)
 }
 
 /// Utility function to combine separate vectors of real and imaginary components
@@ -60,7 +56,9 @@ pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
 
 #[cfg(test)]
 mod tests {
-    use fearless_simd::dispatch;
+    use rand::distr::StandardUniform;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
     use super::*;
 
@@ -76,11 +74,10 @@ mod tests {
 
     #[test]
     fn deinterleaving_correctness() {
-        let level = fearless_simd::Level::new();
         for len in [0, 1, 2, 3, 15, 16, 17, 127, 128, 129, 130, 135, 100500] {
             let input = gen_test_vec(len);
             let (naive_a, naive_b) = deinterleave_naive(&input);
-            let (opt_a, opt_b) = dispatch!(level, simd => deinterleave(simd, &input));
+            let (opt_a, opt_b) = deinterleave(&input);
             assert_eq!(naive_a, opt_a);
             assert_eq!(naive_b, opt_b);
         }
@@ -88,19 +85,17 @@ mod tests {
 
     #[test]
     fn test_separate_and_combine_re_im() {
-        let complex_vec: Vec<_> = vec![
-            Complex::new(1.0, 2.0),
-            Complex::new(3.0, 4.0),
-            Complex::new(5.0, 6.0),
-            Complex::new(7.0, 8.0),
-        ];
+        let mut rng = SmallRng::from_os_rng();
+        let complex_vec: Vec<f32> = (&mut rng)
+            .sample_iter(StandardUniform)
+            .take(16384)
+            .collect();
 
-        let level = fearless_simd::Level::new();
-
-        let (reals, imags) = dispatch!(level, simd => deinterleave_complex64(simd, &complex_vec));
+        let (reals, imags) = deinterleave(&complex_vec);
 
         let recombined_vec = combine_re_im(&reals, &imags);
 
-        assert_eq!(complex_vec, recombined_vec);
+        let recombined_flat: &[f32] = cast_slice(recombined_vec.as_slice());
+        assert_eq!(complex_vec, recombined_flat);
     }
 }
