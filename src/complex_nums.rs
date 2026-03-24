@@ -152,7 +152,7 @@ pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: 
     for i in 0..num_blocks {
         if is_cycle_leader(i, k) {
             // Pick up the leader block
-            temp_block.copy_from_slice(&data[i * block_size..(i + 1) * block_size]);
+            temp_block.copy_from_slice(&data[i * block_size..][..block_size]);
 
             let mut hole = i;
             loop {
@@ -161,7 +161,7 @@ pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: 
 
                 if source == i {
                     // Loop closed, fill the final hole with the initial temp block
-                    data[hole * block_size..(hole + 1) * block_size].copy_from_slice(&temp_block);
+                    data[hole * block_size..][..block_size].copy_from_slice(&temp_block);
                     break;
                 }
 
