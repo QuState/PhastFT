@@ -176,6 +176,11 @@ pub fn interleave_inplace<T: Copy + Default>(data: &mut [T], block_size: usize) 
     }
 
     // Phase 2: Local SIMD Interleave
+    interleave_blocks_inplace(data, block_size)
+}
+
+/// Phase 2 of in-place block-based interleaving. Single-threaded.
+fn interleave_blocks_inplace<T: Copy + Default>(data: &mut [T], block_size: usize) {
     let mut temp_pair = vec![T::default(); 2 * block_size];
     for window in data.chunks_exact_mut(2 * block_size) {
         let (reals, imags) = window.split_at(block_size);
