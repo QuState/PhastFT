@@ -33,12 +33,13 @@ macro_rules! impl_bit_rev_bravo {
                 return;
             }
 
-            let w = LANES;
-            let log_w = w.ilog2() as usize; // = 2 for W=4
+            let log_w = LANES.ilog2() as usize; // = 2 for W=4
 
             // π = N / W² = number of equivalence classes
-            let num_classes = big_n / (w * w);
+            let num_classes = big_n / (LANES * LANES);
             let class_bits = n - 2 * log_w;
+
+            let (data_chunks, _) = data.as_chunks_mut::<LANES>();
 
             // Process each equivalence class.
             // For in-place operation, we handle class pairs that swap with each other.
@@ -62,9 +63,9 @@ macro_rules! impl_bit_rev_bravo {
                 }
 
                 // Load vectors for class A
-                for j in 0..w {
-                    let base_idx = (class_idx + j * num_classes) * w;
-                    chunks_a[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
+                for j in 0..LANES {
+                    chunks_a[j] =
+                        Chunk::from_slice(simd, &data_chunks[class_idx + j * num_classes]);
                 }
 
                 // Perform interleave rounds for class A
@@ -74,7 +75,7 @@ macro_rules! impl_bit_rev_bravo {
                     let stride = 1 << round; // 2.pow(round)
 
                     let mut i = 0;
-                    while i < w {
+                    while i < LANES {
                         for offset in 0..stride {
                             let idx0 = i + offset;
                             let idx1 = i + offset + stride;
@@ -89,15 +90,14 @@ macro_rules! impl_bit_rev_bravo {
 
                 if class_idx == class_idx_rev {
                     // Self-mapping class - just write back to same location
-                    for j in 0..w {
-                        let base_idx = (class_idx + j * num_classes) * w;
-                        chunks_a[j].store_slice(&mut data[base_idx..base_idx + w]);
+                    for j in 0..LANES {
+                        chunks_a[j].store_slice(&mut data_chunks[class_idx + j * num_classes]);
                     }
                 } else {
                     // Swapping pair - load class B, process it, then swap both
-                    for j in 0..w {
-                        let base_idx = (class_idx_rev + j * num_classes) * w;
-                        chunks_b[j] = Chunk::from_slice(simd, &data[base_idx..base_idx + w]);
+                    for j in 0..LANES {
+                        chunks_b[j] =
+                            Chunk::from_slice(simd, &data_chunks[class_idx_rev + j * num_classes]);
                     }
 
                     // Perform interleave rounds for class B
@@ -105,7 +105,7 @@ macro_rules! impl_bit_rev_bravo {
                         let stride = 1 << round; // 2.pow(round)
 
                         let mut i = 0;
-                        while i < w {
+                        while i < LANES {
                             for offset in 0..stride {
                                 let idx0 = i + offset;
                                 let idx1 = i + offset + stride;
@@ -119,11 +119,9 @@ macro_rules! impl_bit_rev_bravo {
                     }
 
                     // Swap: write A's result to B's location and vice versa
-                    for j in 0..w {
-                        let base_idx_a = (class_idx + j * num_classes) * w;
-                        let base_idx_b = (class_idx_rev + j * num_classes) * w;
-                        chunks_a[j].store_slice(&mut data[base_idx_b..base_idx_b + w]);
-                        chunks_b[j].store_slice(&mut data[base_idx_a..base_idx_a + w]);
+                    for j in 0..LANES {
+                        chunks_a[j].store_slice(&mut data_chunks[class_idx_rev + j * num_classes]);
+                        chunks_b[j].store_slice(&mut data_chunks[class_idx + j * num_classes]);
                     }
                 }
             }
