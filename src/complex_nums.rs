@@ -196,7 +196,7 @@ fn interleave_blocks_inplace<T: Copy + Default>(data: &mut [T], block_size: usiz
 #[cfg(feature = "parallel")]
 /// Performs an in-place interleaving of `[Reals | Imags]` into `[Re, Im, Re, Im...]`.
 /// `data.len()` and `block_size` must both be powers of 2.
-pub fn interleave_inplace<T: bytemuck::Pod + Send>(data: &mut [T], block_size: usize) {
+pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
     interleave_inplace_parallel(data, block_size)
 }
 
@@ -204,8 +204,8 @@ pub fn interleave_inplace<T: bytemuck::Pod + Send>(data: &mut [T], block_size: u
 /// Both phases are parallelized via Rayon.
 /// `data.len()` and `block_size` must both be powers of 2.
 #[cfg(feature = "parallel")]
-pub fn interleave_inplace_parallel<T: bytemuck::Pod + Send>(data: &mut [T], block_size: usize) {
-    use std::cell::RefCell;
+pub fn interleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
+    use rayon::prelude::*;
 
     let len = data.len();
     assert!(len.is_power_of_two(), "Data length must be a power of 2");
@@ -221,69 +221,60 @@ pub fn interleave_inplace_parallel<T: bytemuck::Pod + Send>(data: &mut [T], bloc
     // Phase 1: Block Perfect Shuffle (Forward), parallelized.
     // Destination: block at position j moves to left_rotate(j, k).
     //
-    // We collect disjoint &mut slices for each cycle via Option::take(),
-    // then immediately spawn a rayon task to permute that cycle.
-    // This lets worker threads start processing cycles while the main thread
-    // is still discovering subsequent ones.
+    // We pre-compute all permutation cycles on the main thread by collecting
+    // disjoint &mut slices for each cycle. Then rayon applies each cycle's
+    // permutation in parallel, which is safe because cycles touch disjoint blocks.
 
     // Split data into one &mut slice per block.
     let mut block_slices: Vec<Option<&mut [T]>> =
         data.chunks_exact_mut(block_size).map(|s| Some(s)).collect();
 
+    // Collect cycles: for each cycle leader, gather its block slices.
     // Every cycle has length at most k (since multiplying by 2 mod 2^k-1
-    // loops back after exactly k steps).
+    // loops back after exactly k steps), so there are at most num_blocks/k cycles.
     let max_cycle_len = k as usize;
-
-    // Thread-local byte buffer reused across spawned tasks on the same thread.
-    thread_local! {
-        static TEMP_BUF: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    let mut cycles: Vec<Vec<&mut [T]>> = Vec::with_capacity(num_blocks / max_cycle_len.max(1));
+    for i in 0..num_blocks {
+        if is_cycle_leader(i, k) {
+            let mut cycle_slices = Vec::with_capacity(max_cycle_len);
+            let mut j = i;
+            loop {
+                cycle_slices.push(
+                    block_slices[j]
+                        .take()
+                        .expect("block already taken by another cycle"),
+                );
+                j = left_rotate(j, k);
+                if j == i {
+                    break;
+                }
+            }
+            cycles.push(cycle_slices);
+        }
     }
 
-    rayon::scope(|s| {
-        for i in 0..num_blocks {
-            if is_cycle_leader(i, k) {
-                let mut cycle_slices: Vec<&mut [T]> = Vec::with_capacity(max_cycle_len);
-                let mut j = i;
-                loop {
-                    cycle_slices.push(
-                        block_slices[j]
-                            .take()
-                            .expect("block already taken by another cycle"),
-                    );
-                    j = left_rotate(j, k);
-                    if j == i {
-                        break;
-                    }
-                }
-
-                // Spawn immediately — this cycle's slices are disjoint from all others.
-                s.spawn(move |_| {
-                    let cycle_len = cycle_slices.len();
-                    if cycle_len <= 1 {
-                        return;
-                    }
-                    TEMP_BUF.with(|cell| {
-                        let mut buf = cell.borrow_mut();
-                        let needed = block_size * std::mem::size_of::<T>();
-                        if buf.len() < needed {
-                            buf.resize(needed, 0);
-                        }
-                        let temp: &mut [T] = bytemuck::cast_slice_mut(&mut buf[..needed]);
-
-                        // Save the last block
-                        temp.copy_from_slice(&cycle_slices[cycle_len - 1]);
-                        // Shift each block one position forward (from the end)
-                        for idx in (1..cycle_len).rev() {
-                            let (left, right) = cycle_slices.split_at_mut(idx);
-                            right[0].copy_from_slice(&left[idx - 1]);
-                        }
-                        // Place saved block at position 0
-                        cycle_slices[0].copy_from_slice(temp);
-                    });
-                });
+    // Apply each cycle's permutation in parallel.
+    // The permutation moves content at cycle[n] to cycle[n+1], wrapping around.
+    // So we rotate slice contents: save the last, shift everything right by one,
+    // then place the saved last into position 0.
+    cycles.into_par_iter().for_each_init(
+        || vec![T::default(); block_size],
+        |temp, mut cycle_slices| {
+            let cycle_len = cycle_slices.len();
+            if cycle_len <= 1 {
+                return;
             }
-        }
-    });
+            // Save the last block
+            temp.copy_from_slice(&cycle_slices[cycle_len - 1]);
+            // Shift each block one position forward (from the end)
+            for idx in (1..cycle_len).rev() {
+                let (left, right) = cycle_slices.split_at_mut(idx);
+                right[0].copy_from_slice(&left[idx - 1]);
+            }
+            // Place saved block at position 0
+            cycle_slices[0].copy_from_slice(temp);
+        },
+    );
 
     // Phase 2: Local SIMD Interleave (parallel)
     // Reassemble data from the cycle slices — they're already written back
@@ -293,10 +284,10 @@ pub fn interleave_inplace_parallel<T: bytemuck::Pod + Send>(data: &mut [T], bloc
 
 #[cfg(feature = "parallel")]
 /// Phase 2 of in-place block-based interleaving. Multi-threaded through Rayon.
-fn interleave_blocks_inplace_parallel<T: bytemuck::Pod + Send>(data: &mut [T], block_size: usize) {
+fn interleave_blocks_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
     use rayon::prelude::*;
     data.par_chunks_exact_mut(2 * block_size).for_each_init(
-        || vec![T::zeroed(); 2 * block_size],
+        || vec![T::default(); 2 * block_size],
         |temp_pair, chunk| {
             let (reals, imags) = chunk.split_at(block_size);
             combine_re_im_into(reals, imags, temp_pair);
