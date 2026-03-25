@@ -3,7 +3,7 @@
 //! They are not part of the public API because the module they're in is private.
 //! They can be accessed with `--cfg phastft_bench` for benchmarking only.
 
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, Pod};
 use num_complex::Complex;
 use num_traits::Float;
 
@@ -16,25 +16,8 @@ pub fn deinterleave<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
     input.chunks_exact(2).map(|c| (c[0], c[1])).unzip()
 }
 
-/// Utility function to separate a slice of [`Complex64``]
-/// into a single vector of Complex Number Structs.
-///
-/// # Panics
-///
-/// Panics if `reals.len() != imags.len()`.
-pub fn deinterleave_complex64(signal: &[Complex<f64>]) -> (Vec<f64>, Vec<f64>) {
-    let complex_t: &[f64] = cast_slice(signal);
-    deinterleave(complex_t)
-}
-
-/// Utility function to separate a slice of [`Complex32``]
-/// into a single vector of Complex Number Structs.
-///
-/// # Panics
-///
-/// Panics if `reals.len() != imags.len()`.
-pub fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
-    let complex_t: &[f32] = cast_slice(signal);
+pub fn deinterleave_complex<T: Float + Pod>(signal: &[Complex<T>]) -> (Vec<T>, Vec<T>) {
+    let complex_t: &[T] = cast_slice(signal);
     deinterleave(complex_t)
 }
 
