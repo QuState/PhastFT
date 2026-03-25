@@ -3,7 +3,7 @@
 //! They are not part of the public API because the module they're in is private.
 //! They can be accessed with `--cfg phastft_bench` for benchmarking only.
 
-use bytemuck::{cast_slice, Pod};
+use bytemuck::{cast_slice, cast_slice_mut, Pod};
 use num_complex::Complex;
 use num_traits::Float;
 
@@ -42,6 +42,8 @@ pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
 
 // Overview of the algorithm and possible other approaches:
 // https://aistudio.google.com/app/prompts?state=%7B%22ids%22:%5B%221mYtdKnDYXiB5yj7GvxSgrc-McoGZfKoL%22%5D,%22action%22:%22open%22,%22userId%22:%22100773621717907681037%22,%22resourceKeys%22:%7B%7D%7D&usp=sharing
+
+const BLOCK_SIZE_BYTES: usize = 8 * 1024; // determined empirically
 
 // OUT-OF-PLACE FUNCTIONS FOR SMALL BLOCKS
 
@@ -114,10 +116,9 @@ fn is_cycle_leader(val: usize, k: u32) -> bool {
 
 // MAIN IN-PLACE ALGORITHMS
 
-#[cfg(not(feature = "parallel"))]
 /// Performs an in-place interleaving of `[Reals | Imags]` into `[Re, Im, Re, Im...]`.
 /// `data.len()` and `block_size` must both be powers of 2.
-pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
+pub fn interleave_inplace_sequential<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
     let len = data.len();
     assert!(len.is_power_of_two(), "Data length must be a power of 2");
     assert!(
@@ -166,13 +167,6 @@ pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: 
         combine_re_im_into(reals, imags, &mut temp_pair);
         chunk.copy_from_slice(&temp_pair);
     }
-}
-
-#[cfg(feature = "parallel")]
-/// Performs an in-place interleaving of `[Reals | Imags]` into `[Re, Im, Re, Im...]`.
-/// `data.len()` and `block_size` must both be powers of 2.
-pub fn interleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
-    interleave_inplace_parallel(data, block_size)
 }
 
 /// Performs an in-place interleaving of `[Reals | Imags]` into `[Re, Im, Re, Im...]`.
@@ -264,9 +258,11 @@ pub fn interleave_inplace_parallel<T: Copy + Default + Send>(data: &mut [T], blo
     );
 }
 
-#[cfg(not(feature = "parallel"))]
 /// Reverses the in-place interleaving, returning `[Re, Im, ...]` back to `[Reals | Imags]`.
-pub fn deinterleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
+pub fn deinterleave_inplace_sequential<T: Copy + Default + Send>(
+    data: &mut [T],
+    block_size: usize,
+) {
     let len = data.len();
     assert!(len.is_power_of_two(), "Data length must be a power of 2");
     assert!(
@@ -320,11 +316,29 @@ pub fn deinterleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size
     }
 }
 
-#[cfg(feature = "parallel")]
 /// Reverses the in-place interleaving, returning `[Re, Im, ...]` back to `[Reals | Imags]`.
 /// `data.len()` and `block_size` must both be powers of 2.
-pub fn deinterleave_inplace<T: Copy + Default + Send>(data: &mut [T], block_size: usize) {
-    deinterleave_inplace_parallel(data, block_size)
+pub fn deinterleave_complex_inplace<T: Copy + Default + Send + Pod>(
+    data: &mut [Complex<T>],
+) -> (&mut [T], &mut [T]) {
+    let block_size = BLOCK_SIZE_BYTES / size_of::<T>();
+    let flat_data: &mut [T] = cast_slice_mut(data);
+    #[cfg(not(feature = "parallel"))]
+    deinterleave_inplace_sequential(flat_data, block_size);
+    #[cfg(feature = "parallel")]
+    deinterleave_inplace_parallel(flat_data, block_size);
+    flat_data.split_at_mut(flat_data.len() / 2)
+}
+
+/// Performs an in-place interleaving of `[Reals | Imags]` into `[Re, Im, Re, Im...]`.
+/// `data.len()` must be a power of 2.
+pub fn interleave_complex_inplace<T: Copy + Default + Send + Pod>(data: &mut [Complex<T>]) {
+    let block_size = BLOCK_SIZE_BYTES / size_of::<T>();
+    let flat_data: &mut [T] = cast_slice_mut(data);
+    #[cfg(not(feature = "parallel"))]
+    interleave_inplace_sequential(flat_data, block_size);
+    #[cfg(feature = "parallel")]
+    interleave_inplace_parallel(flat_data, block_size);
 }
 
 /// Reverses the in-place interleaving, returning `[Re, Im, ...]` back to `[Reals | Imags]`.
@@ -493,7 +507,7 @@ mod tests {
         let expected_interleaved = interleave_out_of_place(&original[..half], &original[half..]);
 
         // 2. Run our in-place forward algorithm
-        interleave_inplace(&mut data, block_size);
+        interleave_inplace_sequential(&mut data, block_size);
 
         // Verify it matches the standard out-of-place interleaving
         assert_eq!(
@@ -502,7 +516,7 @@ mod tests {
         );
 
         // 3. Run our in-place reverse algorithm
-        deinterleave_inplace(&mut data, block_size);
+        deinterleave_inplace_sequential(&mut data, block_size);
 
         // Verify it correctly mapped back to[Reals | Imags]
         assert_eq!(data, original, "Reverse inplace deinterleave failed!");
@@ -536,7 +550,7 @@ mod tests {
 
                 // Verify the parallel version matches the sequential version
                 let mut data_seq = original.clone();
-                interleave_inplace(&mut data_seq, block_size);
+                interleave_inplace_sequential(&mut data_seq, block_size);
                 assert_eq!(
                     data, data_seq,
                     "Parallel and sequential interleave differ for n={n}, block_size={block_size}"
@@ -574,7 +588,7 @@ mod tests {
 
                 // Verify the parallel version matches the sequential version
                 let mut data_seq = expected_interleaved.clone();
-                deinterleave_inplace(&mut data_seq, block_size);
+                deinterleave_inplace_sequential(&mut data_seq, block_size);
                 assert_eq!(
                     data, data_seq,
                     "Parallel and sequential deinterleave differ for n={n}, block_size={block_size}"
@@ -592,10 +606,10 @@ mod tests {
 
         let expected = interleave_out_of_place(&original[..4], &original[4..]);
 
-        interleave_inplace(&mut data, 1);
+        interleave_inplace_sequential(&mut data, 1);
         assert_eq!(data, expected);
 
-        deinterleave_inplace(&mut data, 1);
+        deinterleave_inplace_sequential(&mut data, 1);
         assert_eq!(data, original);
     }
 
