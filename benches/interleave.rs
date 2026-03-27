@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
-use phastft::complex_nums::{combine_re_im, deinterleave};
+use phastft::complex_nums::{combine_re_im_into, deinterleave};
 use rand::distr::StandardUniform;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
@@ -98,8 +98,12 @@ fn benchmark_combine_re_im_f32(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("combine_re_im", len), |b| {
             b.iter_batched(
-                || generate_re_im_f32(len),
-                |(reals, imags)| combine_re_im::<f32>(&reals, &imags),
+                || {
+                    let (reals, imags) = generate_re_im_f32(len);
+                    let output = vec![0.0f32; len * 2];
+                    (reals, imags, output)
+                },
+                |(reals, imags, mut output)| combine_re_im_into(&reals, &imags, &mut output),
                 BatchSize::SmallInput,
             );
         });
@@ -119,8 +123,12 @@ fn benchmark_combine_re_im_f64(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("combine_re_im", len), |b| {
             b.iter_batched(
-                || generate_re_im_f64(len),
-                |(reals, imags)| combine_re_im::<f64>(&reals, &imags),
+                || {
+                    let (reals, imags) = generate_re_im_f64(len);
+                    let output = vec![0.0f64; len * 2];
+                    (reals, imags, output)
+                },
+                |(reals, imags, mut output)| combine_re_im_into(&reals, &imags, &mut output),
                 BatchSize::SmallInput,
             );
         });

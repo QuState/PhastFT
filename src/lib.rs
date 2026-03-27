@@ -13,7 +13,7 @@
 use num_complex::Complex;
 
 #[cfg(feature = "complex-nums")]
-use crate::complex_nums::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
+use crate::complex_nums::{combine_re_im_into, deinterleave_complex32, deinterleave_complex64};
 use crate::options::Options;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
@@ -44,7 +44,8 @@ macro_rules! impl_fft_interleaved_for {
         pub fn $func_name(signal: &mut [Complex<$precision>], planner: &$planner, opts: &Options) {
             let (mut reals, mut imags) = $deinterleaving_func(signal);
             $fft_func(&mut reals, &mut imags, planner, opts);
-            signal.copy_from_slice(&combine_re_im(&reals, &imags))
+            let signal_flat: &mut [$precision] = bytemuck::cast_slice_mut(signal);
+            combine_re_im_into(&reals, &imags, signal_flat)
         }
     };
 }
