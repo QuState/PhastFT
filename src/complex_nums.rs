@@ -5,6 +5,7 @@
 
 use bytemuck::cast_slice;
 use num_complex::Complex;
+use num_traits::Float;
 
 #[cfg(feature = "parallel")]
 fn deinterleave_parallel<T: Copy + Send + Sync>(input: &[T]) -> (Vec<T>, Vec<T>) {
@@ -62,52 +63,20 @@ pub fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
     deinterleave(complex_t)
 }
 
-#[cfg(feature = "parallel")]
-fn combine_re_im_into_parallel<T: Copy + Send + Sync>(reals: &[T], imags: &[T], output: &mut [T]) {
-    const CHUNK_SIZE: usize = 8;
-    use rayon::prelude::*;
-    output
-        .as_chunks_mut::<CHUNK_SIZE>()
-        .0
-        .par_iter_mut()
-        .zip(reals.as_chunks::<{ CHUNK_SIZE / 2 }>().0.par_iter())
-        .zip(imags.as_chunks::<{ CHUNK_SIZE / 2 }>().0.par_iter())
-        .for_each(|((out, re), im)| {
-            out[0] = re[0];
-            out[1] = im[0];
-            out[2] = re[1];
-            out[3] = im[1];
-            out[4] = re[2];
-            out[5] = im[2];
-            out[6] = re[3];
-            out[7] = im[3];
-        });
-}
-
-/// Combines parallel reals and imags arrays into an interleaved output.
+/// Utility function to combine separate vectors of real and imaginary components
+/// into a single vector of Complex Number Structs.
 ///
 /// # Panics
 ///
-/// Panics if `reals.len() != imags.len()` or `output.len() != reals.len() * 2`.
-pub fn combine_re_im_into<T: Copy + Send + Sync>(reals: &[T], imags: &[T], output: &mut [T]) {
+/// Panics if `reals.len() != imags.len()`.
+pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
     assert_eq!(reals.len(), imags.len());
-    assert_eq!(output.len(), reals.len() * 2);
 
-    #[cfg(not(feature = "parallel"))]
-    combine_re_im_into_sequential(reals, imags, output);
-    #[cfg(feature = "parallel")]
-    combine_re_im_into_parallel(reals, imags, output);
-}
-
-fn combine_re_im_into_sequential<T: Copy>(reals: &[T], imags: &[T], output: &mut [T]) {
-    for ((out, z_re), z_im) in output
-        .chunks_exact_mut(2)
-        .zip(reals.iter())
+    reals
+        .iter()
         .zip(imags.iter())
-    {
-        out[0] = *z_re;
-        out[1] = *z_im;
-    }
+        .map(|(z_re, z_im)| Complex::new(*z_re, *z_im))
+        .collect()
 }
 
 #[cfg(test)]
@@ -149,9 +118,9 @@ mod tests {
 
         let (reals, imags) = deinterleave(&complex_vec);
 
-        let mut recombined = vec![0.0f32; complex_vec.len()];
-        combine_re_im_into(&reals, &imags, &mut recombined);
+        let recombined_vec = combine_re_im(&reals, &imags);
 
-        assert_eq!(complex_vec, recombined);
+        let recombined_flat: &[f32] = cast_slice(recombined_vec.as_slice());
+        assert_eq!(complex_vec, recombined_flat);
     }
 }
