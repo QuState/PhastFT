@@ -7,8 +7,33 @@ use bytemuck::cast_slice;
 use num_complex::Complex;
 use num_traits::Float;
 
+#[cfg(feature = "parallel")]
+fn deinterleave_parallel<T: Copy + Send + Sync>(input: &[T]) -> (Vec<T>, Vec<T>) {
+    const CHUNK_SIZE: usize = 8;
+    let out_vec_len = input.len() * 2 / CHUNK_SIZE;
+    let (mut re, mut im) = (
+        Vec::with_capacity(out_vec_len),
+        Vec::with_capacity(out_vec_len),
+    );
+    use rayon::prelude::*;
+    input
+        .as_chunks::<CHUNK_SIZE>()
+        .0
+        .par_iter()
+        .map(|c| ([c[0], c[2], c[4], c[6]], [c[1], c[3], c[5], c[7]]))
+        .unzip_into_vecs(&mut re, &mut im);
+    (re.into_flattened(), im.into_flattened())
+}
+
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
-pub fn deinterleave<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
+pub fn deinterleave<T: Copy + Send + Sync>(input: &[T]) -> (Vec<T>, Vec<T>) {
+    #[cfg(not(feature = "parallel"))]
+    return deinterleave_sequential(input);
+    #[cfg(feature = "parallel")]
+    return deinterleave_parallel(input);
+}
+
+fn deinterleave_sequential<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
     // Despite relying on autovectorization, this is the fastest approach
     // because we don't need to initialize the output Vecs.
     // The Vecs are also allocated up front without intermediate reallocations.
