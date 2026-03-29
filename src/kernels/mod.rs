@@ -8,4 +8,5 @@
 //!
 //! - `dit`: Decimation-in-Time kernels
 
+pub mod codelets;
 pub mod dit;

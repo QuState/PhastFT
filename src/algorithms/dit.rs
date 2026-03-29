@@ -17,6 +17,7 @@
 use fearless_simd::{dispatch, Simd};
 
 use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
+use crate::kernels::codelets::{fft_dit_codelet_32_f32, fft_dit_codelet_32_f64};
 use crate::kernels::dit::*;
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
@@ -41,7 +42,16 @@ fn recursive_dit_fft_f64<S: Simd>(
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        for stage in 0..log_size {
+        // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
+        let start_stage = if log_size >= 5 {
+            fft_dit_codelet_32_f64(simd, &mut reals[..size], &mut imags[..size]);
+            5
+        } else {
+            0
+        };
+
+        // Remaining stages use per-stage kernels
+        for stage in start_stage..log_size {
             stage_twiddle_idx = execute_dit_stage_f64(
                 simd,
                 &mut reals[..size],
@@ -98,7 +108,16 @@ fn recursive_dit_fft_f32<S: Simd>(
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        for stage in 0..log_size {
+        // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
+        let start_stage = if log_size >= 5 {
+            fft_dit_codelet_32_f32(simd, &mut reals[..size], &mut imags[..size]);
+            5
+        } else {
+            0
+        };
+
+        // Remaining stages use per-stage kernels
+        for stage in start_stage..log_size {
             stage_twiddle_idx = execute_dit_stage_f32(
                 simd,
                 &mut reals[..size],
