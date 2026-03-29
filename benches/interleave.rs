@@ -53,7 +53,7 @@ fn benchmark_deinterleave_f32(c: &mut Criterion) {
         group.throughput(Throughput::Bytes((len * 2 * size_of::<f32>()) as u64));
 
         group.bench_function(BenchmarkId::new("deinterleave", len), |b| {
-            let level = fearless_simd::Level::new();
+            let _level = fearless_simd::Level::new();
             b.iter_batched(
                 || generate_interleaved_f32(len),
                 |input| deinterleave(&input),
@@ -75,7 +75,7 @@ fn benchmark_deinterleave_f64(c: &mut Criterion) {
         group.throughput(Throughput::Bytes((len * 2 * size_of::<f64>()) as u64));
 
         group.bench_function(BenchmarkId::new("deinterleave", len), |b| {
-            let level = fearless_simd::Level::new();
+            let _level = fearless_simd::Level::new();
             b.iter_batched(
                 || generate_interleaved_f64(len),
                 |input| deinterleave(&input),

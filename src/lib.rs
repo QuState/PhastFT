@@ -19,7 +19,7 @@ use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
 mod algorithms;
 #[cfg(all(feature = "complex-nums", not(phastft_bench)))]
-mod complex_nums;
+pub mod complex_nums;
 #[cfg(all(feature = "complex-nums", phastft_bench))]
 pub mod complex_nums;
 mod kernels;
