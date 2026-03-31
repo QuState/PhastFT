@@ -967,34 +967,55 @@ fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
 }
 
 /// General DIT butterfly for f64
+///
+/// Generates twiddle factors on the fly using the arbitrary-offset approach.
+/// `num_points` is the number of roots of unity for this stage (i.e. chunk_size = dist * 2).
 #[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f64<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
-    twiddles_re: &[f64],
-    twiddles_im: &[f64],
+    num_points: usize,
     dist: usize,
 ) {
     simd.vectorize(
         #[inline(always)]
-        || fft_dit_chunk_n_simd_f64(simd, reals, imags, twiddles_re, twiddles_im, dist),
+        || fft_dit_chunk_n_simd_f64(simd, reals, imags, num_points, dist),
     )
 }
 
 /// General DIT butterfly for f64
+///
+/// Generates twiddle factors on the fly using the arbitrary-offset approach:
+/// Pre-computes a base chunk of LANES twiddles [W^0, W^1, ..., W^{LANES-1}],
+/// then for each group at offset k, computes the scalar anchor W^k via sin_cos
+/// and multiplies it by the base chunk.
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_n_simd_f64<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
-    twiddles_re: &[f64],
-    twiddles_im: &[f64],
+    num_points: usize,
     dist: usize,
 ) {
     const LANES: usize = 8;
     let chunk_size = dist * 2;
+    assert_eq!(chunk_size, num_points);
     assert!(chunk_size >= LANES * 2);
+
+    let theta = -2.0 * std::f64::consts::PI / num_points as f64;
+
+    // Pre-compute base twiddle chunk: W^0, W^1, ..., W^{LANES-1}
+    let mut base_re = [0.0_f64; LANES];
+    let mut base_im = [0.0_f64; LANES];
+    for i in 0..LANES {
+        let angle = theta * i as f64;
+        let (s, c) = angle.sin_cos();
+        base_re[i] = c;
+        base_im[i] = s;
+    }
+    let base_re_v = f64x8::simd_from(simd, base_re);
+    let base_im_v = f64x8::simd_from(simd, base_im);
 
     // The structure of outer for loop with inner for_each is intentional: on x86
     // fearless_simd needs inlining all the way down to intrinsics to work properly,
@@ -1014,17 +1035,24 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
             .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
+            .enumerate()
+            .for_each(|(lane_idx, (((re_s0, re_s1), im_s0), im_s1))| {
                 let two = f64x8::splat(simd, 2.0);
                 let in0_re = f64x8::simd_from(simd, *re_s0);
                 let in1_re = f64x8::simd_from(simd, *re_s1);
                 let in0_im = f64x8::simd_from(simd, *im_s0);
                 let in1_im = f64x8::simd_from(simd, *im_s1);
 
-                let tw_re = f64x8::simd_from(simd, *tw_re);
-                let tw_im = f64x8::simd_from(simd, *tw_im);
+                // Compute twiddles on the fly: anchor W^k, then chunk = anchor * base
+                let offset = lane_idx * LANES;
+                let start_angle = theta * offset as f64;
+                let (s_start, c_start) = start_angle.sin_cos();
+                let anchor_re = f64x8::splat(simd, c_start);
+                let anchor_im = f64x8::splat(simd, s_start);
+
+                // Complex multiply: (anchor_re + i*anchor_im) * (base_re + i*base_im)
+                let tw_re = anchor_re * base_re_v - anchor_im * base_im_v;
+                let tw_im = anchor_re * base_im_v + anchor_im * base_re_v;
 
                 // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
                 let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
@@ -1044,34 +1072,54 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
 }
 
 /// General DIT butterfly for f32
+///
+/// Generates twiddle factors on the fly using the arbitrary-offset approach.
+/// `num_points` is the number of roots of unity for this stage (i.e. chunk_size = dist * 2).
 #[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f32<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
-    twiddles_re: &[f32],
-    twiddles_im: &[f32],
+    num_points: usize,
     dist: usize,
 ) {
     simd.vectorize(
         #[inline(always)]
-        || fft_dit_chunk_n_simd_f32(simd, reals, imags, twiddles_re, twiddles_im, dist),
+        || fft_dit_chunk_n_simd_f32(simd, reals, imags, num_points, dist),
     )
 }
 
 /// General DIT butterfly for f32
+///
+/// Generates twiddle factors on the fly using the arbitrary-offset approach.
+/// See `fft_dit_chunk_n_simd_f64` for detailed explanation.
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_n_simd_f32<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
-    twiddles_re: &[f32],
-    twiddles_im: &[f32],
+    num_points: usize,
     dist: usize,
 ) {
     const LANES: usize = 16;
     let chunk_size = dist * 2;
+    assert_eq!(chunk_size, num_points);
     assert!(chunk_size >= LANES * 2);
+
+    // Compute base twiddles in f64 for precision, then convert to f32
+    let theta_f64 = -2.0 * std::f64::consts::PI / num_points as f64;
+
+    // Pre-compute base twiddle chunk: W^0, W^1, ..., W^{LANES-1}
+    let mut base_re = [0.0_f32; LANES];
+    let mut base_im = [0.0_f32; LANES];
+    for i in 0..LANES {
+        let angle = theta_f64 * i as f64;
+        let (s, c) = angle.sin_cos();
+        base_re[i] = c as f32;
+        base_im[i] = s as f32;
+    }
+    let base_re_v = f32x16::simd_from(simd, base_re);
+    let base_im_v = f32x16::simd_from(simd, base_im);
 
     // see fft_dit_chunk_n_simd_f64 for an explanation of this structure
     for (reals_chunk, imags_chunk) in reals
@@ -1085,17 +1133,24 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
             .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
+            .enumerate()
+            .for_each(|(lane_idx, (((re_s0, re_s1), im_s0), im_s1))| {
                 let two = f32x16::splat(simd, 2.0);
                 let in0_re = f32x16::simd_from(simd, *re_s0);
                 let in1_re = f32x16::simd_from(simd, *re_s1);
                 let in0_im = f32x16::simd_from(simd, *im_s0);
                 let in1_im = f32x16::simd_from(simd, *im_s1);
 
-                let tw_re = f32x16::simd_from(simd, *tw_re);
-                let tw_im = f32x16::simd_from(simd, *tw_im);
+                // Compute twiddles on the fly: anchor W^k, then chunk = anchor * base
+                let offset = lane_idx * LANES;
+                let start_angle = theta_f64 * offset as f64;
+                let (s_start, c_start) = start_angle.sin_cos();
+                let anchor_re = f32x16::splat(simd, c_start as f32);
+                let anchor_im = f32x16::splat(simd, s_start as f32);
+
+                // Complex multiply: (anchor_re + i*anchor_im) * (base_re + i*base_im)
+                let tw_re = anchor_re * base_re_v - anchor_im * base_im_v;
+                let tw_im = anchor_re * base_im_v + anchor_im * base_re_v;
 
                 // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
                 let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
