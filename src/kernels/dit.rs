@@ -1051,8 +1051,8 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
                 let anchor_im = f64x8::splat(simd, s_start);
 
                 // Complex multiply: (anchor_re + i*anchor_im) * (base_re + i*base_im)
-                let tw_re = anchor_re * base_re_v - anchor_im * base_im_v;
-                let tw_im = anchor_re * base_im_v + anchor_im * base_re_v;
+                let tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
+                let tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
 
                 // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
                 let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
@@ -1149,8 +1149,8 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
                 let anchor_im = f32x16::splat(simd, s_start as f32);
 
                 // Complex multiply: (anchor_re + i*anchor_im) * (base_re + i*base_im)
-                let tw_re = anchor_re * base_re_v - anchor_im * base_im_v;
-                let tw_im = anchor_re * base_im_v + anchor_im * base_re_v;
+                let tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
+                let tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
 
                 // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
                 let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
