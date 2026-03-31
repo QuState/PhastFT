@@ -1042,49 +1042,50 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
         let mut tw_re = base_re_v;
         let mut tw_im = base_im_v;
 
-        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .enumerate()
-            .for_each(|(lane_idx, (((re_s0, re_s1), im_s0), im_s1))| {
-                let two = f64x8::splat(simd, 2.0);
+        for (lane_idx, (((re_s0, re_s1), im_s0), im_s1)) in
+            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
+                .enumerate()
+        {
+            let two = f64x8::splat(simd, 2.0);
 
-                // Re-seed from sin_cos every RESEED iterations to combat drift
-                if lane_idx % RESEED == 0 && lane_idx > 0 {
-                    let offset = lane_idx * LANES;
-                    let start_angle = theta * offset as f64;
-                    let (s_start, c_start) = start_angle.sin_cos();
-                    let anchor_re = f64x8::splat(simd, c_start);
-                    let anchor_im = f64x8::splat(simd, s_start);
-                    tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
-                    tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
-                }
+            // Re-seed from sin_cos every RESEED iterations to combat drift
+            if lane_idx % RESEED == 0 && lane_idx > 0 {
+                let offset = lane_idx * LANES;
+                let start_angle = theta * offset as f64;
+                let (s_start, c_start) = start_angle.sin_cos();
+                let anchor_re = f64x8::splat(simd, c_start);
+                let anchor_im = f64x8::splat(simd, s_start);
+                tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
+                tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
+            }
 
-                let in0_re = f64x8::simd_from(simd, *re_s0);
-                let in1_re = f64x8::simd_from(simd, *re_s1);
-                let in0_im = f64x8::simd_from(simd, *im_s0);
-                let in1_im = f64x8::simd_from(simd, *im_s1);
+            let in0_re = f64x8::simd_from(simd, *re_s0);
+            let in1_re = f64x8::simd_from(simd, *re_s1);
+            let in0_im = f64x8::simd_from(simd, *im_s0);
+            let in1_im = f64x8::simd_from(simd, *im_s1);
 
-                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+            // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+            let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+            // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+            let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
-                // Use FMA for out1 = 2*in0 - out0
-                let out1_re = two.mul_sub(in0_re, out0_re);
-                let out1_im = two.mul_sub(in0_im, out0_im);
+            // Use FMA for out1 = 2*in0 - out0
+            let out1_re = two.mul_sub(in0_re, out0_re);
+            let out1_im = two.mul_sub(in0_im, out0_im);
 
-                out0_re.store_slice(re_s0);
-                out0_im.store_slice(im_s0);
-                out1_re.store_slice(re_s1);
-                out1_im.store_slice(im_s1);
+            out0_re.store_slice(re_s0);
+            out0_im.store_slice(im_s0);
+            out1_re.store_slice(re_s1);
+            out1_im.store_slice(im_s1);
 
-                // Advance streaming twiddles: multiply by W^LANES
-                let prev_re = tw_re;
-                tw_re = step_im.mul_add(-tw_im, step_re * prev_re);
-                tw_im = step_im.mul_add(prev_re, step_re * tw_im);
-            });
+            // Advance streaming twiddles: multiply by W^LANES
+            let prev_re = tw_re;
+            tw_re = step_im.mul_add(-tw_im, step_re * prev_re);
+            tw_im = step_im.mul_add(prev_re, step_re * tw_im);
+        }
     }
 }
 
@@ -1157,48 +1158,49 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
         let mut tw_re = base_re_v;
         let mut tw_im = base_im_v;
 
-        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .enumerate()
-            .for_each(|(lane_idx, (((re_s0, re_s1), im_s0), im_s1))| {
-                let two = f32x16::splat(simd, 2.0);
+        for (lane_idx, (((re_s0, re_s1), im_s0), im_s1)) in
+            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
+                .enumerate()
+        {
+            let two = f32x16::splat(simd, 2.0);
 
-                // Re-seed from sin_cos every RESEED iterations to combat drift
-                if lane_idx % RESEED == 0 && lane_idx > 0 {
-                    let offset = lane_idx * LANES;
-                    let start_angle = theta_f64 * offset as f64;
-                    let (s_start, c_start) = start_angle.sin_cos();
-                    let anchor_re = f32x16::splat(simd, c_start as f32);
-                    let anchor_im = f32x16::splat(simd, s_start as f32);
-                    tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
-                    tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
-                }
+            // Re-seed from sin_cos every RESEED iterations to combat drift
+            if lane_idx % RESEED == 0 && lane_idx > 0 {
+                let offset = lane_idx * LANES;
+                let start_angle = theta_f64 * offset as f64;
+                let (s_start, c_start) = start_angle.sin_cos();
+                let anchor_re = f32x16::splat(simd, c_start as f32);
+                let anchor_im = f32x16::splat(simd, s_start as f32);
+                tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
+                tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
+            }
 
-                let in0_re = f32x16::simd_from(simd, *re_s0);
-                let in1_re = f32x16::simd_from(simd, *re_s1);
-                let in0_im = f32x16::simd_from(simd, *im_s0);
-                let in1_im = f32x16::simd_from(simd, *im_s1);
+            let in0_re = f32x16::simd_from(simd, *re_s0);
+            let in1_re = f32x16::simd_from(simd, *re_s1);
+            let in0_im = f32x16::simd_from(simd, *im_s0);
+            let in1_im = f32x16::simd_from(simd, *im_s1);
 
-                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+            // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+            let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+            // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+            let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
 
-                // Use FMA for out1 = 2*in0 - out0
-                let out1_re = two.mul_sub(in0_re, out0_re);
-                let out1_im = two.mul_sub(in0_im, out0_im);
+            // Use FMA for out1 = 2*in0 - out0
+            let out1_re = two.mul_sub(in0_re, out0_re);
+            let out1_im = two.mul_sub(in0_im, out0_im);
 
-                out0_re.store_slice(re_s0);
-                out0_im.store_slice(im_s0);
-                out1_re.store_slice(re_s1);
-                out1_im.store_slice(im_s1);
+            out0_re.store_slice(re_s0);
+            out0_im.store_slice(im_s0);
+            out1_re.store_slice(re_s1);
+            out1_im.store_slice(im_s1);
 
-                // Advance streaming twiddles: multiply by W^LANES
-                let prev_re = tw_re;
-                tw_re = step_im.mul_add(-tw_im, step_re * prev_re);
-                tw_im = step_im.mul_add(prev_re, step_re * tw_im);
-            });
+            // Advance streaming twiddles: multiply by W^LANES
+            let prev_re = tw_re;
+            tw_re = step_im.mul_add(-tw_im, step_re * prev_re);
+            tw_im = step_im.mul_add(prev_re, step_re * tw_im);
+        }
     }
 }
