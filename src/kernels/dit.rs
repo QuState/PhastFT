@@ -986,10 +986,10 @@ pub fn fft_dit_chunk_n_f64<S: Simd>(
 
 /// General DIT butterfly for f64
 ///
-/// Generates twiddle factors on the fly using the arbitrary-offset approach:
-/// Pre-computes a base chunk of LANES twiddles [W^0, W^1, ..., W^{LANES-1}],
-/// then for each group at offset k, computes the scalar anchor W^k via sin_cos
-/// and multiplies it by the base chunk.
+/// Generates twiddle factors on the fly using a streaming SIMD approach:
+/// Maintains a SIMD vector of LANES twiddles and advances it each iteration
+/// by multiplying with a scalar step factor W^LANES (pure arithmetic, no sin_cos).
+/// To prevent floating-point drift, re-seeds from sin_cos every RESEED iterations.
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_n_simd_f64<S: Simd>(
     simd: S,
@@ -999,6 +999,7 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     dist: usize,
 ) {
     const LANES: usize = 8;
+    const RESEED: usize = 1024;
     let chunk_size = dist * 2;
     assert_eq!(chunk_size, num_points);
     assert!(chunk_size >= LANES * 2);
@@ -1017,6 +1018,12 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     let base_re_v = f64x8::simd_from(simd, base_re);
     let base_im_v = f64x8::simd_from(simd, base_im);
 
+    // Streaming step factor: W^LANES as a scalar, splatted for SIMD multiply
+    let step_angle = theta * LANES as f64;
+    let (step_s, step_c) = step_angle.sin_cos();
+    let step_re = f64x8::splat(simd, step_c);
+    let step_im = f64x8::splat(simd, step_s);
+
     // The structure of outer for loop with inner for_each is intentional: on x86
     // fearless_simd needs inlining all the way down to intrinsics to work properly,
     // and using for_each in the outer scope would require a call to for_each function
@@ -1031,6 +1038,10 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
         let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
         let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
+        // Initialize streaming twiddle state to base chunk (anchor = W^0 = 1)
+        let mut tw_re = base_re_v;
+        let mut tw_im = base_im_v;
+
         (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
@@ -1038,21 +1049,22 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
             .enumerate()
             .for_each(|(lane_idx, (((re_s0, re_s1), im_s0), im_s1))| {
                 let two = f64x8::splat(simd, 2.0);
+
+                // Re-seed from sin_cos every RESEED iterations to combat drift
+                if lane_idx % RESEED == 0 && lane_idx > 0 {
+                    let offset = lane_idx * LANES;
+                    let start_angle = theta * offset as f64;
+                    let (s_start, c_start) = start_angle.sin_cos();
+                    let anchor_re = f64x8::splat(simd, c_start);
+                    let anchor_im = f64x8::splat(simd, s_start);
+                    tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
+                    tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
+                }
+
                 let in0_re = f64x8::simd_from(simd, *re_s0);
                 let in1_re = f64x8::simd_from(simd, *re_s1);
                 let in0_im = f64x8::simd_from(simd, *im_s0);
                 let in1_im = f64x8::simd_from(simd, *im_s1);
-
-                // Compute twiddles on the fly: anchor W^k, then chunk = anchor * base
-                let offset = lane_idx * LANES;
-                let start_angle = theta * offset as f64;
-                let (s_start, c_start) = start_angle.sin_cos();
-                let anchor_re = f64x8::splat(simd, c_start);
-                let anchor_im = f64x8::splat(simd, s_start);
-
-                // Complex multiply: (anchor_re + i*anchor_im) * (base_re + i*base_im)
-                let tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
-                let tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
 
                 // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
                 let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
@@ -1067,6 +1079,11 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
                 out0_im.store_slice(im_s0);
                 out1_re.store_slice(re_s1);
                 out1_im.store_slice(im_s1);
+
+                // Advance streaming twiddles: multiply by W^LANES
+                let prev_re = tw_re;
+                tw_re = step_im.mul_add(-tw_im, step_re * prev_re);
+                tw_im = step_im.mul_add(prev_re, step_re * tw_im);
             });
     }
 }
@@ -1091,7 +1108,7 @@ pub fn fft_dit_chunk_n_f32<S: Simd>(
 
 /// General DIT butterfly for f32
 ///
-/// Generates twiddle factors on the fly using the arbitrary-offset approach.
+/// Generates twiddle factors on the fly using a streaming SIMD approach.
 /// See `fft_dit_chunk_n_simd_f64` for detailed explanation.
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_n_simd_f32<S: Simd>(
@@ -1102,11 +1119,12 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
     dist: usize,
 ) {
     const LANES: usize = 16;
+    const RESEED: usize = 1024;
     let chunk_size = dist * 2;
     assert_eq!(chunk_size, num_points);
     assert!(chunk_size >= LANES * 2);
 
-    // Compute base twiddles in f64 for precision, then convert to f32
+    // Compute base twiddles and step factor in f64 for precision, then convert to f32
     let theta_f64 = -2.0 * std::f64::consts::PI / num_points as f64;
 
     // Pre-compute base twiddle chunk: W^0, W^1, ..., W^{LANES-1}
@@ -1121,6 +1139,12 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
     let base_re_v = f32x16::simd_from(simd, base_re);
     let base_im_v = f32x16::simd_from(simd, base_im);
 
+    // Streaming step factor: W^LANES as a scalar, splatted for SIMD multiply
+    let step_angle = theta_f64 * LANES as f64;
+    let (step_s, step_c) = step_angle.sin_cos();
+    let step_re = f32x16::splat(simd, step_c as f32);
+    let step_im = f32x16::splat(simd, step_s as f32);
+
     // see fft_dit_chunk_n_simd_f64 for an explanation of this structure
     for (reals_chunk, imags_chunk) in reals
         .chunks_exact_mut(chunk_size)
@@ -1129,6 +1153,10 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
         let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
         let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
+        // Initialize streaming twiddle state to base chunk (anchor = W^0 = 1)
+        let mut tw_re = base_re_v;
+        let mut tw_im = base_im_v;
+
         (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
@@ -1136,21 +1164,22 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
             .enumerate()
             .for_each(|(lane_idx, (((re_s0, re_s1), im_s0), im_s1))| {
                 let two = f32x16::splat(simd, 2.0);
+
+                // Re-seed from sin_cos every RESEED iterations to combat drift
+                if lane_idx % RESEED == 0 && lane_idx > 0 {
+                    let offset = lane_idx * LANES;
+                    let start_angle = theta_f64 * offset as f64;
+                    let (s_start, c_start) = start_angle.sin_cos();
+                    let anchor_re = f32x16::splat(simd, c_start as f32);
+                    let anchor_im = f32x16::splat(simd, s_start as f32);
+                    tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
+                    tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
+                }
+
                 let in0_re = f32x16::simd_from(simd, *re_s0);
                 let in1_re = f32x16::simd_from(simd, *re_s1);
                 let in0_im = f32x16::simd_from(simd, *im_s0);
                 let in1_im = f32x16::simd_from(simd, *im_s1);
-
-                // Compute twiddles on the fly: anchor W^k, then chunk = anchor * base
-                let offset = lane_idx * LANES;
-                let start_angle = theta_f64 * offset as f64;
-                let (s_start, c_start) = start_angle.sin_cos();
-                let anchor_re = f32x16::splat(simd, c_start as f32);
-                let anchor_im = f32x16::splat(simd, s_start as f32);
-
-                // Complex multiply: (anchor_re + i*anchor_im) * (base_re + i*base_im)
-                let tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
-                let tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
 
                 // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
                 let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
@@ -1165,6 +1194,11 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
                 out0_im.store_slice(im_s0);
                 out1_re.store_slice(re_s1);
                 out1_im.store_slice(im_s1);
+
+                // Advance streaming twiddles: multiply by W^LANES
+                let prev_re = tw_re;
+                tw_re = step_im.mul_add(-tw_im, step_re * prev_re);
+                tw_im = step_im.mul_add(prev_re, step_re * tw_im);
             });
     }
 }
