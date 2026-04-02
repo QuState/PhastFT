@@ -25,6 +25,48 @@ use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 /// L1 cache block size in complex elements (8KB for f32, 16KB for f64)
 const L1_BLOCK_SIZE: usize = 1024;
 
+/// Run DIT stages from `start` to `end` (exclusive), fusing pairs of general
+/// stages into a single pass where possible (radix-2² optimization).
+/// Returns updated `stage_twiddle_idx`.
+fn run_dit_stages_f64<S: Simd>(
+    simd: S,
+    reals: &mut [f64],
+    imags: &mut [f64],
+    start: usize,
+    end: usize,
+    planner: &PlannerDit64,
+    mut stage_twiddle_idx: usize,
+) -> usize {
+    let mut stage = start;
+    while stage < end {
+        let dist = 1 << stage;
+        let chunk_size = dist * 2;
+
+        // Fuse two stages when both use general twiddles and there's a next stage
+        if chunk_size > 64 && stage + 1 < end {
+            let (tw_s_re, tw_s_im) = &planner.stage_twiddles[stage_twiddle_idx];
+            let (tw_s1_re, tw_s1_im) = &planner.stage_twiddles[stage_twiddle_idx + 1];
+            fft_dit_fused_2stage_f64_narrow(
+                simd,
+                reals,
+                imags,
+                tw_s_re,
+                tw_s_im,
+                &tw_s1_re[..dist],
+                &tw_s1_im[..dist],
+                dist,
+            );
+            stage_twiddle_idx += 2;
+            stage += 2;
+        } else {
+            stage_twiddle_idx =
+                execute_dit_stage_f64(simd, reals, imags, stage, planner, stage_twiddle_idx);
+            stage += 1;
+        }
+    }
+    stage_twiddle_idx
+}
+
 /// Recursive cache-blocked DIT FFT for f64 using post-order traversal.
 ///
 /// Recursively divides by 2 until reaching L1 cache size, processes stages within
@@ -41,17 +83,15 @@ fn recursive_dit_fft_f64<S: Simd>(
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        for stage in 0..log_size {
-            stage_twiddle_idx = execute_dit_stage_f64(
-                simd,
-                &mut reals[..size],
-                &mut imags[..size],
-                stage,
-                planner,
-                stage_twiddle_idx,
-            );
-        }
-        stage_twiddle_idx
+        run_dit_stages_f64(
+            simd,
+            &mut reals[..size],
+            &mut imags[..size],
+            0,
+            log_size,
+            planner,
+            stage_twiddle_idx,
+        )
     } else {
         let half = size / 2;
         let log_half = half.ilog2() as usize;
@@ -70,19 +110,58 @@ fn recursive_dit_fft_f64<S: Simd>(
         stage_twiddle_idx = log_half.saturating_sub(6);
 
         // Process remaining stages that span both halves
-        for stage in log_half..log_size {
-            stage_twiddle_idx = execute_dit_stage_f64(
-                simd,
-                &mut reals[..size],
-                &mut imags[..size],
-                stage,
-                planner,
-                stage_twiddle_idx,
-            );
-        }
-
-        stage_twiddle_idx
+        run_dit_stages_f64(
+            simd,
+            &mut reals[..size],
+            &mut imags[..size],
+            log_half,
+            log_size,
+            planner,
+            stage_twiddle_idx,
+        )
     }
+}
+
+/// Run DIT stages from `start` to `end` (exclusive), fusing pairs of general
+/// stages into a single pass where possible (radix-2² optimization).
+/// Returns updated `stage_twiddle_idx`.
+fn run_dit_stages_f32<S: Simd>(
+    simd: S,
+    reals: &mut [f32],
+    imags: &mut [f32],
+    start: usize,
+    end: usize,
+    planner: &PlannerDit32,
+    mut stage_twiddle_idx: usize,
+) -> usize {
+    let mut stage = start;
+    while stage < end {
+        let dist = 1 << stage;
+        let chunk_size = dist * 2;
+
+        // Fuse two stages when both use general twiddles and there's a next stage
+        if chunk_size > 64 && stage + 1 < end {
+            let (tw_s_re, tw_s_im) = &planner.stage_twiddles[stage_twiddle_idx];
+            let (tw_s1_re, tw_s1_im) = &planner.stage_twiddles[stage_twiddle_idx + 1];
+            fft_dit_fused_2stage_f32_narrow(
+                simd,
+                reals,
+                imags,
+                tw_s_re,
+                tw_s_im,
+                &tw_s1_re[..dist],
+                &tw_s1_im[..dist],
+                dist,
+            );
+            stage_twiddle_idx += 2;
+            stage += 2;
+        } else {
+            stage_twiddle_idx =
+                execute_dit_stage_f32(simd, reals, imags, stage, planner, stage_twiddle_idx);
+            stage += 1;
+        }
+    }
+    stage_twiddle_idx
 }
 
 /// Recursive cache-blocked DIT FFT for f32 using post-order traversal.
@@ -98,17 +177,15 @@ fn recursive_dit_fft_f32<S: Simd>(
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        for stage in 0..log_size {
-            stage_twiddle_idx = execute_dit_stage_f32(
-                simd,
-                &mut reals[..size],
-                &mut imags[..size],
-                stage,
-                planner,
-                stage_twiddle_idx,
-            );
-        }
-        stage_twiddle_idx
+        run_dit_stages_f32(
+            simd,
+            &mut reals[..size],
+            &mut imags[..size],
+            0,
+            log_size,
+            planner,
+            stage_twiddle_idx,
+        )
     } else {
         let half = size / 2;
         let log_half = half.ilog2() as usize;
@@ -127,18 +204,15 @@ fn recursive_dit_fft_f32<S: Simd>(
         stage_twiddle_idx = log_half.saturating_sub(6);
 
         // Process remaining stages that span both halves
-        for stage in log_half..log_size {
-            stage_twiddle_idx = execute_dit_stage_f32(
-                simd,
-                &mut reals[..size],
-                &mut imags[..size],
-                stage,
-                planner,
-                stage_twiddle_idx,
-            );
-        }
-
-        stage_twiddle_idx
+        run_dit_stages_f32(
+            simd,
+            &mut reals[..size],
+            &mut imags[..size],
+            log_half,
+            log_size,
+            planner,
+            stage_twiddle_idx,
+        )
     }
 }
 
