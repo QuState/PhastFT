@@ -22,66 +22,13 @@ use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
-/// L1 cache block size in complex elements.
-///
-/// Each complex element uses 2 × size_of::<T>() bytes in split re/im format.
-/// For f32: 4096 × 4 bytes × 2 arrays = 32KB.
-/// For f64: 4096 × 8 bytes × 2 arrays = 64KB.
-///
-/// Must be small enough that the block + its twiddle factors fit comfortably in L1d.
-/// The twiddle factors for stages within the block accumulate to roughly block_size elements,
-/// so total L1 footprint is ~3× the data size.
+/// L1 cache block size in complex elements (8KB for f32, 16KB for f64)
 const L1_BLOCK_SIZE: usize = 1024;
-
-/// Run DIT stages from `start` to `end` (exclusive), fusing pairs of general
-/// stages into a single pass where possible (radix-2² optimization).
-/// Returns updated `stage_twiddle_idx`.
-fn run_dit_stages_f64<S: Simd>(
-    simd: S,
-    reals: &mut [f64],
-    imags: &mut [f64],
-    start: usize,
-    end: usize,
-    planner: &PlannerDit64,
-    mut stage_twiddle_idx: usize,
-) -> usize {
-    let mut stage = start;
-    while stage < end {
-        let dist = 1 << stage;
-        let chunk_size = dist * 2;
-
-        // Fuse two stages when both use general twiddles and there's a next stage
-        if chunk_size > 64 && stage + 1 < end {
-            let (tw_s_re, tw_s_im) = &planner.stage_twiddles[stage_twiddle_idx];
-            let (tw_s1_re, tw_s1_im) = &planner.stage_twiddles[stage_twiddle_idx + 1];
-            fft_dit_fused_2stage_f64_narrow(
-                simd,
-                reals,
-                imags,
-                tw_s_re,
-                tw_s_im,
-                &tw_s1_re[..dist],
-                &tw_s1_im[..dist],
-                dist,
-            );
-            stage_twiddle_idx += 2;
-            stage += 2;
-        } else {
-            stage_twiddle_idx =
-                execute_dit_stage_f64(simd, reals, imags, stage, planner, stage_twiddle_idx);
-            stage += 1;
-        }
-    }
-    stage_twiddle_idx
-}
 
 /// Recursive cache-blocked DIT FFT for f64 using post-order traversal.
 ///
 /// Recursively divides by 2 until reaching L1 cache size, processes stages within
 /// each block, then processes cross-block stages on return.
-///
-/// When the size is large enough to split into quarters, does so to produce
-/// two cross-block stages that can be fused by the radix-2² kernel.
 fn recursive_dit_fft_f64<S: Simd>(
     simd: S,
     reals: &mut [f64],
@@ -94,134 +41,51 @@ fn recursive_dit_fft_f64<S: Simd>(
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        run_dit_stages_f64(
-            simd,
-            &mut reals[..size],
-            &mut imags[..size],
-            0,
-            log_size,
-            planner,
-            stage_twiddle_idx,
-        )
-    } else if size >= L1_BLOCK_SIZE * 4 {
-        // Split into quarters: 4 sub-problems of size/4, then 2 cross-block stages.
-        // This gives the radix-2² fused kernel a pair of stages to work with.
-        let quarter = size / 4;
-        let log_quarter = quarter.ilog2() as usize;
-        let parallel = size > opts.smallest_parallel_chunk_size;
-
-        let (re_lo, re_hi) = reals.split_at_mut(size / 2);
-        let (im_lo, im_hi) = imags.split_at_mut(size / 2);
-        let (re_q0, re_q1) = re_lo.split_at_mut(quarter);
-        let (im_q0, im_q1) = im_lo.split_at_mut(quarter);
-        let (re_q2, re_q3) = re_hi.split_at_mut(quarter);
-        let (im_q2, im_q3) = im_hi.split_at_mut(quarter);
-
-        run_maybe_in_parallel(
-            parallel,
-            || {
-                run_maybe_in_parallel(
-                    parallel,
-                    || recursive_dit_fft_f64(simd, re_q0, im_q0, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f64(simd, re_q1, im_q1, quarter, planner, opts, 0),
-                )
-            },
-            || {
-                run_maybe_in_parallel(
-                    parallel,
-                    || recursive_dit_fft_f64(simd, re_q2, im_q2, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f64(simd, re_q3, im_q3, quarter, planner, opts, 0),
-                )
-            },
-        );
-
-        // All quarters completed stages 0..log_quarter-1.
-        // Now run 2 cross-block stages: log_quarter and log_quarter+1.
-        stage_twiddle_idx = log_quarter.saturating_sub(6);
-
-        run_dit_stages_f64(
-            simd,
-            &mut reals[..size],
-            &mut imags[..size],
-            log_quarter,
-            log_size,
-            planner,
-            stage_twiddle_idx,
-        )
+        for stage in 0..log_size {
+            stage_twiddle_idx = execute_dit_stage_f64(
+                simd,
+                &mut reals[..size],
+                &mut imags[..size],
+                stage,
+                planner,
+                stage_twiddle_idx,
+            );
+        }
+        stage_twiddle_idx
     } else {
-        // size is between L1_BLOCK_SIZE+1 and L1_BLOCK_SIZE*4-1
-        // Split into halves: 1 cross-block stage (cannot fuse, but these are small sizes)
         let half = size / 2;
         let log_half = half.ilog2() as usize;
 
         let (re_first_half, re_second_half) = reals.split_at_mut(half);
         let (im_first_half, im_second_half) = imags.split_at_mut(half);
+        // Recursively process both halves
         run_maybe_in_parallel(
             size > opts.smallest_parallel_chunk_size,
             || recursive_dit_fft_f64(simd, re_first_half, im_first_half, half, planner, opts, 0),
             || recursive_dit_fft_f64(simd, re_second_half, im_second_half, half, planner, opts, 0),
         );
 
+        // Both halves completed stages 0..log_half-1
+        // Stages 0-5 use hardcoded twiddles, 6+ use planner
         stage_twiddle_idx = log_half.saturating_sub(6);
 
-        run_dit_stages_f64(
-            simd,
-            &mut reals[..size],
-            &mut imags[..size],
-            log_half,
-            log_size,
-            planner,
-            stage_twiddle_idx,
-        )
-    }
-}
-
-/// Run DIT stages from `start` to `end` (exclusive), fusing pairs of general
-/// stages into a single pass where possible (radix-2² optimization).
-/// Returns updated `stage_twiddle_idx`.
-fn run_dit_stages_f32<S: Simd>(
-    simd: S,
-    reals: &mut [f32],
-    imags: &mut [f32],
-    start: usize,
-    end: usize,
-    planner: &PlannerDit32,
-    mut stage_twiddle_idx: usize,
-) -> usize {
-    let mut stage = start;
-    while stage < end {
-        let dist = 1 << stage;
-        let chunk_size = dist * 2;
-
-        // Fuse two stages when both use general twiddles and there's a next stage
-        if chunk_size > 64 && stage + 1 < end {
-            let (tw_s_re, tw_s_im) = &planner.stage_twiddles[stage_twiddle_idx];
-            let (tw_s1_re, tw_s1_im) = &planner.stage_twiddles[stage_twiddle_idx + 1];
-            fft_dit_fused_2stage_f32_narrow(
+        // Process remaining stages that span both halves
+        for stage in log_half..log_size {
+            stage_twiddle_idx = execute_dit_stage_f64(
                 simd,
-                reals,
-                imags,
-                tw_s_re,
-                tw_s_im,
-                &tw_s1_re[..dist],
-                &tw_s1_im[..dist],
-                dist,
+                &mut reals[..size],
+                &mut imags[..size],
+                stage,
+                planner,
+                stage_twiddle_idx,
             );
-            stage_twiddle_idx += 2;
-            stage += 2;
-        } else {
-            stage_twiddle_idx =
-                execute_dit_stage_f32(simd, reals, imags, stage, planner, stage_twiddle_idx);
-            stage += 1;
         }
+
+        stage_twiddle_idx
     }
-    stage_twiddle_idx
 }
 
 /// Recursive cache-blocked DIT FFT for f32 using post-order traversal.
-///
-/// When the size is large enough to split into quarters, does so to produce
-/// two cross-block stages that can be fused by the radix-2² kernel.
 fn recursive_dit_fft_f32<S: Simd>(
     simd: S,
     reals: &mut [f32],
@@ -234,83 +98,47 @@ fn recursive_dit_fft_f32<S: Simd>(
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        run_dit_stages_f32(
-            simd,
-            &mut reals[..size],
-            &mut imags[..size],
-            0,
-            log_size,
-            planner,
-            stage_twiddle_idx,
-        )
-    } else if size >= L1_BLOCK_SIZE * 4 {
-        // Split into quarters: 4 sub-problems of size/4, then 2 cross-block stages.
-        let quarter = size / 4;
-        let log_quarter = quarter.ilog2() as usize;
-        let parallel = size > opts.smallest_parallel_chunk_size;
-
-        let (re_lo, re_hi) = reals.split_at_mut(size / 2);
-        let (im_lo, im_hi) = imags.split_at_mut(size / 2);
-        let (re_q0, re_q1) = re_lo.split_at_mut(quarter);
-        let (im_q0, im_q1) = im_lo.split_at_mut(quarter);
-        let (re_q2, re_q3) = re_hi.split_at_mut(quarter);
-        let (im_q2, im_q3) = im_hi.split_at_mut(quarter);
-
-        run_maybe_in_parallel(
-            parallel,
-            || {
-                run_maybe_in_parallel(
-                    parallel,
-                    || recursive_dit_fft_f32(simd, re_q0, im_q0, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f32(simd, re_q1, im_q1, quarter, planner, opts, 0),
-                )
-            },
-            || {
-                run_maybe_in_parallel(
-                    parallel,
-                    || recursive_dit_fft_f32(simd, re_q2, im_q2, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f32(simd, re_q3, im_q3, quarter, planner, opts, 0),
-                )
-            },
-        );
-
-        // All quarters completed stages 0..log_quarter-1.
-        // Now run 2 cross-block stages: log_quarter and log_quarter+1.
-        stage_twiddle_idx = log_quarter.saturating_sub(6);
-
-        run_dit_stages_f32(
-            simd,
-            &mut reals[..size],
-            &mut imags[..size],
-            log_quarter,
-            log_size,
-            planner,
-            stage_twiddle_idx,
-        )
+        for stage in 0..log_size {
+            stage_twiddle_idx = execute_dit_stage_f32(
+                simd,
+                &mut reals[..size],
+                &mut imags[..size],
+                stage,
+                planner,
+                stage_twiddle_idx,
+            );
+        }
+        stage_twiddle_idx
     } else {
-        // size is between L1_BLOCK_SIZE+1 and L1_BLOCK_SIZE*4-1
         let half = size / 2;
         let log_half = half.ilog2() as usize;
 
         let (re_first_half, re_second_half) = reals.split_at_mut(half);
         let (im_first_half, im_second_half) = imags.split_at_mut(half);
+        // Recursively process both halves
         run_maybe_in_parallel(
             size > opts.smallest_parallel_chunk_size,
             || recursive_dit_fft_f32(simd, re_first_half, im_first_half, half, planner, opts, 0),
             || recursive_dit_fft_f32(simd, re_second_half, im_second_half, half, planner, opts, 0),
         );
 
+        // Both halves completed stages 0..log_half-1
+        // Stages 0-5 use hardcoded twiddles, 6+ use planner
         stage_twiddle_idx = log_half.saturating_sub(6);
 
-        run_dit_stages_f32(
-            simd,
-            &mut reals[..size],
-            &mut imags[..size],
-            log_half,
-            log_size,
-            planner,
-            stage_twiddle_idx,
-        )
+        // Process remaining stages that span both halves
+        for stage in log_half..log_size {
+            stage_twiddle_idx = execute_dit_stage_f32(
+                simd,
+                &mut reals[..size],
+                &mut imags[..size],
+                stage,
+                planner,
+                stage_twiddle_idx,
+            );
+        }
+
+        stage_twiddle_idx
     }
 }
 
