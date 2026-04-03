@@ -22,7 +22,15 @@ use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
-/// L1 cache block size in complex elements (8KB for f32, 16KB for f64)
+/// L1 cache block size in complex elements.
+///
+/// Each complex element uses 2 × size_of::<T>() bytes in split re/im format.
+/// For f32: 4096 × 4 bytes × 2 arrays = 32KB.
+/// For f64: 4096 × 8 bytes × 2 arrays = 64KB.
+///
+/// Must be small enough that the block + its twiddle factors fit comfortably in L1d.
+/// The twiddle factors for stages within the block accumulate to roughly block_size elements,
+/// so total L1 footprint is ~3× the data size.
 const L1_BLOCK_SIZE: usize = 1024;
 
 /// Run DIT stages from `start` to `end` (exclusive), fusing pairs of general
