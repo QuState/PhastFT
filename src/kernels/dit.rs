@@ -1412,6 +1412,34 @@ fn fft_dit_fused_2stage_simd_f64_narrow<S: Simd>(
     }
 }
 
+#[inline(never)]
+pub fn fft_dit_fused_2stage_f64_narrow_parallel<S: Simd>(
+    simd: S,
+    reals: &mut [f64],
+    imags: &mut [f64],
+    twiddles_s_re: &[f64],
+    twiddles_s_im: &[f64],
+    twiddles_s1_re: &[f64],
+    twiddles_s1_im: &[f64],
+    dist_s: usize,
+) {
+    simd.vectorize(
+        #[inline(always)]
+        || {
+            fft_dit_fused_2stage_simd_f64_narrow_parallel(
+                simd,
+                reals,
+                imags,
+                twiddles_s_re,
+                twiddles_s_im,
+                twiddles_s1_re,
+                twiddles_s1_im,
+                dist_s,
+            )
+        },
+    )
+}
+
 /// Fused two-stage DIT butterfly for f64 (radix-2², narrow SIMD: f64x4) that runs multi-threaded
 #[cfg(feature = "parallel")]
 #[inline(always)]
