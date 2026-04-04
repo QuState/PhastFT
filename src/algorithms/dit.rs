@@ -226,10 +226,10 @@ fn execute_dit_stages_f64<S: Simd>(
     } else if chunk_size == 64 {
         fft_dit_chunk_64_f64(simd, reals, imags);
         (stage_twiddle_idx, 1)
-    } else if cfg!(feature = "parallel") {
-        // When nearing the end, use the parallelized kernel because recursion doesn't parallelize enough
+    } else {
         #[cfg(feature = "parallel")]
         {
+            // When nearing the end, use the parallelized kernel because recursion doesn't parallelize enough
             // TODO: make this dynamic based on std::thread::available_parallelism(), maybe?
             // The jump from 16 threads to all threads is probably not very large so this is entering diminishing returns
             if stages_remaining > 4 {
@@ -267,31 +267,29 @@ fn execute_dit_stages_f64<S: Simd>(
                 fft_dit_chunk_n_f64(simd, reals, imags, twiddles_re, twiddles_im, dist);
                 (stage_twiddle_idx + 1, 1)
             }
-            #[cfg(not(feature = "parallel"))]
-            {
-                unreachable!()
-            }
         }
-    } else if stages_remaining >= 2 {
-        // Fuse two stages into a single pass over memory
-        let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
-        let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
-        fft_dit_fused_2stage_f64_narrow(
-            simd,
-            reals,
-            imags,
-            twiddles_re,
-            twiddles_im,
-            twiddles_re2,
-            twiddles_im2,
-            dist,
-        );
-        (stage_twiddle_idx + 2, 2)
-    } else {
-        // Last stage (odd number of stages remaining), use single-stage kernel
-        let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
-        fft_dit_chunk_n_f64(simd, reals, imags, twiddles_re, twiddles_im, dist);
-        (stage_twiddle_idx + 1, 1)
+        #[cfg(not(feature = "parallel"))]
+        if stages_remaining >= 2 {
+            // Fuse two stages into a single pass over memory
+            let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
+            let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
+            fft_dit_fused_2stage_f64_narrow(
+                simd,
+                reals,
+                imags,
+                twiddles_re,
+                twiddles_im,
+                twiddles_re2,
+                twiddles_im2,
+                dist,
+            );
+            (stage_twiddle_idx + 2, 2)
+        } else {
+            // Last stage (odd number of stages remaining), use single-stage kernel
+            let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
+            fft_dit_chunk_n_f64(simd, reals, imags, twiddles_re, twiddles_im, dist);
+            (stage_twiddle_idx + 1, 1)
+        }
     }
 }
 

@@ -1412,6 +1412,7 @@ fn fft_dit_fused_2stage_simd_f64_narrow<S: Simd>(
     }
 }
 
+#[cfg(feature = "parallel")]
 #[inline(never)]
 pub fn fft_dit_fused_2stage_f64_narrow_parallel<S: Simd>(
     simd: S,
@@ -1701,6 +1702,7 @@ fn fft_dit_fused_2stage_simd_f32_narrow<S: Simd>(
     }
 }
 
+#[cfg(feature = "parallel")]
 #[inline(never)]
 pub fn fft_dit_fused_2stage_f32_narrow_parallel<S: Simd>(
     simd: S,
