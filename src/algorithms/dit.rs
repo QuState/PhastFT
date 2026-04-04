@@ -37,6 +37,7 @@ fn recursive_dit_fft_f64<S: Simd>(
     planner: &PlannerDit64,
     opts: &Options,
     mut stage_twiddle_idx: usize,
+    is_top_level: bool,
 ) -> usize {
     let log_size = size.ilog2() as usize;
 
@@ -73,15 +74,15 @@ fn recursive_dit_fft_f64<S: Simd>(
             || {
                 run_maybe_in_parallel(
                     size / 2 > opts.smallest_parallel_chunk_size,
-                    || recursive_dit_fft_f64(simd, re_q0, im_q0, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f64(simd, re_q1, im_q1, quarter, planner, opts, 0),
+                    || recursive_dit_fft_f64(simd, re_q0, im_q0, quarter, planner, opts, 0, false),
+                    || recursive_dit_fft_f64(simd, re_q1, im_q1, quarter, planner, opts, 0, false),
                 )
             },
             || {
                 run_maybe_in_parallel(
                     size / 2 > opts.smallest_parallel_chunk_size,
-                    || recursive_dit_fft_f64(simd, re_q2, im_q2, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f64(simd, re_q3, im_q3, quarter, planner, opts, 0),
+                    || recursive_dit_fft_f64(simd, re_q2, im_q2, quarter, planner, opts, 0, false),
+                    || recursive_dit_fft_f64(simd, re_q3, im_q3, quarter, planner, opts, 0, false),
                 )
             },
         );
@@ -93,13 +94,39 @@ fn recursive_dit_fft_f64<S: Simd>(
         stage_twiddle_idx = log_quarter.saturating_sub(6);
 
         let mut stage = log_quarter;
+        let _ = is_top_level; // used only with "parallel" feature
         while stage < log_size {
+            let stages_remaining = log_size - stage;
+
+            // At the top level, the last fused 2-stage pass spans the entire array
+            // and cannot be parallelized through recursion, so use the parallel kernel.
+            #[cfg(feature = "parallel")]
+            if is_top_level && stages_remaining >= 2 && (1 << stage) * 2 > 64 {
+                let dist = 1 << stage;
+                let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
+                let (twiddles_re2, twiddles_im2) =
+                    &planner.stage_twiddles[stage_twiddle_idx + 1];
+                fft_dit_fused_2stage_f64_narrow_parallel(
+                    simd,
+                    &mut reals[..size],
+                    &mut imags[..size],
+                    twiddles_re,
+                    twiddles_im,
+                    twiddles_re2,
+                    twiddles_im2,
+                    dist,
+                );
+                stage_twiddle_idx += 2;
+                stage += 2;
+                continue;
+            }
+
             let (new_idx, consumed) = execute_dit_stages_f64(
                 simd,
                 &mut reals[..size],
                 &mut imags[..size],
                 stage,
-                log_size - stage,
+                stages_remaining,
                 planner,
                 stage_twiddle_idx,
             );
@@ -374,7 +401,7 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
 
     simd.vectorize(
         #[inline(always)]
-        || recursive_dit_fft_f64(simd, reals, imags, n, planner, opts, 0),
+        || recursive_dit_fft_f64(simd, reals, imags, n, planner, opts, 0, true),
     );
 
     // Scaling for inverse transform
