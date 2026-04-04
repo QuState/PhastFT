@@ -1700,3 +1700,153 @@ fn fft_dit_fused_2stage_simd_f32_narrow<S: Simd>(
             );
     }
 }
+
+#[inline(never)]
+pub fn fft_dit_fused_2stage_f32_narrow_parallel<S: Simd>(
+    simd: S,
+    reals: &mut [f32],
+    imags: &mut [f32],
+    twiddles_s_re: &[f32],
+    twiddles_s_im: &[f32],
+    twiddles_s1_re: &[f32],
+    twiddles_s1_im: &[f32],
+    dist_s: usize,
+) {
+    simd.vectorize(
+        #[inline(always)]
+        || {
+            fft_dit_fused_2stage_simd_f32_narrow_parallel(
+                simd,
+                reals,
+                imags,
+                twiddles_s_re,
+                twiddles_s_im,
+                twiddles_s1_re,
+                twiddles_s1_im,
+                dist_s,
+            )
+        },
+    )
+}
+
+/// Fused two-stage DIT butterfly for f32 (radix-2², narrow SIMD: f32x8) that runs multi-threaded
+#[cfg(feature = "parallel")]
+#[inline(always)]
+fn fft_dit_fused_2stage_simd_f32_narrow_parallel<S: Simd>(
+    simd: S,
+    reals: &mut [f32],
+    imags: &mut [f32],
+    twiddles_s_re: &[f32],
+    twiddles_s_im: &[f32],
+    twiddles_s1_re: &[f32],
+    twiddles_s1_im: &[f32],
+    dist_s: usize,
+) {
+    use rayon::prelude::*;
+    const LANES: usize = 8;
+    let block_size = dist_s * 4; // two stages: 4 sub-blocks of dist_s
+    assert!(dist_s >= LANES);
+
+    // Outer loop over blocks of 4*dist_s elements.
+    // Using `for` (not `for_each`) for the same inlining reasons
+    // as in fft_dit_chunk_n_simd_f32.
+    for (reals_block, imags_block) in reals
+        .chunks_exact_mut(block_size)
+        .zip(imags.chunks_exact_mut(block_size))
+    {
+        // Split block into 4 sub-blocks of dist_s elements:
+        // A = [0..D), B = [D..2D), C = [2D..3D), D_blk = [3D..4D)
+        let (re_ab, re_cd) = reals_block.split_at_mut(dist_s * 2);
+        let (im_ab, im_cd) = imags_block.split_at_mut(dist_s * 2);
+        let (re_a, re_b) = re_ab.split_at_mut(dist_s);
+        let (im_a, im_b) = im_ab.split_at_mut(dist_s);
+        let (re_c, re_d) = re_cd.split_at_mut(dist_s);
+        let (im_c, im_d) = im_cd.split_at_mut(dist_s);
+
+        (re_a.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(re_b.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(re_c.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(re_d.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(im_a.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(im_b.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(im_c.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(im_d.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(twiddles_s_re.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles_s_im.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles_s1_re.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles_s1_im.as_chunks::<LANES>().0.par_iter())
+            .for_each(
+                |(
+                    ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
+                    tw1_im,
+                )| {
+                    simd.vectorize(
+                        #[inline(always)]
+                        || {
+                            let two = f32x8::splat(simd, 2.0);
+
+                            // Load 4 data sub-blocks
+                            let a_re = f32x8::simd_from(simd, *ra);
+                            let a_im = f32x8::simd_from(simd, *ia);
+                            let b_re = f32x8::simd_from(simd, *rb);
+                            let b_im = f32x8::simd_from(simd, *ib);
+                            let c_re = f32x8::simd_from(simd, *rc);
+                            let c_im = f32x8::simd_from(simd, *ic);
+                            let d_re = f32x8::simd_from(simd, *rd);
+                            let d_im = f32x8::simd_from(simd, *id);
+
+                            // Load stage-s twiddles
+                            let tws_re = f32x8::simd_from(simd, *tw_s_re);
+                            let tws_im = f32x8::simd_from(simd, *tw_s_im);
+
+                            // Stage s butterfly: (A,B) pair
+                            // A' = A + tw_s * B,  B' = A - tw_s * B
+                            let ap_re = tws_im.mul_add(-b_im, tws_re.mul_add(b_re, a_re));
+                            let ap_im = tws_im.mul_add(b_re, tws_re.mul_add(b_im, a_im));
+                            let bp_re = two.mul_sub(a_re, ap_re);
+                            let bp_im = two.mul_sub(a_im, ap_im);
+
+                            // Stage s butterfly: (C,D) pair
+                            // C' = C + tw_s * D,  D' = C - tw_s * D
+                            let cp_re = tws_im.mul_add(-d_im, tws_re.mul_add(d_re, c_re));
+                            let cp_im = tws_im.mul_add(d_re, tws_re.mul_add(d_im, c_im));
+                            let dp_re = two.mul_sub(c_re, cp_re);
+                            let dp_im = two.mul_sub(c_im, cp_im);
+
+                            // Load stage-(s+1) twiddles (first half only)
+                            let tw1r = f32x8::simd_from(simd, *tw1_re);
+                            let tw1i = f32x8::simd_from(simd, *tw1_im);
+
+                            // Stage s+1 butterfly: (A', C') pair with tw_{s+1}[k]
+                            // out_A = A' + tw1 * C',  out_C = A' - tw1 * C'
+                            let out_a_re = tw1i.mul_add(-cp_im, tw1r.mul_add(cp_re, ap_re));
+                            let out_a_im = tw1i.mul_add(cp_re, tw1r.mul_add(cp_im, ap_im));
+                            let out_c_re = two.mul_sub(ap_re, out_a_re);
+                            let out_c_im = two.mul_sub(ap_im, out_a_im);
+
+                            // Derive -j * tw1: (-j)(w_re + i*w_im) = w_im - i*w_re
+                            let nj_tw1r = tw1i;
+                            let nj_tw1i = -tw1r;
+
+                            // Stage s+1 butterfly: (B', D') pair with -j * tw_{s+1}[k]
+                            // out_B = B' + (-j*tw1) * D',  out_D = B' - (-j*tw1) * D'
+                            let out_b_re = nj_tw1i.mul_add(-dp_im, nj_tw1r.mul_add(dp_re, bp_re));
+                            let out_b_im = nj_tw1i.mul_add(dp_re, nj_tw1r.mul_add(dp_im, bp_im));
+                            let out_d_re = two.mul_sub(bp_re, out_b_re);
+                            let out_d_im = two.mul_sub(bp_im, out_b_im);
+
+                            // Store results
+                            out_a_re.store_slice(ra);
+                            out_a_im.store_slice(ia);
+                            out_b_re.store_slice(rb);
+                            out_b_im.store_slice(ib);
+                            out_c_re.store_slice(rc);
+                            out_c_im.store_slice(ic);
+                            out_d_re.store_slice(rd);
+                            out_d_im.store_slice(id);
+                        },
+                    );
+                },
+            );
+    }
+}
