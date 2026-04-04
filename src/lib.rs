@@ -392,4 +392,62 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn heuristic_disables_codelet_for_small_sizes() {
+        let planner = PlannerDit64::new(16, Direction::Forward); // log_n = 4
+        assert!(!planner.use_codelet_32);
+    }
+
+    #[test]
+    fn heuristic_enables_codelet_at_threshold() {
+        let planner = PlannerDit64::new(32, Direction::Forward); // log_n = 5
+        assert!(planner.use_codelet_32);
+
+        let planner = PlannerDit64::new(8192, Direction::Forward); // log_n = 13
+        assert!(planner.use_codelet_32);
+    }
+
+    #[test]
+    fn heuristic_disables_codelet_above_threshold() {
+        let planner = PlannerDit64::new(16384, Direction::Forward); // log_n = 14
+        assert!(!planner.use_codelet_32);
+    }
+
+    #[test]
+    fn tune_mode_does_not_panic() {
+        use crate::planner::PlannerMode;
+
+        for n in 5..=14 {
+            let size = 1 << n;
+            let _ = PlannerDit64::with_mode(size, Direction::Forward, PlannerMode::Tune);
+            let _ = PlannerDit32::with_mode(size, Direction::Forward, PlannerMode::Tune);
+        }
+    }
+
+    #[test]
+    fn roundtrip_correctness_with_tune_mode() {
+        use crate::planner::PlannerMode;
+
+        for n in 5..12 {
+            let size = 1 << n;
+            let mut reals_original = vec![0.0f64; size];
+            let mut imags_original = vec![0.0f64; size];
+            gen_random_signal_f64(&mut reals_original, &mut imags_original);
+
+            let mut reals = reals_original.clone();
+            let mut imags = imags_original.clone();
+
+            let fwd = PlannerDit64::with_mode(size, Direction::Forward, PlannerMode::Tune);
+            let inv = PlannerDit64::with_mode(size, Direction::Reverse, PlannerMode::Tune);
+
+            fft_64_dit_with_planner(&mut reals, &mut imags, &fwd);
+            fft_64_dit_with_planner(&mut reals, &mut imags, &inv);
+
+            for i in 0..size {
+                assert_float_closeness(reals[i], reals_original[i], 1e-10);
+                assert_float_closeness(imags[i], imags_original[i], 1e-10);
+            }
+        }
+    }
 }

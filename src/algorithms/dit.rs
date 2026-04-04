@@ -43,7 +43,7 @@ fn recursive_dit_fft_f64<S: Simd>(
 
     if size <= L1_BLOCK_SIZE {
         // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
-        let start_stage = if log_size >= 5 {
+        let start_stage = if planner.use_codelet_32 {
             fft_dit_codelet_32_f64(simd, &mut reals[..size], &mut imags[..size]);
             5
         } else {
@@ -109,7 +109,7 @@ fn recursive_dit_fft_f32<S: Simd>(
 
     if size <= L1_BLOCK_SIZE {
         // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
-        let start_stage = if log_size >= 5 {
+        let start_stage = if planner.use_codelet_32 {
             fft_dit_codelet_32_f32(simd, &mut reals[..size], &mut imags[..size]);
             5
         } else {
