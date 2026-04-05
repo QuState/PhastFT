@@ -450,4 +450,66 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn codelet_forced_on_above_heuristic_threshold_f64() {
+        for n in 14..=15 {
+            let size = 1 << n;
+            let mut reals_original = vec![0.0f64; size];
+            let mut imags_original = vec![0.0f64; size];
+            gen_random_signal_f64(&mut reals_original, &mut imags_original);
+
+            let mut reals = reals_original.clone();
+            let mut imags = imags_original.clone();
+
+            let mut fwd = PlannerDit64::new(size, Direction::Forward);
+            assert!(
+                !fwd.use_codelet_32,
+                "heuristic should disable codelet at n={n}"
+            );
+            fwd.use_codelet_32 = true;
+
+            let mut inv = PlannerDit64::new(size, Direction::Reverse);
+            inv.use_codelet_32 = true;
+
+            fft_64_dit_with_planner(&mut reals, &mut imags, &fwd);
+            fft_64_dit_with_planner(&mut reals, &mut imags, &inv);
+
+            for i in 0..size {
+                assert_float_closeness(reals[i], reals_original[i], 1e-10);
+                assert_float_closeness(imags[i], imags_original[i], 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn codelet_forced_on_above_heuristic_threshold_f32() {
+        for n in 14..=15 {
+            let size = 1 << n;
+            let mut reals_original = vec![0.0f32; size];
+            let mut imags_original = vec![0.0f32; size];
+            gen_random_signal_f32(&mut reals_original, &mut imags_original);
+
+            let mut reals = reals_original.clone();
+            let mut imags = imags_original.clone();
+
+            let mut fwd = PlannerDit32::new(size, Direction::Forward);
+            assert!(
+                !fwd.use_codelet_32,
+                "heuristic should disable codelet at n={n}"
+            );
+            fwd.use_codelet_32 = true;
+
+            let mut inv = PlannerDit32::new(size, Direction::Reverse);
+            inv.use_codelet_32 = true;
+
+            fft_32_dit_with_planner(&mut reals, &mut imags, &fwd);
+            fft_32_dit_with_planner(&mut reals, &mut imags, &inv);
+
+            for i in 0..size {
+                assert_float_closeness(reals[i], reals_original[i], 1e-4);
+                assert_float_closeness(imags[i], imags_original[i], 1e-4);
+            }
+        }
+    }
 }
