@@ -4,11 +4,9 @@
 /// by Lokhmotov and Mycroft (SPAA'07).
 ///
 /// The algorithm uses vector interleaving operations to perform bit-reversal permutation.
-/// For N = 2^n elements with W-element vectors, the algorithm performs log₂(N) rounds
+/// For `N = 2^n` elements with `W`-element vectors, the algorithm performs `log_2(N)` rounds
 /// of in-place interleave operations on pairs of vectors.
 ///
-/// The initial implementation was translated from mathematical notation in the paper
-/// to Rust by Claude 4.5 Opus.
 use fearless_simd::prelude::*;
 use fearless_simd::{f32x4, f32x8, f64x4, f64x8, Simd};
 
