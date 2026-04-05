@@ -15,11 +15,12 @@ pub enum Direction {
 
 macro_rules! impl_planner_dit_for {
     ($struct_name:ident, $precision:ident) => {
-        /// DIT-specific planner that pre-computes twiddles for all stages
+        /// DIT-specific planner
+        ///
+        /// Twiddle factors for stages with chunk_size > 64 are generated on the fly
+        /// by the kernels using the arbitrary-offset approach, so no pre-computation
+        /// is needed.
         pub struct $struct_name {
-            /// Twiddles for each stage that needs them (stages with chunk_size > 64)
-            /// Each element contains (twiddles_re, twiddles_im) for that stage
-            pub(crate) stage_twiddles: Vec<(Vec<$precision>, Vec<$precision>)>,
             /// The direction of the FFT
             pub(crate) direction: Direction,
             /// The log2 of the FFT size
@@ -34,34 +35,9 @@ macro_rules! impl_planner_dit_for {
                 assert!(num_points > 0 && num_points.is_power_of_two());
 
                 let simd_level = fearless_simd::Level::new();
-
                 let log_n = num_points.ilog2() as usize;
-                let mut stage_twiddles = Vec::new();
-
-                // Pre-compute twiddles for each stage that needs them
-                for stage in 0..log_n {
-                    let dist = 1 << stage; // 2.pow(stage)
-                    let chunk_size = dist * 2;
-
-                    // Only stages with chunk_size > 64 need twiddles (we have SIMD kernels up to 64)
-                    if chunk_size > 64 {
-                        let mut twiddles_re = vec![0.0 as $precision; dist];
-                        let mut twiddles_im = vec![0.0 as $precision; dist];
-
-                        let angle_mult =
-                            -2.0 * std::$precision::consts::PI / chunk_size as $precision;
-                        for k in 0..dist {
-                            let angle = angle_mult * k as $precision;
-                            twiddles_re[k] = angle.cos();
-                            twiddles_im[k] = angle.sin();
-                        }
-
-                        stage_twiddles.push((twiddles_re, twiddles_im));
-                    }
-                }
 
                 Self {
-                    stage_twiddles,
                     direction,
                     log_n,
                     simd_level,
