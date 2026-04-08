@@ -208,3 +208,99 @@ impl_planner_dit_for!(
     f32,
     crate::algorithms::dit::fft_32_dit_with_planner_and_opts
 );
+
+// ---------------------------------------------------------------------------
+// R2C / C2R planners
+// ---------------------------------------------------------------------------
+
+fn compute_r2c_twiddles_f64(n: usize, direction: Direction) -> (Vec<f64>, Vec<f64>) {
+    let half = n / 2;
+    let mut w_re = vec![0.0f64; half];
+    let mut w_im = vec![0.0f64; half];
+
+    // Forward (R2C): W_N^k  = exp(-2πi·k/N), angle_step = -π/half
+    // Reverse (C2R): W_N^-k = exp(+2πi·k/N), angle_step = +π/half
+    let sign = -(direction as i32 as f64);
+    let angle_step = sign * std::f64::consts::PI / half as f64;
+    let (st, ct) = angle_step.sin_cos();
+    let (mut wr, mut wi) = (1.0f64, 0.0f64);
+
+    for k in 0..half {
+        w_re[k] = wr;
+        w_im[k] = wi;
+        let tmp = wr;
+        wr = tmp * ct - wi * st;
+        wi = tmp * st + wi * ct;
+    }
+
+    (w_re, w_im)
+}
+
+fn compute_r2c_twiddles_f32(n: usize, direction: Direction) -> (Vec<f32>, Vec<f32>) {
+    let half = n / 2;
+    let mut w_re = vec![0.0f32; half];
+    let mut w_im = vec![0.0f32; half];
+
+    // Compute in f64 to avoid recurrence drift, then cast to f32
+    let sign = -(direction as i32 as f64);
+    let angle_step = sign * std::f64::consts::PI / half as f64;
+    let (st, ct) = angle_step.sin_cos();
+    let (mut wr, mut wi) = (1.0f64, 0.0f64);
+
+    for k in 0..half {
+        w_re[k] = wr as f32;
+        w_im[k] = wi as f32;
+        let tmp = wr;
+        wr = tmp * ct - wi * st;
+        wi = tmp * st + wi * ct;
+    }
+
+    (w_re, w_im)
+}
+
+macro_rules! impl_planner_r2c_for {
+    ($struct_name:ident, $precision:ident, $dit_planner:ident, $twiddle_fn:ident) => {
+        /// Planner for real-to-complex (R2C) and complex-to-real (C2R) FFTs.
+        ///
+        /// Pre-computes the inner DIT planner for the half-length complex FFT
+        /// and the untangle twiddle factors for the post-processing step.
+        ///
+        /// Use `Direction::Forward` for R2C transforms and `Direction::Reverse`
+        /// for C2R transforms.
+        pub struct $struct_name {
+            /// Inner DIT planner for the N/2 complex FFT
+            pub(crate) dit_planner: $dit_planner,
+            /// Pre-computed untangle twiddle factors (real parts)
+            pub(crate) w_re: Vec<$precision>,
+            /// Pre-computed untangle twiddle factors (imaginary parts)
+            pub(crate) w_im: Vec<$precision>,
+            /// Full real signal length N
+            pub(crate) n: usize,
+        }
+
+        impl $struct_name {
+            /// Create a planner for real FFTs of length `n`.
+            ///
+            /// Use `Direction::Forward` for R2C and `Direction::Reverse` for C2R.
+            ///
+            /// # Panics
+            ///
+            /// Panics if `n` is not a power of 2 or `n < 4`.
+            pub fn new(n: usize, direction: Direction) -> Self {
+                assert!(n >= 4 && n.is_power_of_two(), "n must be a power of 2 >= 4");
+                let half = n / 2;
+                let (w_re, w_im) = $twiddle_fn(n, direction);
+
+                Self {
+                    dit_planner: $dit_planner::new(half, direction),
+                    w_re,
+                    w_im,
+                    n,
+                }
+            }
+        }
+    };
+}
+
+impl_planner_r2c_for!(PlannerR2c64, f64, PlannerDit64, compute_r2c_twiddles_f64);
+impl_planner_r2c_for!(PlannerR2c32, f32, PlannerDit32, compute_r2c_twiddles_f32);

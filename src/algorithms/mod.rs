@@ -4,3 +4,4 @@
 //!
 pub mod bravo;
 pub mod dit;
+pub mod r2c;

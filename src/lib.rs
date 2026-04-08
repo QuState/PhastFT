@@ -30,6 +30,10 @@ pub mod planner;
 mod twiddles;
 
 pub use algorithms::dit::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
+pub use algorithms::r2c::{
+    c2r_ifft_f64, c2r_ifft_f64_with_planner, r2c_fft_f32, r2c_fft_f32_with_planner, r2c_fft_f64,
+    r2c_fft_f64_with_planner,
+};
 
 #[cfg(feature = "complex-nums")]
 macro_rules! impl_fft_interleaved_for {

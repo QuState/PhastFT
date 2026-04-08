@@ -28,8 +28,7 @@ Designed for large FFTs (gigabytes of data) common in scientific workloads, e.g.
 
 ## Planned features
 
-- Real-to-complex FFT
-- Additional agorithms for non-power-of-2 FFTs
+- Additional algorithms for non-power-of-2 FFTs
 - Even more work on performance
 
 ## Quickstart
@@ -72,6 +71,43 @@ fft_64_interleaved(&mut signal, Direction::Forward);
 
 Both `fft_32_interleaved` and `fft_64_interleaved` are available for `f32` and
 `f64` precision respectively.
+
+#### Real-Valued FFT (R2C)
+
+For purely real-valued input signals, the R2C transform is approximately
+2x faster than running a full complex FFT with zeroed imaginary components:
+
+```rust
+use phastft::{r2c_fft_f64, c2r_ifft_f64};
+
+let n = 1 << 16;
+let signal: Vec<f64> = (0..n).map(|i| (i as f64).sin()).collect();
+let mut spec_re = vec![0.0; n];
+let mut spec_im = vec![0.0; n];
+
+r2c_fft_f64(&signal, &mut spec_re, &mut spec_im);
+
+// Recover original signal
+let mut recovered = vec![0.0; n];
+c2r_ifft_f64(&spec_re, &spec_im, &mut recovered);
+```
+
+For repeated FFTs of the same size, use a planner to avoid
+re-computing twiddle factors:
+
+```rust
+use phastft::planner::{Direction, PlannerR2c64};
+use phastft::r2c_fft_f64_with_planner;
+
+let n = 1 << 16;
+let signal: Vec<f64> = (0..n).map(|i| (i as f64).sin()).collect();
+let mut spec_re = vec![0.0; n];
+let mut spec_im = vec![0.0; n];
+
+let planner = PlannerR2c64::new(n, Direction::Forward);
+// reuse `planner` across calls
+r2c_fft_f64_with_planner(&signal, &mut spec_re, &mut spec_im, &planner);
+```
 
 ### Python (coming soon)
 
