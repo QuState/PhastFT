@@ -17,7 +17,10 @@ use crate::complex_nums::{combine_re_im, deinterleave_complex32, deinterleave_co
 use crate::options::Options;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
+#[cfg(not(feature = "bench-internals"))]
 mod algorithms;
+#[cfg(feature = "bench-internals")]
+pub mod algorithms;
 #[cfg(all(feature = "complex-nums", not(feature = "bench-internals")))]
 mod complex_nums;
 #[cfg(feature = "bench-internals")]

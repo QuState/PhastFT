@@ -10,12 +10,77 @@
 use fearless_simd::prelude::*;
 use fearless_simd::{f32x4, f32x8, f64x4, f64x8, Simd};
 
+// Tile side length for COBRAVO, per element type.
+// B² × sizeof(T) must fit comfortably in L1d as a stack buffer.
+// Constraint: B must be a power of two and B >= LANES (the SIMD vector width).
+
+#[cfg(target_arch = "x86_64")]
+const TILE_SIDE_F32: usize = 32; // 32² × 4 = 4 KB, fits Zen4 L1d (32 KB)
+#[cfg(target_arch = "x86_64")]
+const TILE_SIDE_F64: usize = 32; // 32² × 8 = 8 KB, fits Zen4 L1d (32 KB)
+
+#[cfg(target_arch = "aarch64")]
+const TILE_SIDE_F32: usize = 64; // 64² × 4 = 16 KB, fits M-series L1d (128 KB)
+#[cfg(target_arch = "aarch64")]
+const TILE_SIDE_F64: usize = 32; // 32² × 8 = 8 KB, fits M-series L1d (128 KB)
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+const TILE_SIDE_F32: usize = 16;
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+const TILE_SIDE_F64: usize = 16;
+
+// Minimum number of tiles before engaging the tile loop.
+// With fewer tiles the staging overhead dominates.
+const MIN_TILES: usize = 16;
+
+/// Copy B strips of B contiguous elements from `data` into `buf`.
+///
+/// Tile layout: element (u, v) in tile `tile` lives at `data[u * (N/B) + tile * B + v]`
+/// and maps to `buf[u * B + v]`.
+#[inline(always)]
+fn stage_in<T: Copy, const B: usize>(data: &[T], buf: &mut [T], tile: usize, n: usize) {
+    let big_b = 1usize << B;
+    let stride = 1usize << (n - B); // N / B
+    for u in 0..big_b {
+        let src = u * stride + tile * big_b;
+        let dst = u * big_b;
+        buf[dst..dst + big_b].copy_from_slice(&data[src..src + big_b]);
+    }
+}
+
+/// Copy `buf` back into B strips of B contiguous elements in `data`.
+#[inline(always)]
+fn stage_out<T: Copy, const B: usize>(buf: &[T], data: &mut [T], tile: usize, n: usize) {
+    let big_b = 1usize << B;
+    let stride = 1usize << (n - B);
+    for u in 0..big_b {
+        let src = u * big_b;
+        let dst = u * stride + tile * big_b;
+        data[dst..dst + big_b].copy_from_slice(&buf[src..src + big_b]);
+    }
+}
+
+/// Swap `buf` contents with tile `tile_rev`'s strips in `data`.
+#[inline(always)]
+fn stage_swap<T, const B: usize>(data: &mut [T], buf: &mut [T], tile_rev: usize, n: usize) {
+    let big_b = 1usize << B;
+    let stride = 1usize << (n - B);
+    for u in 0..big_b {
+        let data_start = u * stride + tile_rev * big_b;
+        let buf_start = u * big_b;
+        buf[buf_start..buf_start + big_b]
+            .swap_with_slice(&mut data[data_start..data_start + big_b]);
+    }
+}
+
 /// Macro to generate bit_rev_bravo implementations for concrete types.
 /// Used instead of generics because `fearless_simd` doesn't let us be generic over the exact float type.
 macro_rules! impl_bit_rev_bravo {
-    ($fn_name:ident, $elem_ty:ty, $vec_ty:ty, $lanes:expr) => {
-        #[inline(always)] // required by fearless_simd
-        fn $fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
+    ($fn_name:ident, $buf_fn_name:ident, $elem_ty:ty, $vec_ty:ty, $lanes:expr, $tile_side:expr) => {
+        /// Inner helper: runs the BRAVO class loop on a contiguous slice.
+        /// The slice must have length 2^n and at least LANES² elements.
+        #[inline(always)]
+        fn $buf_fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
             type Chunk<S> = $vec_ty;
             const LANES: usize = $lanes; // Vector width W
 
@@ -25,17 +90,11 @@ macro_rules! impl_bit_rev_bravo {
             let big_n = 1usize << n; // 2.pow(n)
             assert_eq!(data.len(), big_n, "Data length must be 2^n");
 
-            // For very small arrays, fall back to scalar bit-reversal
-            if big_n < LANES * LANES {
-                scalar_bit_reversal(data, n);
-                return;
-            }
-
-            let log_w = LANES.ilog2() as usize; // = 2 for W=4
+            const LOG_W: usize = LANES.ilog2() as usize;
 
             // π = N / W² = number of equivalence classes
             let num_classes = big_n / (LANES * LANES);
-            let class_bits = n - 2 * log_w;
+            let class_bits = n - 2 * LOG_W;
 
             let (data_chunks, _) = data.as_chunks_mut::<LANES>();
 
@@ -69,7 +128,7 @@ macro_rules! impl_bit_rev_bravo {
                 // Perform interleave rounds for class A
                 // Each pair reads (idx0, idx1) and writes to the same (idx0, idx1),
                 // so no aliasing conflict occurs within a round.
-                for round in 0..log_w {
+                for round in 0..LOG_W {
                     let stride = 1 << round; // 2.pow(round)
 
                     let mut i = 0;
@@ -99,7 +158,7 @@ macro_rules! impl_bit_rev_bravo {
                     }
 
                     // Perform interleave rounds for class B
-                    for round in 0..log_w {
+                    for round in 0..LOG_W {
                         let stride = 1 << round; // 2.pow(round)
 
                         let mut i = 0;
@@ -124,6 +183,59 @@ macro_rules! impl_bit_rev_bravo {
                 }
             }
         }
+
+        /// Outer function: COBRAVO tile loop for large arrays, direct BRAVO for
+        /// medium arrays, scalar fallback for tiny arrays.
+        #[inline(always)] // required by fearless_simd
+        fn $fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
+            const LANES: usize = $lanes;
+            let big_n = 1usize << n;
+            assert_eq!(data.len(), big_n, "Data length must be 2^n");
+
+            // For very small arrays, fall back to scalar bit-reversal
+            if big_n < LANES * LANES {
+                scalar_bit_reversal(data, n);
+                return;
+            }
+
+            // Below tile threshold: not enough tiles to amortize staging overhead,
+            // or data fits in cache. Run BRAVO directly.
+            const TILE_SIDE: usize = $tile_side;
+            if big_n <= TILE_SIDE * TILE_SIDE * MIN_TILES {
+                $buf_fn_name(simd, data, n);
+                return;
+            }
+
+            // COBRAVO: tile loop with stack-resident buffer.
+            // Each tile is TILE_SIDE strips of TILE_SIDE contiguous elements.
+            // The buffer fits in L1d, so the strided BRAVO loads stay in cache.
+            const B: usize = TILE_SIDE.ilog2() as usize;
+            const N_BUF: usize = 2 * B; // log2(TILE_SIDE²)
+            let tile_bits = n - N_BUF;
+            let num_tiles = 1usize << tile_bits;
+
+            let mut buf = [<$elem_ty>::default(); TILE_SIDE * TILE_SIDE];
+
+            for tile in 0..num_tiles {
+                let tile_rev = reverse_bits_scalar(tile, tile_bits as u32);
+                if tile > tile_rev {
+                    continue;
+                }
+
+                stage_in::<_, B>(data, &mut buf, tile, n);
+                $buf_fn_name(simd, &mut buf, N_BUF);
+
+                if tile == tile_rev {
+                    stage_out::<_, B>(&buf, data, tile, n);
+                } else {
+                    // Swap-pair dance: buf holds BRAVO(tile t), swap with tile_rev,
+                    // then BRAVO the swapped-in data and write to tile t.
+                    stage_swap::<_, B>(data, &mut buf, tile_rev, n);
+                    $buf_fn_name(simd, &mut buf, N_BUF);
+                    stage_out::<_, B>(&buf, data, tile, n);
+                }
+            }
+        }
     };
 }
 
@@ -132,10 +244,38 @@ macro_rules! impl_bit_rev_bravo {
 // 1. fearless_simd doesn't support being generic over the element type
 // 2. As of Rust 1.93 we cannot use an associated constant for array lengths,
 //    which is necessary for using the native vector width
-impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f32, f32, f32x4<S>, 4);
-impl_bit_rev_bravo!(bit_rev_bravo_chunk_8_f32, f32, f32x8<S>, 8);
-impl_bit_rev_bravo!(bit_rev_bravo_chunk_4_f64, f64, f64x4<S>, 4);
-impl_bit_rev_bravo!(bit_rev_bravo_chunk_8_f64, f64, f64x8<S>, 8);
+impl_bit_rev_bravo!(
+    bit_rev_bravo_chunk_4_f32,
+    bravo_on_buf_chunk_4_f32,
+    f32,
+    f32x4<S>,
+    4,
+    TILE_SIDE_F32
+);
+impl_bit_rev_bravo!(
+    bit_rev_bravo_chunk_8_f32,
+    bravo_on_buf_chunk_8_f32,
+    f32,
+    f32x8<S>,
+    8,
+    TILE_SIDE_F32
+);
+impl_bit_rev_bravo!(
+    bit_rev_bravo_chunk_4_f64,
+    bravo_on_buf_chunk_4_f64,
+    f64,
+    f64x4<S>,
+    4,
+    TILE_SIDE_F64
+);
+impl_bit_rev_bravo!(
+    bit_rev_bravo_chunk_8_f64,
+    bravo_on_buf_chunk_8_f64,
+    f64,
+    f64x8<S>,
+    8,
+    TILE_SIDE_F64
+);
 
 /// Performs in-place bit-reversal permutation using the CO-BRAVO algorithm.
 ///
@@ -180,7 +320,7 @@ fn scalar_bit_reversal<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
 }
 
 /// Reverse the lower `bits` bits of `x`
-fn reverse_bits_scalar(x: usize, bits: u32) -> usize {
+const fn reverse_bits_scalar(x: usize, bits: u32) -> usize {
     if bits == 0 {
         return 0;
     }
