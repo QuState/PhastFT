@@ -16,20 +16,8 @@ use fearless_simd::{f32x4, f32x8, f64x4, f64x8, Simd};
 // B² × sizeof(T) must fit comfortably in L1d as a stack buffer.
 // Constraint: B must be a power of two and B >= LANES (the SIMD vector width).
 
-#[cfg(target_arch = "x86_64")]
-const TILE_SIDE_F32: usize = 32; // 32² × 4 = 4 KB, fits Zen4 L1d (32 KB)
-#[cfg(target_arch = "x86_64")]
-const TILE_SIDE_F64: usize = 32; // 32² × 8 = 8 KB, fits Zen4 L1d (32 KB)
-
-#[cfg(target_arch = "aarch64")]
-const TILE_SIDE_F32: usize = 64; // 64² × 4 = 16 KB, fits M-series L1d (128 KB)
-#[cfg(target_arch = "aarch64")]
-const TILE_SIDE_F64: usize = 32; // 32² × 8 = 8 KB, fits M-series L1d (128 KB)
-
-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-const TILE_SIDE_F32: usize = 16;
-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-const TILE_SIDE_F64: usize = 16;
+const TILE_SIDE_F32: usize = 64; // 64² × 4 = 16 KB
+const TILE_SIDE_F64: usize = 32; // 32² × 8 = 8 KB
 
 // Minimum number of tiles before engaging the tile loop.
 // With fewer tiles the staging overhead dominates.
