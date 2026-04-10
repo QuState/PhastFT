@@ -60,6 +60,7 @@ fn stage_swap<T: Copy, const TILE_SIDE: usize>(
     tile_rev: usize,
 ) {
     let strip_stride = data.len() / TILE_SIDE;
+    #[allow(clippy::needless_range_loop)] // the clippy version is not clearer
     for u in 0..TILE_SIDE {
         let data_idx = u * strip_stride + tile_rev;
         // Clippy wants to use std::mem::swap here,
