@@ -33,41 +33,48 @@ const TILE_SIDE_F64: usize = 16;
 // With fewer tiles the staging overhead dominates.
 const MIN_TILES: usize = 16;
 
-/// Copy `tile_side` strips of `tile_side` contiguous elements from `data` into `buf`.
+/// Copy TILE_SIDE strips from `data` into `buf`.
 ///
-/// Tile layout: element (u, v) in tile `tile` lives at
-/// `data[u * (N / tile_side) + tile * tile_side + v]`
-/// and maps to `buf[u * tile_side + v]`.
+/// Tile layout: strip `u` of tile `tile` is `data_chunks[u * strip_stride + tile]`,
+/// and maps to `buf[u]`.
 #[inline(always)]
-fn stage_in<T: Copy>(data: &[T], buf: &mut [T], tile: usize, tile_side: usize, n: usize) {
-    let stride = 1usize << (n - tile_side.ilog2() as usize); // N / tile_side
-    for u in 0..tile_side {
-        let src = u * stride + tile * tile_side;
-        let dst = u * tile_side;
-        buf[dst..dst + tile_side].copy_from_slice(&data[src..src + tile_side]);
+fn stage_in<T: Copy, const TILE_SIDE: usize>(
+    data: &[[T; TILE_SIDE]],
+    buf: &mut [[T; TILE_SIDE]],
+    tile: usize,
+) {
+    let strip_stride = data.len() / TILE_SIDE;
+    for u in 0..TILE_SIDE {
+        buf[u] = data[u * strip_stride + tile];
     }
 }
 
-/// Copy `buf` back into `tile_side` strips of `tile_side` contiguous elements in `data`.
+/// Copy `buf` back into TILE_SIDE strips in `data`.
 #[inline(always)]
-fn stage_out<T: Copy>(buf: &[T], data: &mut [T], tile: usize, tile_side: usize, n: usize) {
-    let stride = 1usize << (n - tile_side.ilog2() as usize);
-    for u in 0..tile_side {
-        let src = u * tile_side;
-        let dst = u * stride + tile * tile_side;
-        data[dst..dst + tile_side].copy_from_slice(&buf[src..src + tile_side]);
+fn stage_out<T: Copy, const TILE_SIDE: usize>(
+    buf: &[[T; TILE_SIDE]],
+    data: &mut [[T; TILE_SIDE]],
+    tile: usize,
+) {
+    let strip_stride = data.len() / TILE_SIDE;
+    for u in 0..TILE_SIDE {
+        data[u * strip_stride + tile] = buf[u];
     }
 }
 
 /// Swap `buf` contents with tile `tile_rev`'s strips in `data`.
 #[inline(always)]
-fn stage_swap<T>(data: &mut [T], buf: &mut [T], tile_rev: usize, tile_side: usize, n: usize) {
-    let stride = 1usize << (n - tile_side.ilog2() as usize);
-    for u in 0..tile_side {
-        let data_start = u * stride + tile_rev * tile_side;
-        let buf_start = u * tile_side;
-        buf[buf_start..buf_start + tile_side]
-            .swap_with_slice(&mut data[data_start..data_start + tile_side]);
+fn stage_swap<T: Copy, const TILE_SIDE: usize>(
+    data: &mut [[T; TILE_SIDE]],
+    buf: &mut [[T; TILE_SIDE]],
+    tile_rev: usize,
+) {
+    let strip_stride = data.len() / TILE_SIDE;
+    for u in 0..TILE_SIDE {
+        let data_idx = u * strip_stride + tile_rev;
+        let tmp = buf[u];
+        buf[u] = data[data_idx];
+        data[data_idx] = tmp;
     }
 }
 
@@ -212,7 +219,8 @@ macro_rules! impl_bit_rev_bravo {
             let tile_bits = n - N_BUF;
             let num_tiles = 1usize << tile_bits;
 
-            let mut buf = [<$elem_ty>::default(); TILE_SIDE * TILE_SIDE];
+            let (data_tiles, _) = data.as_chunks_mut::<TILE_SIDE>();
+            let mut buf = [[<$elem_ty>::default(); TILE_SIDE]; TILE_SIDE];
 
             for tile in 0..num_tiles {
                 let tile_rev = reverse_bits_scalar(tile, tile_bits as u32);
@@ -220,17 +228,17 @@ macro_rules! impl_bit_rev_bravo {
                     continue;
                 }
 
-                stage_in(data, &mut buf, tile, TILE_SIDE, n);
-                $buf_fn_name(simd, &mut buf, N_BUF);
+                stage_in(data_tiles, &mut buf, tile);
+                $buf_fn_name(simd, buf.as_flattened_mut(), N_BUF);
 
                 if tile == tile_rev {
-                    stage_out(&buf, data, tile, TILE_SIDE, n);
+                    stage_out(&buf, data_tiles, tile);
                 } else {
                     // Swap-pair dance: buf holds BRAVO(tile t), swap with tile_rev,
                     // then BRAVO the swapped-in data and write to tile t.
-                    stage_swap(data, &mut buf, tile_rev, TILE_SIDE, n);
-                    $buf_fn_name(simd, &mut buf, N_BUF);
-                    stage_out(&buf, data, tile, TILE_SIDE, n);
+                    stage_swap(data_tiles, &mut buf, tile_rev);
+                    $buf_fn_name(simd, buf.as_flattened_mut(), N_BUF);
+                    stage_out(&buf, data_tiles, tile);
                 }
             }
         }
