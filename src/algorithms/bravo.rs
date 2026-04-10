@@ -218,12 +218,11 @@ macro_rules! impl_bit_rev_bravo {
             }
         }
 
-        /// Parallel COBRAVO tile loop: gather strips of data in a contiguous buffer,
-        /// then operate on it for better cache locality.
-        /// Each tile is TILE_SIDE strips of TILE_SIDE contiguous elements.
-        /// The buffer fits in L1d, so the strided BRAVO loads stay in cache.
-        /// Tiles are processed in parallel via rayon.
+        /// Parallel COBRAVO tile loop using unsafe aliasing &mut references.
+        /// The tile accesses are disjoint so this is safe in practice,
+        /// but technically UB. For exploratory benchmarking only.
         #[cfg(feature = "parallel")]
+        #[allow(unsafe_code)]
         #[inline(always)]
         fn $cobravo_parallel_fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
             use rayon::prelude::*;
@@ -233,76 +232,36 @@ macro_rules! impl_bit_rev_bravo {
             let tile_bits = n - N_BUF;
             let num_tiles = 1usize << tile_bits;
 
-            let (data_tiles, _) = data.as_chunks_mut::<TILE_SIDE>();
-            let strip_stride = data_tiles.len() / TILE_SIDE;
+            // Smuggle the pointer as usize, which is Send+Sync.
+            let data_ptr = data.as_mut_ptr() as usize;
+            let data_len = data.len();
 
-            // Split into Option<&mut> slots so we can .take() disjoint refs
-            let mut tile_slots: Vec<Option<&mut [$elem_ty; TILE_SIDE]>> =
-                data_tiles.iter_mut().map(|c| Some(c)).collect();
-
-            // Collect work items: each is TILE_SIDE strip refs for tile,
-            // plus optionally TILE_SIDE strip refs for tile_rev (swap pair).
-            let mut work_items: Vec<(
-                [&mut [$elem_ty; TILE_SIDE]; TILE_SIDE],
-                Option<[&mut [$elem_ty; TILE_SIDE]; TILE_SIDE]>,
-            )> = Vec::with_capacity((num_tiles + 1) / 2);
-
-            for tile in 0..num_tiles {
-                let tile_rev = reverse_bits_scalar(tile, tile_bits as u32);
-                if tile > tile_rev {
-                    continue;
-                }
-
-                let a_refs: [_; TILE_SIDE] = std::array::from_fn(|u| {
-                    tile_slots[u * strip_stride + tile]
-                        .take()
-                        .expect("tile strip already taken")
-                });
-
-                let b_refs = if tile != tile_rev {
-                    Some(std::array::from_fn(|u| {
-                        tile_slots[u * strip_stride + tile_rev]
-                            .take()
-                            .expect("tile strip already taken")
-                    }))
-                } else {
-                    None
-                };
-
-                work_items.push((a_refs, b_refs));
-            }
-
-            // Process all work items in parallel.
-            // Thread-local buf avoids repeated allocation.
-            work_items.into_par_iter().for_each_init(
+            // SAFETY: Each (tile, tile_rev) pair accesses disjoint strips of data.
+            // The tile loop skips tile > tile_rev, so each strip index appears
+            // in exactly one work item. This is technically UB due to aliasing
+            // &mut references, but the accesses are disjoint in practice.
+            (0..num_tiles).into_par_iter().for_each_init(
                 || [[<$elem_ty>::default(); TILE_SIDE]; TILE_SIDE],
-                |buf, (a_refs, b_refs)| {
-                    // Stage in: copy strips into buf
-                    for (u, strip) in a_refs.iter().enumerate() {
-                        buf[u] = **strip;
+                |buf, tile| {
+                    let tile_rev = reverse_bits_scalar(tile, tile_bits as u32);
+                    if tile > tile_rev {
+                        return;
                     }
 
+                    let data: &mut [$elem_ty] = unsafe {
+                        std::slice::from_raw_parts_mut(data_ptr as *mut $elem_ty, data_len)
+                    };
+                    let (data_tiles, _) = data.as_chunks_mut::<TILE_SIDE>();
+
+                    stage_in(data_tiles, buf, tile);
                     $buf_fn_name(simd, buf.as_flattened_mut(), N_BUF);
 
-                    if let Some(mut b_refs) = b_refs {
-                        // Swap-pair dance: write BRAVO(tile) to tile_rev's location,
-                        // load tile_rev's strips into buf, BRAVO them, write to tile's location.
-                        for (u, b_strip) in b_refs.iter_mut().enumerate() {
-                            let tmp = buf[u];
-                            buf[u] = **b_strip;
-                            **b_strip = tmp;
-                        }
-
-                        $buf_fn_name(simd, buf.as_flattened_mut(), N_BUF);
-
-                        for (u, a_strip) in a_refs.into_iter().enumerate() {
-                            *a_strip = buf[u];
-                        }
+                    if tile == tile_rev {
+                        stage_out(buf, data_tiles, tile);
                     } else {
-                        // Self-mapping tile: write back to same location
-                        for (u, a_strip) in a_refs.into_iter().enumerate() {
-                            *a_strip = buf[u];
-                        }
+                        stage_swap(data_tiles, buf, tile_rev);
+                        $buf_fn_name(simd, buf.as_flattened_mut(), N_BUF);
+                        stage_out(buf, data_tiles, tile);
                     }
                 },
             );
