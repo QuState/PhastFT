@@ -27,6 +27,7 @@ bench-internals = ["complex-nums"]
 
 [dev-dependencies]
 criterion = "0.8.0"
+fearless_simd = "0.4.0"
 fftw = "0.8.0"
 rand = "0.9.2"
 utilities = { path = "utilities" }
@@ -47,6 +48,11 @@ required-features = ["complex-nums"]
 [[bench]]
 name = "heuristic_vs_tune"
 harness = false
+
+[[bench]]
+name = "bit_reversal"
+harness = false
+required-features = ["bench-internals"]
 
 [profile.profiling]
 inherits = "release"
