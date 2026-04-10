@@ -206,7 +206,8 @@ macro_rules! impl_bit_rev_bravo {
                 return;
             }
 
-            // COBRAVO: tile loop with stack-resident buffer.
+            // COBRAVO: gather strips of data in a contiguous buffer,
+            // then operate on it for better cache locality.
             // Each tile is TILE_SIDE strips of TILE_SIDE contiguous elements.
             // The buffer fits in L1d, so the strided BRAVO loads stay in cache.
             const B: usize = TILE_SIDE.ilog2() as usize;
