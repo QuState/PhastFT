@@ -243,8 +243,8 @@ macro_rules! impl_bit_rev_bravo {
             // Collect work items: each is TILE_SIDE strip refs for tile,
             // plus optionally TILE_SIDE strip refs for tile_rev (swap pair).
             let mut work_items: Vec<(
-                Vec<&mut [$elem_ty; TILE_SIDE]>,
-                Option<Vec<&mut [$elem_ty; TILE_SIDE]>>,
+                [&mut [$elem_ty; TILE_SIDE]; TILE_SIDE],
+                Option<[&mut [$elem_ty; TILE_SIDE]; TILE_SIDE]>,
             )> = Vec::with_capacity((num_tiles + 1) / 2);
 
             for tile in 0..num_tiles {
@@ -253,25 +253,18 @@ macro_rules! impl_bit_rev_bravo {
                     continue;
                 }
 
-                let mut a_refs = Vec::with_capacity(TILE_SIDE);
-                for u in 0..TILE_SIDE {
-                    a_refs.push(
-                        tile_slots[u * strip_stride + tile]
-                            .take()
-                            .expect("tile strip already taken"),
-                    );
-                }
+                let a_refs: [_; TILE_SIDE] = std::array::from_fn(|u| {
+                    tile_slots[u * strip_stride + tile]
+                        .take()
+                        .expect("tile strip already taken")
+                });
 
                 let b_refs = if tile != tile_rev {
-                    let mut b = Vec::with_capacity(TILE_SIDE);
-                    for u in 0..TILE_SIDE {
-                        b.push(
-                            tile_slots[u * strip_stride + tile_rev]
-                                .take()
-                                .expect("tile strip already taken"),
-                        );
-                    }
-                    Some(b)
+                    Some(std::array::from_fn(|u| {
+                        tile_slots[u * strip_stride + tile_rev]
+                            .take()
+                            .expect("tile strip already taken")
+                    }))
                 } else {
                     None
                 };
