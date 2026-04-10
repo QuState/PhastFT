@@ -42,7 +42,7 @@ const MIN_TILES: usize = 16;
 #[inline(always)]
 fn stage_in<T: Copy, const TILE_SIDE: usize>(
     data: &[[T; TILE_SIDE]],
-    buf: &mut [[T; TILE_SIDE]],
+    buf: &mut [[T; TILE_SIDE]; TILE_SIDE],
     tile: usize,
 ) {
     let strip_stride = data.len() / TILE_SIDE;
@@ -54,7 +54,7 @@ fn stage_in<T: Copy, const TILE_SIDE: usize>(
 /// Copy `buf` back into TILE_SIDE strips in `data`.
 #[inline(always)]
 fn stage_out<T: Copy, const TILE_SIDE: usize>(
-    buf: &[[T; TILE_SIDE]],
+    buf: &[[T; TILE_SIDE]; TILE_SIDE],
     data: &mut [[T; TILE_SIDE]],
     tile: usize,
 ) {
@@ -68,7 +68,7 @@ fn stage_out<T: Copy, const TILE_SIDE: usize>(
 #[inline(always)]
 fn stage_swap<T: Copy, const TILE_SIDE: usize>(
     data: &mut [[T; TILE_SIDE]],
-    buf: &mut [[T; TILE_SIDE]],
+    buf: &mut [[T; TILE_SIDE]; TILE_SIDE],
     tile_rev: usize,
 ) {
     let strip_stride = data.len() / TILE_SIDE;
