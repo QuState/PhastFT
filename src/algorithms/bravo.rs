@@ -237,11 +237,17 @@ macro_rules! impl_bit_rev_bravo {
             // or data fits in cache. Run BRAVO directly.
             const TILE_SIDE: usize = $tile_side;
             if big_n <= TILE_SIDE * TILE_SIDE * MIN_TILES {
-                $buf_fn_name(simd, data, n);
+                simd.vectorize(
+                    #[inline(always)]
+                    || $buf_fn_name(simd, data, n),
+                );
                 return;
             }
 
-            $cobravo_fn_name(simd, data, n);
+            simd.vectorize(
+                #[inline(always)]
+                || $cobravo_fn_name(simd, data, n),
+            );
         }
     };
 }
