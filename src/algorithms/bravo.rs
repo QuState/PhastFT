@@ -1,13 +1,13 @@
-#![allow(clippy::manual_swap)] // cannot be applied to expressions, so needs to be defined here
+//! CO-BRAVO: Cache-Optimal Bit-Reversal Algorithm using Vector permute Operations
+//!
+//! This implements the algorithm from "Optimal Bit-Reversal Using Vector Permutations"
+//! by Lokhmotov and Mycroft (SPAA'07).
+//!
+//! The algorithm uses vector interleaving operations to perform bit-reversal permutation.
+//! For `N = 2^n` elements with `W`-element vectors, the algorithm performs `log_2(N)` rounds
+//! of in-place interleave operations on pairs of vectors.
 
-/// CO-BRAVO: Cache-Optimal Bit-Reversal Algorithm using Vector permute Operations
-///
-/// This implements the algorithm from "Optimal Bit-Reversal Using Vector Permutations"
-/// by Lokhmotov and Mycroft (SPAA'07).
-///
-/// The algorithm uses vector interleaving operations to perform bit-reversal permutation.
-/// For `N = 2^n` elements with `W`-element vectors, the algorithm performs `log_2(N)` rounds
-/// of in-place interleave operations on pairs of vectors.
+#![allow(clippy::manual_swap)] // cannot be applied to expressions, so needs to be defined here
 
 use fearless_simd::prelude::*;
 use fearless_simd::{f32x4, f32x8, f64x4, f64x8, Simd};
