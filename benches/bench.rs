@@ -95,6 +95,8 @@ fn benchmark_forward_f32(c: &mut Criterion) {
                         &planner_dit,
                         &options,
                     );
+                    std::hint::black_box(&mut reals);
+                    std::hint::black_box(&mut imags);
                 },
                 BatchSize::SmallInput,
             );
@@ -110,6 +112,7 @@ fn benchmark_forward_f32(c: &mut Criterion) {
                 || generate_complex_numbers::<f32>(len),
                 |mut signal| {
                     fft.process_with_scratch(&mut signal, &mut scratch);
+                    std::hint::black_box(&mut signal);
                 },
                 BatchSize::SmallInput,
             );
@@ -146,6 +149,8 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
                         &planner_dit,
                         &options,
                     );
+                    std::hint::black_box(&mut reals);
+                    std::hint::black_box(&mut imags);
                 },
                 BatchSize::SmallInput,
             );
@@ -161,6 +166,7 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
                 || generate_complex_numbers::<f32>(len),
                 |mut signal| {
                     fft.process_with_scratch(&mut signal, &mut scratch);
+                    std::hint::black_box(&mut signal);
                 },
                 BatchSize::SmallInput,
             );
@@ -197,6 +203,8 @@ fn benchmark_forward_f64(c: &mut Criterion) {
                         &planner_dit,
                         &options,
                     );
+                    std::hint::black_box(&mut reals);
+                    std::hint::black_box(&mut imags);
                 },
                 BatchSize::SmallInput,
             );
@@ -212,6 +220,7 @@ fn benchmark_forward_f64(c: &mut Criterion) {
                 || generate_complex_numbers::<f64>(len),
                 |mut signal| {
                     fft.process_with_scratch(&mut signal, &mut scratch);
+                    std::hint::black_box(&mut signal);
                 },
                 BatchSize::SmallInput,
             );
@@ -248,6 +257,8 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
                         &planner_dit,
                         &options,
                     );
+                    std::hint::black_box(&mut reals);
+                    std::hint::black_box(&mut imags);
                 },
                 BatchSize::SmallInput,
             );
@@ -263,6 +274,7 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
                 || generate_complex_numbers::<f64>(len),
                 |mut signal| {
                     fft.process_with_scratch(&mut signal, &mut scratch);
+                    std::hint::black_box(&mut signal);
                 },
                 BatchSize::SmallInput,
             );
