@@ -425,12 +425,13 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
             let r0_im = p0_im + p4_im;
             let r4_im = p0_im - p4_im;
 
-            // W8^1 = (1-j)/√2
+            // W8^1 = (1-j)/√2: twiddle * p5, expressed to avoid double-negation.
+            // tw = (s, -s) where s = 1/√2.
+            // tw*p5 = (s*p5_re + s*p5_im, s*p5_im - s*p5_re)
             const FRAC_1_SQRT_2: f32 = std::f32::consts::FRAC_1_SQRT_2;
-            let tw1_re = f32x4::splat(simd, FRAC_1_SQRT_2);
-            let tw1_im = f32x4::splat(simd, -FRAC_1_SQRT_2);
-            let tw_p5_re = tw1_im.mul_add(-p5_im, tw1_re * p5_re);
-            let tw_p5_im = tw1_im.mul_add(p5_re, tw1_re * p5_im);
+            let s = f32x4::splat(simd, FRAC_1_SQRT_2);
+            let tw_p5_re = s.mul_add(p5_im, s * p5_re);
+            let tw_p5_im = s.mul_sub(p5_im, s * p5_re);
             let r1_re = p1_re + tw_p5_re;
             let r5_re = p1_re - tw_p5_re;
             let r1_im = p1_im + tw_p5_im;
@@ -442,15 +443,18 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
             let r2_im = p2_im - p6_re;
             let r6_im = p2_im + p6_re;
 
-            // W8^3 = (-1-j)/√2
-            let tw3_re = f32x4::splat(simd, -FRAC_1_SQRT_2);
-            let tw3_im = f32x4::splat(simd, -FRAC_1_SQRT_2);
-            let tw_p7_re = tw3_im.mul_add(-p7_im, tw3_re * p7_re);
-            let tw_p7_im = tw3_im.mul_add(p7_re, tw3_re * p7_im);
+            // W8^3 = (-1-j)/√2: twiddle * p7, expressed to avoid double-negation.
+            // tw = (-s, -s) where s = 1/√2.
+            // tw*p7_re = s*p7_im - s*p7_re  (fmsub, clean)
+            // tw*p7_im = -(s*p7_im + s*p7_re), but we compute the positive form
+            //   neg_tw_p7_im = s*p7_im + s*p7_re  (fmadd, clean)
+            // and swap the +/- in the butterfly for the im component.
+            let tw_p7_re = s.mul_sub(p7_im, s * p7_re);
+            let neg_tw_p7_im = s.mul_add(p7_im, s * p7_re);
             let r3_re = p3_re + tw_p7_re;
             let r7_re = p3_re - tw_p7_re;
-            let r3_im = p3_im + tw_p7_im;
-            let r7_im = p3_im - tw_p7_im;
+            let r3_im = p3_im - neg_tw_p7_im;
+            let r7_im = p3_im + neg_tw_p7_im;
 
             // Single inverse transpose and recombine f32x4 → f32x8
             let (g0_lo_re, g1_lo_re, g2_lo_re, g3_lo_re) =
