@@ -27,66 +27,142 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
     let two = f64x4::splat(simd, 2.0);
 
     for (re, im) in reals.chunks_exact_mut(32).zip(imags.chunks_exact_mut(32)) {
-        macro_rules! transpose4x4_f64 {
-            ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
-                let t0 = $g0.zip_low($g2);
-                let t1 = $g0.zip_high($g2);
-                let t2 = $g1.zip_low($g3);
-                let t3 = $g1.zip_high($g3);
-                (
-                    t0.zip_low(t2),
-                    t0.zip_high(t2),
-                    t1.zip_low(t3),
-                    t1.zip_high(t3),
-                )
-            }};
-        }
+        // ---- Stages 0+1 fused via f64x2 split + transposed butterflies ----
+        // Split f64x4 into f64x2 halves (free: vextractf128).
+        // Use f64x2 zip (single SSE instr) to transpose pairs of vectors.
+        // Keep data transposed through both stages so all lanes get the same
+        // operation, then transpose back and combine to f64x4 (free: vinsertf128).
+        //
+        // Processing 2 vectors at a time (pairs a,b and c,d):
+        // After split, each vector's lo half has [elem0, elem1] and hi has [elem2, elem3].
+        // Transpose a_lo with b_lo: sums_lo = [a_sum, b_sum], diffs_lo = [a_diff, b_diff]
+        // where sum = elem0+elem1, diff = elem0-elem1 (stage 0).
+        // Then stage 1 butterflies sums_lo ↔ sums_hi (twiddle=1) and
+        // diffs_lo ↔ diffs_hi (twiddle=-j), all lanes uniform.
 
-        macro_rules! radix4_transpose {
+        macro_rules! stages01 {
             ($va_re:expr, $vb_re:expr, $vc_re:expr, $vd_re:expr,
              $va_im:expr, $vb_im:expr, $vc_im:expr, $vd_im:expr) => {{
-                let (e0_re, e1_re, e2_re, e3_re) =
-                    transpose4x4_f64!($va_re, $vb_re, $vc_re, $vd_re);
-                let (e0_im, e1_im, e2_im, e3_im) =
-                    transpose4x4_f64!($va_im, $vb_im, $vc_im, $vd_im);
+                // Split f64x4 → f64x2 halves
+                let (a_lo_re, a_hi_re) = $va_re.split();
+                let (b_lo_re, b_hi_re) = $vb_re.split();
+                let (c_lo_re, c_hi_re) = $vc_re.split();
+                let (d_lo_re, d_hi_re) = $vd_re.split();
+                let (a_lo_im, a_hi_im) = $va_im.split();
+                let (b_lo_im, b_hi_im) = $vb_im.split();
+                let (c_lo_im, c_hi_im) = $vc_im.split();
+                let (d_lo_im, d_hi_im) = $vd_im.split();
 
-                let s01_re = e0_re + e1_re;
-                let d01_re = e0_re - e1_re;
-                let s23_re = e2_re + e3_re;
-                let d23_re = e2_re - e3_re;
-                let s01_im = e0_im + e1_im;
-                let d01_im = e0_im - e1_im;
-                let s23_im = e2_im + e3_im;
-                let d23_im = e2_im - e3_im;
+                // ---- Stage 0 via 2×2 transpose ----
+                // For pair (a,b) lo halves:
+                //   evens = zip_low(a_lo, b_lo)  = [a[0], b[0]]
+                //   odds  = zip_high(a_lo, b_lo) = [a[1], b[1]]
+                //   sums  = evens + odds   (stage-0 sum for both vectors)
+                //   diffs = evens - odds   (stage-0 diff for both vectors)
+                // Data stays transposed: sums_ab_lo[0] = a's sum, sums_ab_lo[1] = b's sum
 
-                let p0_re = s01_re + s23_re;
-                let p2_re = s01_re - s23_re;
-                let p0_im = s01_im + s23_im;
-                let p2_im = s01_im - s23_im;
+                // Pair (a,b) lo halves
+                let ab_lo_e0_re = a_lo_re.zip_low(b_lo_re);
+                let ab_lo_e1_re = a_lo_re.zip_high(b_lo_re);
+                let ab_lo_e0_im = a_lo_im.zip_low(b_lo_im);
+                let ab_lo_e1_im = a_lo_im.zip_high(b_lo_im);
+                let sums_ab_lo_re = ab_lo_e0_re + ab_lo_e1_re;
+                let diffs_ab_lo_re = ab_lo_e0_re - ab_lo_e1_re;
+                let sums_ab_lo_im = ab_lo_e0_im + ab_lo_e1_im;
+                let diffs_ab_lo_im = ab_lo_e0_im - ab_lo_e1_im;
 
-                let p1_re = d01_re + d23_im;
-                let p3_re = d01_re - d23_im;
-                let p1_im = d01_im - d23_re;
-                let p3_im = d01_im + d23_re;
+                // Pair (a,b) hi halves
+                let ab_hi_e0_re = a_hi_re.zip_low(b_hi_re);
+                let ab_hi_e1_re = a_hi_re.zip_high(b_hi_re);
+                let ab_hi_e0_im = a_hi_im.zip_low(b_hi_im);
+                let ab_hi_e1_im = a_hi_im.zip_high(b_hi_im);
+                let sums_ab_hi_re = ab_hi_e0_re + ab_hi_e1_re;
+                let diffs_ab_hi_re = ab_hi_e0_re - ab_hi_e1_re;
+                let sums_ab_hi_im = ab_hi_e0_im + ab_hi_e1_im;
+                let diffs_ab_hi_im = ab_hi_e0_im - ab_hi_e1_im;
 
-                let (r0_re, r1_re, r2_re, r3_re) =
-                    transpose4x4_f64!(p0_re, p1_re, p2_re, p3_re);
-                let (r0_im, r1_im, r2_im, r3_im) =
-                    transpose4x4_f64!(p0_im, p1_im, p2_im, p3_im);
+                // Pair (c,d) lo halves
+                let cd_lo_e0_re = c_lo_re.zip_low(d_lo_re);
+                let cd_lo_e1_re = c_lo_re.zip_high(d_lo_re);
+                let cd_lo_e0_im = c_lo_im.zip_low(d_lo_im);
+                let cd_lo_e1_im = c_lo_im.zip_high(d_lo_im);
+                let sums_cd_lo_re = cd_lo_e0_re + cd_lo_e1_re;
+                let diffs_cd_lo_re = cd_lo_e0_re - cd_lo_e1_re;
+                let sums_cd_lo_im = cd_lo_e0_im + cd_lo_e1_im;
+                let diffs_cd_lo_im = cd_lo_e0_im - cd_lo_e1_im;
 
-                $va_re = r0_re;
-                $vb_re = r1_re;
-                $vc_re = r2_re;
-                $vd_re = r3_re;
-                $va_im = r0_im;
-                $vb_im = r1_im;
-                $vc_im = r2_im;
-                $vd_im = r3_im;
+                // Pair (c,d) hi halves
+                let cd_hi_e0_re = c_hi_re.zip_low(d_hi_re);
+                let cd_hi_e1_re = c_hi_re.zip_high(d_hi_re);
+                let cd_hi_e0_im = c_hi_im.zip_low(d_hi_im);
+                let cd_hi_e1_im = c_hi_im.zip_high(d_hi_im);
+                let sums_cd_hi_re = cd_hi_e0_re + cd_hi_e1_re;
+                let diffs_cd_hi_re = cd_hi_e0_re - cd_hi_e1_re;
+                let sums_cd_hi_im = cd_hi_e0_im + cd_hi_e1_im;
+                let diffs_cd_hi_im = cd_hi_e0_im - cd_hi_e1_im;
+
+                // ---- Stage 1: butterfly lo↔hi (dist=2) ----
+                // sums butterfly with twiddle=1: just add/sub
+                let p0_ab_re = sums_ab_lo_re + sums_ab_hi_re;
+                let p2_ab_re = sums_ab_lo_re - sums_ab_hi_re;
+                let p0_ab_im = sums_ab_lo_im + sums_ab_hi_im;
+                let p2_ab_im = sums_ab_lo_im - sums_ab_hi_im;
+
+                let p0_cd_re = sums_cd_lo_re + sums_cd_hi_re;
+                let p2_cd_re = sums_cd_lo_re - sums_cd_hi_re;
+                let p0_cd_im = sums_cd_lo_im + sums_cd_hi_im;
+                let p2_cd_im = sums_cd_lo_im - sums_cd_hi_im;
+
+                // diffs butterfly with twiddle=-j: -j*(re+j*im) = (im, -re)
+                let p1_ab_re = diffs_ab_lo_re + diffs_ab_hi_im;
+                let p3_ab_re = diffs_ab_lo_re - diffs_ab_hi_im;
+                let p1_ab_im = diffs_ab_lo_im - diffs_ab_hi_re;
+                let p3_ab_im = diffs_ab_lo_im + diffs_ab_hi_re;
+
+                let p1_cd_re = diffs_cd_lo_re + diffs_cd_hi_im;
+                let p3_cd_re = diffs_cd_lo_re - diffs_cd_hi_im;
+                let p1_cd_im = diffs_cd_lo_im - diffs_cd_hi_re;
+                let p3_cd_im = diffs_cd_lo_im + diffs_cd_hi_re;
+
+                // ---- Transpose back (2×2) and combine ----
+                // Transpose back: zip_low/zip_high to go from [a_val, b_val]
+                // back to per-vector layout.
+                // For vector a: lo = [p0, p1], hi = [p2, p3]
+                // p0_ab = [a_p0, b_p0], p1_ab = [a_p1, b_p1]
+                // zip_low(p0_ab, p1_ab) = [a_p0, a_p1] = a's lo half
+                // zip_high(p0_ab, p1_ab) = [b_p0, b_p1] = b's lo half
+
+                let a_lo_re = p0_ab_re.zip_low(p1_ab_re);
+                let b_lo_re = p0_ab_re.zip_high(p1_ab_re);
+                let a_hi_re = p2_ab_re.zip_low(p3_ab_re);
+                let b_hi_re = p2_ab_re.zip_high(p3_ab_re);
+                let a_lo_im = p0_ab_im.zip_low(p1_ab_im);
+                let b_lo_im = p0_ab_im.zip_high(p1_ab_im);
+                let a_hi_im = p2_ab_im.zip_low(p3_ab_im);
+                let b_hi_im = p2_ab_im.zip_high(p3_ab_im);
+
+                let c_lo_re = p0_cd_re.zip_low(p1_cd_re);
+                let d_lo_re = p0_cd_re.zip_high(p1_cd_re);
+                let c_hi_re = p2_cd_re.zip_low(p3_cd_re);
+                let d_hi_re = p2_cd_re.zip_high(p3_cd_re);
+                let c_lo_im = p0_cd_im.zip_low(p1_cd_im);
+                let d_lo_im = p0_cd_im.zip_high(p1_cd_im);
+                let c_hi_im = p2_cd_im.zip_low(p3_cd_im);
+                let d_hi_im = p2_cd_im.zip_high(p3_cd_im);
+
+                // Combine f64x2 → f64x4
+                $va_re = a_lo_re.combine(a_hi_re);
+                $vb_re = b_lo_re.combine(b_hi_re);
+                $vc_re = c_lo_re.combine(c_hi_re);
+                $vd_re = d_lo_re.combine(d_hi_re);
+                $va_im = a_lo_im.combine(a_hi_im);
+                $vb_im = b_lo_im.combine(b_hi_im);
+                $vc_im = c_lo_im.combine(c_hi_im);
+                $vd_im = d_lo_im.combine(d_hi_im);
             }};
         }
 
         // ---- Load first group and do stages 0+1 ----
-        // Deferring v4-v7 loads reduces peak register pressure during transpose.
         let mut v0_re = f64x4::from_slice(simd, &re[0..4]);
         let mut v1_re = f64x4::from_slice(simd, &re[4..8]);
         let mut v2_re = f64x4::from_slice(simd, &re[8..12]);
@@ -96,8 +172,8 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
         let mut v2_im = f64x4::from_slice(simd, &im[8..12]);
         let mut v3_im = f64x4::from_slice(simd, &im[12..16]);
 
-        radix4_transpose!(v0_re, v1_re, v2_re, v3_re,
-                          v0_im, v1_im, v2_im, v3_im);
+        stages01!(v0_re, v1_re, v2_re, v3_re,
+                  v0_im, v1_im, v2_im, v3_im);
 
         // ---- Load second group and do stages 0+1 ----
         let mut v4_re = f64x4::from_slice(simd, &re[16..20]);
@@ -109,8 +185,8 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
         let mut v6_im = f64x4::from_slice(simd, &im[24..28]);
         let mut v7_im = f64x4::from_slice(simd, &im[28..32]);
 
-        radix4_transpose!(v4_re, v5_re, v6_re, v7_re,
-                          v4_im, v5_im, v6_im, v7_im);
+        stages01!(v4_re, v5_re, v6_re, v7_re,
+                  v4_im, v5_im, v6_im, v7_im);
 
         // Butterfly macro: twiddle-multiply hi, then add/sub with lo.
         // out_lo = lo + tw*hi, out_hi = lo - tw*hi (via 2*lo - out_lo).
