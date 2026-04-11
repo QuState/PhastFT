@@ -27,68 +27,90 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
     let two = f64x4::splat(simd, 2.0);
 
     for (re, im) in reals.chunks_exact_mut(32).zip(imags.chunks_exact_mut(32)) {
-        // ---- Load into 8 f64x4 register pairs (re + im) ----
-        // v_k holds elements [4k .. 4k+3]
+        macro_rules! transpose4x4_f64 {
+            ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
+                let t0 = $g0.zip_low($g2);
+                let t1 = $g0.zip_high($g2);
+                let t2 = $g1.zip_low($g3);
+                let t3 = $g1.zip_high($g3);
+                (
+                    t0.zip_low(t2),
+                    t0.zip_high(t2),
+                    t1.zip_low(t3),
+                    t1.zip_high(t3),
+                )
+            }};
+        }
+
+        macro_rules! radix4_transpose {
+            ($va_re:expr, $vb_re:expr, $vc_re:expr, $vd_re:expr,
+             $va_im:expr, $vb_im:expr, $vc_im:expr, $vd_im:expr) => {{
+                let (e0_re, e1_re, e2_re, e3_re) =
+                    transpose4x4_f64!($va_re, $vb_re, $vc_re, $vd_re);
+                let (e0_im, e1_im, e2_im, e3_im) =
+                    transpose4x4_f64!($va_im, $vb_im, $vc_im, $vd_im);
+
+                let s01_re = e0_re + e1_re;
+                let d01_re = e0_re - e1_re;
+                let s23_re = e2_re + e3_re;
+                let d23_re = e2_re - e3_re;
+                let s01_im = e0_im + e1_im;
+                let d01_im = e0_im - e1_im;
+                let s23_im = e2_im + e3_im;
+                let d23_im = e2_im - e3_im;
+
+                let p0_re = s01_re + s23_re;
+                let p2_re = s01_re - s23_re;
+                let p0_im = s01_im + s23_im;
+                let p2_im = s01_im - s23_im;
+
+                let p1_re = d01_re + d23_im;
+                let p3_re = d01_re - d23_im;
+                let p1_im = d01_im - d23_re;
+                let p3_im = d01_im + d23_re;
+
+                let (r0_re, r1_re, r2_re, r3_re) =
+                    transpose4x4_f64!(p0_re, p1_re, p2_re, p3_re);
+                let (r0_im, r1_im, r2_im, r3_im) =
+                    transpose4x4_f64!(p0_im, p1_im, p2_im, p3_im);
+
+                $va_re = r0_re;
+                $vb_re = r1_re;
+                $vc_re = r2_re;
+                $vd_re = r3_re;
+                $va_im = r0_im;
+                $vb_im = r1_im;
+                $vc_im = r2_im;
+                $vd_im = r3_im;
+            }};
+        }
+
+        // ---- Load first group and do stages 0+1 ----
+        // Deferring v4-v7 loads reduces peak register pressure during transpose.
         let mut v0_re = f64x4::from_slice(simd, &re[0..4]);
         let mut v1_re = f64x4::from_slice(simd, &re[4..8]);
         let mut v2_re = f64x4::from_slice(simd, &re[8..12]);
         let mut v3_re = f64x4::from_slice(simd, &re[12..16]);
-        let mut v4_re = f64x4::from_slice(simd, &re[16..20]);
-        let mut v5_re = f64x4::from_slice(simd, &re[20..24]);
-        let mut v6_re = f64x4::from_slice(simd, &re[24..28]);
-        let mut v7_re = f64x4::from_slice(simd, &re[28..32]);
-
         let mut v0_im = f64x4::from_slice(simd, &im[0..4]);
         let mut v1_im = f64x4::from_slice(simd, &im[4..8]);
         let mut v2_im = f64x4::from_slice(simd, &im[8..12]);
         let mut v3_im = f64x4::from_slice(simd, &im[12..16]);
+
+        radix4_transpose!(v0_re, v1_re, v2_re, v3_re,
+                          v0_im, v1_im, v2_im, v3_im);
+
+        // ---- Load second group and do stages 0+1 ----
+        let mut v4_re = f64x4::from_slice(simd, &re[16..20]);
+        let mut v5_re = f64x4::from_slice(simd, &re[20..24]);
+        let mut v6_re = f64x4::from_slice(simd, &re[24..28]);
+        let mut v7_re = f64x4::from_slice(simd, &re[28..32]);
         let mut v4_im = f64x4::from_slice(simd, &im[16..20]);
         let mut v5_im = f64x4::from_slice(simd, &im[20..24]);
         let mut v6_im = f64x4::from_slice(simd, &im[24..28]);
         let mut v7_im = f64x4::from_slice(simd, &im[28..32]);
 
-        // ---- Stages 0+1 fused: radix-4 DIT on each group of 4 (within each vector) ----
-        // Extract scalars, compute radix-4 butterfly, repack into f64x4.
-        macro_rules! radix4_inplace {
-            ($v_re:expr, $v_im:expr) => {{
-                let mut re_arr = [0.0f64; 4];
-                let mut im_arr = [0.0f64; 4];
-                $v_re.store_slice(&mut re_arr);
-                $v_im.store_slice(&mut im_arr);
-
-                let (a_re, a_im) = (re_arr[0], im_arr[0]);
-                let (b_re, b_im) = (re_arr[1], im_arr[1]);
-                let (c_re, c_im) = (re_arr[2], im_arr[2]);
-                let (d_re, d_im) = (re_arr[3], im_arr[3]);
-
-                // Stage 0: dist=1 butterflies
-                let (t0_re, t0_im) = (a_re + b_re, a_im + b_im);
-                let (t1_re, t1_im) = (a_re - b_re, a_im - b_im);
-                let (t2_re, t2_im) = (c_re + d_re, c_im + d_im);
-                let (t3_re, t3_im) = (c_re - d_re, c_im - d_im);
-
-                // Stage 1: -j multiply on t3, then dist=2 butterflies
-                let (t3j_re, t3j_im) = (t3_im, -t3_re);
-
-                $v_re = f64x4::simd_from(
-                    simd,
-                    [t0_re + t2_re, t1_re + t3j_re, t0_re - t2_re, t1_re - t3j_re],
-                );
-                $v_im = f64x4::simd_from(
-                    simd,
-                    [t0_im + t2_im, t1_im + t3j_im, t0_im - t2_im, t1_im - t3j_im],
-                );
-            }};
-        }
-
-        radix4_inplace!(v0_re, v0_im);
-        radix4_inplace!(v1_re, v1_im);
-        radix4_inplace!(v2_re, v2_im);
-        radix4_inplace!(v3_re, v3_im);
-        radix4_inplace!(v4_re, v4_im);
-        radix4_inplace!(v5_re, v5_im);
-        radix4_inplace!(v6_re, v6_im);
-        radix4_inplace!(v7_re, v7_im);
+        radix4_transpose!(v4_re, v5_re, v6_re, v7_re,
+                          v4_im, v5_im, v6_im, v7_im);
 
         // Butterfly macro: twiddle-multiply hi, then add/sub with lo.
         // out_lo = lo + tw*hi, out_hi = lo - tw*hi (via 2*lo - out_lo).
