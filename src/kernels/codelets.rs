@@ -3,7 +3,9 @@
 //! A codelet is a self-contained FFT kernel that fuses multiple stages into a single function
 //! call, eliminating per-stage function call overhead and giving LLVM a wider optimization window.
 //!
-use fearless_simd::{f32x16, f32x4, f32x8, f64x4, Simd, SimdBase, SimdFloat, SimdFrom};
+use fearless_simd::{
+    f32x16, f32x4, f32x8, f64x4, Simd, SimdBase, SimdCombine, SimdFloat, SimdFrom, SimdSplit,
+};
 
 /// FFT-32 codelet for `f64`: executes stages 0-4 (chunk_size 2 through 32) in a single function.
 ///
@@ -319,73 +321,143 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
         let mut v2_im = f32x8::from_slice(simd, &im[16..24]);
         let mut v3_im = f32x8::from_slice(simd, &im[24..32]);
 
-        // ---- Stages 0+1+2 fused: 8-point DIT on each vector (scalar) ----
-        // Each f32x8 holds 8 consecutive elements. Stages 0 (dist=1), 1 (dist=2),
-        // and 2 (dist=4) all have butterfly pairs within the same 8-element group.
-        // We extract to scalars, do the full 8-point DIT, and repack.
-        macro_rules! dit8_inplace {
-            ($v_re:expr, $v_im:expr) => {{
-                let mut r = [0.0f32; 8];
-                let mut i = [0.0f32; 8];
-                $v_re.store_slice(&mut r);
-                $v_im.store_slice(&mut i);
+        // ---- Stages 0+1+2 fused: 8-point DIT on all 4 vectors via transpose ----
+        // Split each f32x8 into two f32x4 (lo=elems 0-3, hi=elems 4-7), transpose
+        // so each f32x4 holds one element position from all 4 groups, then do all
+        // butterfly stages as vertical f32x4 adds/subs/FMA.
+        {
+            // Step 1: Split f32x8 → f32x4 pairs
+            let (g0_lo_re, g0_hi_re) = v0_re.split();
+            let (g1_lo_re, g1_hi_re) = v1_re.split();
+            let (g2_lo_re, g2_hi_re) = v2_re.split();
+            let (g3_lo_re, g3_hi_re) = v3_re.split();
+            let (g0_lo_im, g0_hi_im) = v0_im.split();
+            let (g1_lo_im, g1_hi_im) = v1_im.split();
+            let (g2_lo_im, g2_hi_im) = v2_im.split();
+            let (g3_lo_im, g3_hi_im) = v3_im.split();
 
-                // Stage 0+1 fused: radix-4 on elements [0,1,2,3]
-                let (a_re, a_im) = (r[0] + r[1], i[0] + i[1]);
-                let (b_re, b_im) = (r[0] - r[1], i[0] - i[1]);
-                let (c_re, c_im) = (r[2] + r[3], i[2] + i[3]);
-                let (d_re, d_im) = (r[2] - r[3], i[2] - i[3]);
-                let (dj_re, dj_im) = (d_im, -d_re); // -j * d
-                r[0] = a_re + c_re;
-                i[0] = a_im + c_im;
-                r[1] = b_re + dj_re;
-                i[1] = b_im + dj_im;
-                r[2] = a_re - c_re;
-                i[2] = a_im - c_im;
-                r[3] = b_re - dj_re;
-                i[3] = b_im - dj_im;
+            // Step 2: 4×4 transpose on lo halves (re)
+            // After transpose, e_k_re[lane] = group lane's element k
+            macro_rules! transpose4x4 {
+                ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
+                    let t0 = $g0.zip_low($g2); // [g0[0], g2[0], g0[1], g2[1]]
+                    let t1 = $g0.zip_high($g2); // [g0[2], g2[2], g0[3], g2[3]]
+                    let t2 = $g1.zip_low($g3); // [g1[0], g3[0], g1[1], g3[1]]
+                    let t3 = $g1.zip_high($g3); // [g1[2], g3[2], g1[3], g3[3]]
+                    (
+                        t0.zip_low(t2),  // [g0[0], g1[0], g2[0], g3[0]]
+                        t0.zip_high(t2), // [g0[1], g1[1], g2[1], g3[1]]
+                        t1.zip_low(t3),  // [g0[2], g1[2], g2[2], g3[2]]
+                        t1.zip_high(t3), // [g0[3], g1[3], g2[3], g3[3]]
+                    )
+                }};
+            }
 
-                // Stage 0+1 fused: radix-4 on elements [4,5,6,7]
-                let (a_re, a_im) = (r[4] + r[5], i[4] + i[5]);
-                let (b_re, b_im) = (r[4] - r[5], i[4] - i[5]);
-                let (c_re, c_im) = (r[6] + r[7], i[6] + i[7]);
-                let (d_re, d_im) = (r[6] - r[7], i[6] - i[7]);
-                let (dj_re, dj_im) = (d_im, -d_re);
-                r[4] = a_re + c_re;
-                i[4] = a_im + c_im;
-                r[5] = b_re + dj_re;
-                i[5] = b_im + dj_im;
-                r[6] = a_re - c_re;
-                i[6] = a_im - c_im;
-                r[7] = b_re - dj_re;
-                i[7] = b_im - dj_im;
+            let (e0_re, e1_re, e2_re, e3_re) =
+                transpose4x4!(g0_lo_re, g1_lo_re, g2_lo_re, g3_lo_re);
+            let (e4_re, e5_re, e6_re, e7_re) =
+                transpose4x4!(g0_hi_re, g1_hi_re, g2_hi_re, g3_hi_re);
+            let (e0_im, e1_im, e2_im, e3_im) =
+                transpose4x4!(g0_lo_im, g1_lo_im, g2_lo_im, g3_lo_im);
+            let (e4_im, e5_im, e6_im, e7_im) =
+                transpose4x4!(g0_hi_im, g1_hi_im, g2_hi_im, g3_hi_im);
 
-                // Stage 2: dist=4 butterflies between (k, k+4) with W_8 twiddles
-                // W_8^0 = 1,         W_8^1 = (1-j)/√2,   W_8^2 = -j,   W_8^3 = (-1-j)/√2
-                const FRAC_1_SQRT_2: f32 = std::f32::consts::FRAC_1_SQRT_2;
-                let tw_re: [f32; 4] = [1.0, FRAC_1_SQRT_2, 0.0, -FRAC_1_SQRT_2];
-                let tw_im: [f32; 4] = [0.0, -FRAC_1_SQRT_2, -1.0, -FRAC_1_SQRT_2];
+            // Step 3: Stage 0 (dist=1) — butterfly between adjacent elements
+            let s01_re = e0_re + e1_re;
+            let d01_re = e0_re - e1_re;
+            let s23_re = e2_re + e3_re;
+            let d23_re = e2_re - e3_re;
+            let s45_re = e4_re + e5_re;
+            let d45_re = e4_re - e5_re;
+            let s67_re = e6_re + e7_re;
+            let d67_re = e6_re - e7_re;
 
-                for k in 0..4 {
-                    let hi_re = tw_re[k] * r[k + 4] - tw_im[k] * i[k + 4];
-                    let hi_im = tw_re[k] * i[k + 4] + tw_im[k] * r[k + 4];
-                    let lo_re = r[k];
-                    let lo_im = i[k];
-                    r[k] = lo_re + hi_re;
-                    i[k] = lo_im + hi_im;
-                    r[k + 4] = lo_re - hi_re;
-                    i[k + 4] = lo_im - hi_im;
-                }
+            let s01_im = e0_im + e1_im;
+            let d01_im = e0_im - e1_im;
+            let s23_im = e2_im + e3_im;
+            let d23_im = e2_im - e3_im;
+            let s45_im = e4_im + e5_im;
+            let d45_im = e4_im - e5_im;
+            let s67_im = e6_im + e7_im;
+            let d67_im = e6_im - e7_im;
 
-                $v_re = f32x8::simd_from(simd, r);
-                $v_im = f32x8::simd_from(simd, i);
-            }};
+            // Step 4: Stage 1 (dist=2) — W4^0=1, W4^1=-j twiddles
+            // Twiddle=1: butterfly(s01, s23), butterfly(s45, s67)
+            let p0_re = s01_re + s23_re;
+            let p2_re = s01_re - s23_re;
+            let p4_re = s45_re + s67_re;
+            let p6_re = s45_re - s67_re;
+            let p0_im = s01_im + s23_im;
+            let p2_im = s01_im - s23_im;
+            let p4_im = s45_im + s67_im;
+            let p6_im = s45_im - s67_im;
+
+            // Twiddle=-j: -j*(re+j*im) = (im, -re)
+            // butterfly(d01, d23*(-j)), butterfly(d45, d67*(-j))
+            let p1_re = d01_re + d23_im;
+            let p3_re = d01_re - d23_im;
+            let p1_im = d01_im - d23_re;
+            let p3_im = d01_im + d23_re;
+            let p5_re = d45_re + d67_im;
+            let p7_re = d45_re - d67_im;
+            let p5_im = d45_im - d67_re;
+            let p7_im = d45_im + d67_re;
+
+            // Step 5: Stage 2 (dist=4) — W8^k twiddles
+            // W8^0 = 1+0j: just add/sub
+            let r0_re = p0_re + p4_re;
+            let r4_re = p0_re - p4_re;
+            let r0_im = p0_im + p4_im;
+            let r4_im = p0_im - p4_im;
+
+            // W8^1 = (1-j)/√2: FMA twiddle butterfly
+            const FRAC_1_SQRT_2: f32 = std::f32::consts::FRAC_1_SQRT_2;
+            let tw1_re = f32x4::splat(simd, FRAC_1_SQRT_2);
+            let tw1_im = f32x4::splat(simd, -FRAC_1_SQRT_2);
+            // twiddled = tw * p5 = (tw_re*p5_re - tw_im*p5_im, tw_re*p5_im + tw_im*p5_re)
+            let tw_p5_re = tw1_im.mul_add(-p5_im, tw1_re * p5_re);
+            let tw_p5_im = tw1_im.mul_add(p5_re, tw1_re * p5_im);
+            let r1_re = p1_re + tw_p5_re;
+            let r5_re = p1_re - tw_p5_re;
+            let r1_im = p1_im + tw_p5_im;
+            let r5_im = p1_im - tw_p5_im;
+
+            // W8^2 = 0-j: -j*(re+j*im) = (im, -re)
+            let r2_re = p2_re + p6_im;
+            let r6_re = p2_re - p6_im;
+            let r2_im = p2_im - p6_re;
+            let r6_im = p2_im + p6_re;
+
+            // W8^3 = (-1-j)/√2: FMA twiddle butterfly
+            let tw3_re = f32x4::splat(simd, -FRAC_1_SQRT_2);
+            let tw3_im = f32x4::splat(simd, -FRAC_1_SQRT_2);
+            let tw_p7_re = tw3_im.mul_add(-p7_im, tw3_re * p7_re);
+            let tw_p7_im = tw3_im.mul_add(p7_re, tw3_re * p7_im);
+            let r3_re = p3_re + tw_p7_re;
+            let r7_re = p3_re - tw_p7_re;
+            let r3_im = p3_im + tw_p7_im;
+            let r7_im = p3_im - tw_p7_im;
+
+            // Step 6: 4×4 transpose back to per-group layout
+            let (g0_lo_re, g1_lo_re, g2_lo_re, g3_lo_re) =
+                transpose4x4!(r0_re, r1_re, r2_re, r3_re);
+            let (g0_hi_re, g1_hi_re, g2_hi_re, g3_hi_re) =
+                transpose4x4!(r4_re, r5_re, r6_re, r7_re);
+            let (g0_lo_im, g1_lo_im, g2_lo_im, g3_lo_im) =
+                transpose4x4!(r0_im, r1_im, r2_im, r3_im);
+            let (g0_hi_im, g1_hi_im, g2_hi_im, g3_hi_im) =
+                transpose4x4!(r4_im, r5_im, r6_im, r7_im);
+
+            // Step 7: Recombine f32x4 → f32x8
+            v0_re = g0_lo_re.combine(g0_hi_re);
+            v1_re = g1_lo_re.combine(g1_hi_re);
+            v2_re = g2_lo_re.combine(g2_hi_re);
+            v3_re = g3_lo_re.combine(g3_hi_re);
+            v0_im = g0_lo_im.combine(g0_hi_im);
+            v1_im = g1_lo_im.combine(g1_hi_im);
+            v2_im = g2_lo_im.combine(g2_hi_im);
+            v3_im = g3_lo_im.combine(g3_hi_im);
         }
-
-        dit8_inplace!(v0_re, v0_im);
-        dit8_inplace!(v1_re, v1_im);
-        dit8_inplace!(v2_re, v2_im);
-        dit8_inplace!(v3_re, v3_im);
 
         // Butterfly macro: twiddle-multiply hi, then add/sub with lo.
         // out_lo = lo + tw*hi, out_hi = lo - tw*hi (via 2*lo - out_lo).

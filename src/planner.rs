@@ -127,7 +127,8 @@ macro_rules! impl_planner_dit_for {
                 // codelet dominates runtime. On platforms with large L1i (e.g.,
                 // Apple Silicon at 192KB), Tune mode will discover that the
                 // codelet wins at larger sizes too.
-                log_n <= 13
+                // log_n <= 13
+                true
             }
 
             /// Benchmark both paths and set `use_codelet_32` to whichever is faster.
