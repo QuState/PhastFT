@@ -69,10 +69,8 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
                 let p1_im = d01_im - d23_re;
                 let p3_im = d01_im + d23_re;
 
-                let (r0_re, r1_re, r2_re, r3_re) =
-                    transpose4x4_f64!(p0_re, p1_re, p2_re, p3_re);
-                let (r0_im, r1_im, r2_im, r3_im) =
-                    transpose4x4_f64!(p0_im, p1_im, p2_im, p3_im);
+                let (r0_re, r1_re, r2_re, r3_re) = transpose4x4_f64!(p0_re, p1_re, p2_re, p3_re);
+                let (r0_im, r1_im, r2_im, r3_im) = transpose4x4_f64!(p0_im, p1_im, p2_im, p3_im);
 
                 $va_re = r0_re;
                 $vb_re = r1_re;
@@ -96,8 +94,7 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
         let mut v2_im = f64x4::from_slice(simd, &im[8..12]);
         let mut v3_im = f64x4::from_slice(simd, &im[12..16]);
 
-        radix4_transpose!(v0_re, v1_re, v2_re, v3_re,
-                          v0_im, v1_im, v2_im, v3_im);
+        radix4_transpose!(v0_re, v1_re, v2_re, v3_re, v0_im, v1_im, v2_im, v3_im);
 
         // ---- Load second group and do stages 0+1 ----
         let mut v4_re = f64x4::from_slice(simd, &re[16..20]);
@@ -109,8 +106,7 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
         let mut v6_im = f64x4::from_slice(simd, &im[24..28]);
         let mut v7_im = f64x4::from_slice(simd, &im[28..32]);
 
-        radix4_transpose!(v4_re, v5_re, v6_re, v7_re,
-                          v4_im, v5_im, v6_im, v7_im);
+        radix4_transpose!(v4_re, v5_re, v6_re, v7_re, v4_im, v5_im, v6_im, v7_im);
 
         // Butterfly macro: twiddle-multiply hi, then add/sub with lo.
         // out_lo = lo + tw*hi, out_hi = lo - tw*hi (via 2*lo - out_lo).
@@ -344,11 +340,65 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
         let mut v3_im = f32x8::from_slice(simd, &im[24..32]);
 
         // ---- Stages 0+1+2 fused: 8-point DIT on all 4 vectors via transpose ----
-        // Split each f32x8 into two f32x4 (lo=elems 0-3, hi=elems 4-7), transpose
-        // so each f32x4 holds one element position from all 4 groups, then do all
-        // butterfly stages as vertical f32x4 adds/subs/FMA.
+        // To reduce register pressure, process lo halves (elements 0-3) through
+        // stages 0+1 first, then hi halves (elements 4-7) through stages 0+1.
+        // Data stays in transposed (per-element) layout between stages 0+1 and
+        // stage 2, avoiding redundant transpose pairs. Only one inverse transpose
+        // at the end. Peak active register usage during stages 0+1: ~8 f32x4.
         {
-            // Step 1: Split f32x8 → f32x4 pairs
+            macro_rules! transpose4x4 {
+                ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
+                    let t0 = $g0.zip_low($g2);
+                    let t1 = $g0.zip_high($g2);
+                    let t2 = $g1.zip_low($g3);
+                    let t3 = $g1.zip_high($g3);
+                    (
+                        t0.zip_low(t2),
+                        t0.zip_high(t2),
+                        t1.zip_low(t3),
+                        t1.zip_high(t3),
+                    )
+                }};
+            }
+
+            // Stages 0+1 (radix-4 DIT) on transposed data.
+            // Input: 4 f32x4 in per-group layout. Output: 4 f32x4 in per-element
+            // (transposed) layout — p0, p1, p2, p3 where each lane is one group.
+            macro_rules! radix4_transpose_fwd {
+                ($ga_re:expr, $gb_re:expr, $gc_re:expr, $gd_re:expr,
+                 $ga_im:expr, $gb_im:expr, $gc_im:expr, $gd_im:expr) => {{
+                    let (e0_re, e1_re, e2_re, e3_re) =
+                        transpose4x4!($ga_re, $gb_re, $gc_re, $gd_re);
+                    let (e0_im, e1_im, e2_im, e3_im) =
+                        transpose4x4!($ga_im, $gb_im, $gc_im, $gd_im);
+
+                    // Stage 0 (dist=1)
+                    let s01_re = e0_re + e1_re;
+                    let d01_re = e0_re - e1_re;
+                    let s23_re = e2_re + e3_re;
+                    let d23_re = e2_re - e3_re;
+                    let s01_im = e0_im + e1_im;
+                    let d01_im = e0_im - e1_im;
+                    let s23_im = e2_im + e3_im;
+                    let d23_im = e2_im - e3_im;
+
+                    // Stage 1 (dist=2): W4^0=1, W4^1=-j
+                    let p0_re = s01_re + s23_re;
+                    let p2_re = s01_re - s23_re;
+                    let p0_im = s01_im + s23_im;
+                    let p2_im = s01_im - s23_im;
+
+                    let p1_re = d01_re + d23_im;
+                    let p3_re = d01_re - d23_im;
+                    let p1_im = d01_im - d23_re;
+                    let p3_im = d01_im + d23_re;
+
+                    // Return in per-element (transposed) layout
+                    (p0_re, p1_re, p2_re, p3_re, p0_im, p1_im, p2_im, p3_im)
+                }};
+            }
+
+            // Process lo halves (elements 0-3) — result in transposed layout
             let (g0_lo_re, g0_hi_re) = v0_re.split();
             let (g1_lo_re, g1_hi_re) = v1_re.split();
             let (g2_lo_re, g2_hi_re) = v2_re.split();
@@ -358,85 +408,27 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
             let (g2_lo_im, g2_hi_im) = v2_im.split();
             let (g3_lo_im, g3_hi_im) = v3_im.split();
 
-            // Step 2: 4×4 transpose on lo halves (re)
-            // After transpose, e_k_re[lane] = group lane's element k
-            macro_rules! transpose4x4 {
-                ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
-                    let t0 = $g0.zip_low($g2); // [g0[0], g2[0], g0[1], g2[1]]
-                    let t1 = $g0.zip_high($g2); // [g0[2], g2[2], g0[3], g2[3]]
-                    let t2 = $g1.zip_low($g3); // [g1[0], g3[0], g1[1], g3[1]]
-                    let t3 = $g1.zip_high($g3); // [g1[2], g3[2], g1[3], g3[3]]
-                    (
-                        t0.zip_low(t2),  // [g0[0], g1[0], g2[0], g3[0]]
-                        t0.zip_high(t2), // [g0[1], g1[1], g2[1], g3[1]]
-                        t1.zip_low(t3),  // [g0[2], g1[2], g2[2], g3[2]]
-                        t1.zip_high(t3), // [g0[3], g1[3], g2[3], g3[3]]
-                    )
-                }};
-            }
+            let (p0_re, p1_re, p2_re, p3_re, p0_im, p1_im, p2_im, p3_im) = radix4_transpose_fwd!(
+                g0_lo_re, g1_lo_re, g2_lo_re, g3_lo_re, g0_lo_im, g1_lo_im, g2_lo_im, g3_lo_im
+            );
 
-            let (e0_re, e1_re, e2_re, e3_re) =
-                transpose4x4!(g0_lo_re, g1_lo_re, g2_lo_re, g3_lo_re);
-            let (e4_re, e5_re, e6_re, e7_re) =
-                transpose4x4!(g0_hi_re, g1_hi_re, g2_hi_re, g3_hi_re);
-            let (e0_im, e1_im, e2_im, e3_im) =
-                transpose4x4!(g0_lo_im, g1_lo_im, g2_lo_im, g3_lo_im);
-            let (e4_im, e5_im, e6_im, e7_im) =
-                transpose4x4!(g0_hi_im, g1_hi_im, g2_hi_im, g3_hi_im);
+            // Process hi halves (elements 4-7) — result in transposed layout
+            let (p4_re, p5_re, p6_re, p7_re, p4_im, p5_im, p6_im, p7_im) = radix4_transpose_fwd!(
+                g0_hi_re, g1_hi_re, g2_hi_re, g3_hi_re, g0_hi_im, g1_hi_im, g2_hi_im, g3_hi_im
+            );
 
-            // Step 3: Stage 0 (dist=1) — butterfly between adjacent elements
-            let s01_re = e0_re + e1_re;
-            let d01_re = e0_re - e1_re;
-            let s23_re = e2_re + e3_re;
-            let d23_re = e2_re - e3_re;
-            let s45_re = e4_re + e5_re;
-            let d45_re = e4_re - e5_re;
-            let s67_re = e6_re + e7_re;
-            let d67_re = e6_re - e7_re;
+            // Stage 2 (dist=4) — W8^k twiddles, already in per-element layout
 
-            let s01_im = e0_im + e1_im;
-            let d01_im = e0_im - e1_im;
-            let s23_im = e2_im + e3_im;
-            let d23_im = e2_im - e3_im;
-            let s45_im = e4_im + e5_im;
-            let d45_im = e4_im - e5_im;
-            let s67_im = e6_im + e7_im;
-            let d67_im = e6_im - e7_im;
-
-            // Step 4: Stage 1 (dist=2) — W4^0=1, W4^1=-j twiddles
-            // Twiddle=1: butterfly(s01, s23), butterfly(s45, s67)
-            let p0_re = s01_re + s23_re;
-            let p2_re = s01_re - s23_re;
-            let p4_re = s45_re + s67_re;
-            let p6_re = s45_re - s67_re;
-            let p0_im = s01_im + s23_im;
-            let p2_im = s01_im - s23_im;
-            let p4_im = s45_im + s67_im;
-            let p6_im = s45_im - s67_im;
-
-            // Twiddle=-j: -j*(re+j*im) = (im, -re)
-            // butterfly(d01, d23*(-j)), butterfly(d45, d67*(-j))
-            let p1_re = d01_re + d23_im;
-            let p3_re = d01_re - d23_im;
-            let p1_im = d01_im - d23_re;
-            let p3_im = d01_im + d23_re;
-            let p5_re = d45_re + d67_im;
-            let p7_re = d45_re - d67_im;
-            let p5_im = d45_im - d67_re;
-            let p7_im = d45_im + d67_re;
-
-            // Step 5: Stage 2 (dist=4) — W8^k twiddles
             // W8^0 = 1+0j: just add/sub
             let r0_re = p0_re + p4_re;
             let r4_re = p0_re - p4_re;
             let r0_im = p0_im + p4_im;
             let r4_im = p0_im - p4_im;
 
-            // W8^1 = (1-j)/√2: FMA twiddle butterfly
+            // W8^1 = (1-j)/√2
             const FRAC_1_SQRT_2: f32 = std::f32::consts::FRAC_1_SQRT_2;
             let tw1_re = f32x4::splat(simd, FRAC_1_SQRT_2);
             let tw1_im = f32x4::splat(simd, -FRAC_1_SQRT_2);
-            // twiddled = tw * p5 = (tw_re*p5_re - tw_im*p5_im, tw_re*p5_im + tw_im*p5_re)
             let tw_p5_re = tw1_im.mul_add(-p5_im, tw1_re * p5_re);
             let tw_p5_im = tw1_im.mul_add(p5_re, tw1_re * p5_im);
             let r1_re = p1_re + tw_p5_re;
@@ -450,7 +442,7 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
             let r2_im = p2_im - p6_re;
             let r6_im = p2_im + p6_re;
 
-            // W8^3 = (-1-j)/√2: FMA twiddle butterfly
+            // W8^3 = (-1-j)/√2
             let tw3_re = f32x4::splat(simd, -FRAC_1_SQRT_2);
             let tw3_im = f32x4::splat(simd, -FRAC_1_SQRT_2);
             let tw_p7_re = tw3_im.mul_add(-p7_im, tw3_re * p7_re);
@@ -460,7 +452,7 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
             let r3_im = p3_im + tw_p7_im;
             let r7_im = p3_im - tw_p7_im;
 
-            // Step 6: 4×4 transpose back to per-group layout
+            // Single inverse transpose and recombine f32x4 → f32x8
             let (g0_lo_re, g1_lo_re, g2_lo_re, g3_lo_re) =
                 transpose4x4!(r0_re, r1_re, r2_re, r3_re);
             let (g0_hi_re, g1_hi_re, g2_hi_re, g3_hi_re) =
@@ -470,7 +462,6 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
             let (g0_hi_im, g1_hi_im, g2_hi_im, g3_hi_im) =
                 transpose4x4!(r4_im, r5_im, r6_im, r7_im);
 
-            // Step 7: Recombine f32x4 → f32x8
             v0_re = g0_lo_re.combine(g0_hi_re);
             v1_re = g1_lo_re.combine(g1_hi_re);
             v2_re = g2_lo_re.combine(g2_hi_re);
