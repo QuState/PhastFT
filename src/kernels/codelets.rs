@@ -525,17 +525,17 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
     }
 }
 
-/// FFT-32 codelet for f32: executes stages 0-4 in a single function.
+/// Legacy FFT-32 codelet for `f32`: stage-by-stage in-place with intermediate stores.
 #[inline(never)]
-pub fn fft_dit_codelet_32_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
+pub fn fft_dit_codelet_32_staged_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     simd.vectorize(
         #[inline(always)]
-        || fft_dit_codelet_32_simd_f32(simd, reals, imags),
+        || fft_dit_codelet_32_staged_simd_f32(simd, reals, imags),
     )
 }
 
 #[inline(always)]
-fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
+fn fft_dit_codelet_32_staged_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
     // Fused stages 0+1: radix-2^2 4-point DIT in a single sweep
     reals
         .chunks_exact_mut(4)
@@ -730,6 +730,230 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
                 out1_re.store_slice(re_hi);
                 out1_im.store_slice(im_hi);
             });
+    }
+}
+
+/// FFT-32 codelet for `f32`: executes stages 0-4 (chunk_size 2 through 32) in a single function.
+///
+/// Register-resident implementation using `f32x8`: all 32 complex values are loaded into
+/// 4 `f32x8` re + 4 `f32x8` im vectors, all 5 butterfly stages execute in registers with
+/// no intermediate memory traffic, then results are stored back.
+#[inline(never)]
+pub fn fft_dit_codelet_32_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
+    simd.vectorize(
+        #[inline(always)]
+        || fft_dit_codelet_32_simd_f32(simd, reals, imags),
+    )
+}
+
+#[inline(always)]
+fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
+    assert_eq!(reals.len(), imags.len());
+
+    let two = f32x8::splat(simd, 2.0);
+
+    for (re, im) in reals.chunks_exact_mut(32).zip(imags.chunks_exact_mut(32)) {
+        // ---- Load into 4 f32x8 register pairs (re + im) ----
+        // v_k holds elements [8k .. 8k+7]
+        let mut v0_re = f32x8::from_slice(simd, &re[0..8]);
+        let mut v1_re = f32x8::from_slice(simd, &re[8..16]);
+        let mut v2_re = f32x8::from_slice(simd, &re[16..24]);
+        let mut v3_re = f32x8::from_slice(simd, &re[24..32]);
+
+        let mut v0_im = f32x8::from_slice(simd, &im[0..8]);
+        let mut v1_im = f32x8::from_slice(simd, &im[8..16]);
+        let mut v2_im = f32x8::from_slice(simd, &im[16..24]);
+        let mut v3_im = f32x8::from_slice(simd, &im[24..32]);
+
+        // ---- Stages 0+1+2 fused: 8-point DIT on each vector (scalar) ----
+        // Each f32x8 holds 8 consecutive elements. Stages 0 (dist=1), 1 (dist=2),
+        // and 2 (dist=4) all have butterfly pairs within the same 8-element group.
+        // We extract to scalars, do the full 8-point DIT, and repack.
+        macro_rules! dit8_inplace {
+            ($v_re:expr, $v_im:expr) => {{
+                let mut r = [0.0f32; 8];
+                let mut i = [0.0f32; 8];
+                $v_re.store_slice(&mut r);
+                $v_im.store_slice(&mut i);
+
+                // Stage 0+1 fused: radix-4 on elements [0,1,2,3]
+                let (a_re, a_im) = (r[0] + r[1], i[0] + i[1]);
+                let (b_re, b_im) = (r[0] - r[1], i[0] - i[1]);
+                let (c_re, c_im) = (r[2] + r[3], i[2] + i[3]);
+                let (d_re, d_im) = (r[2] - r[3], i[2] - i[3]);
+                let (dj_re, dj_im) = (d_im, -d_re); // -j * d
+                r[0] = a_re + c_re;
+                i[0] = a_im + c_im;
+                r[1] = b_re + dj_re;
+                i[1] = b_im + dj_im;
+                r[2] = a_re - c_re;
+                i[2] = a_im - c_im;
+                r[3] = b_re - dj_re;
+                i[3] = b_im - dj_im;
+
+                // Stage 0+1 fused: radix-4 on elements [4,5,6,7]
+                let (a_re, a_im) = (r[4] + r[5], i[4] + i[5]);
+                let (b_re, b_im) = (r[4] - r[5], i[4] - i[5]);
+                let (c_re, c_im) = (r[6] + r[7], i[6] + i[7]);
+                let (d_re, d_im) = (r[6] - r[7], i[6] - i[7]);
+                let (dj_re, dj_im) = (d_im, -d_re);
+                r[4] = a_re + c_re;
+                i[4] = a_im + c_im;
+                r[5] = b_re + dj_re;
+                i[5] = b_im + dj_im;
+                r[6] = a_re - c_re;
+                i[6] = a_im - c_im;
+                r[7] = b_re - dj_re;
+                i[7] = b_im - dj_im;
+
+                // Stage 2: dist=4 butterflies between (k, k+4) with W_8 twiddles
+                // W_8^0 = 1,         W_8^1 = (1-j)/√2,   W_8^2 = -j,   W_8^3 = (-1-j)/√2
+                const FRAC_1_SQRT_2: f32 = std::f32::consts::FRAC_1_SQRT_2;
+                let tw_re: [f32; 4] = [1.0, FRAC_1_SQRT_2, 0.0, -FRAC_1_SQRT_2];
+                let tw_im: [f32; 4] = [0.0, -FRAC_1_SQRT_2, -1.0, -FRAC_1_SQRT_2];
+
+                for k in 0..4 {
+                    let hi_re = tw_re[k] * r[k + 4] - tw_im[k] * i[k + 4];
+                    let hi_im = tw_re[k] * i[k + 4] + tw_im[k] * r[k + 4];
+                    let lo_re = r[k];
+                    let lo_im = i[k];
+                    r[k] = lo_re + hi_re;
+                    i[k] = lo_im + hi_im;
+                    r[k + 4] = lo_re - hi_re;
+                    i[k + 4] = lo_im - hi_im;
+                }
+
+                $v_re = f32x8::simd_from(simd, r);
+                $v_im = f32x8::simd_from(simd, i);
+            }};
+        }
+
+        dit8_inplace!(v0_re, v0_im);
+        dit8_inplace!(v1_re, v1_im);
+        dit8_inplace!(v2_re, v2_im);
+        dit8_inplace!(v3_re, v3_im);
+
+        // Butterfly macro: twiddle-multiply hi, then add/sub with lo.
+        // out_lo = lo + tw*hi, out_hi = lo - tw*hi (via 2*lo - out_lo).
+        macro_rules! butterfly {
+            ($lo_re:expr, $lo_im:expr, $hi_re:expr, $hi_im:expr, $tw_re:expr, $tw_im:expr) => {{
+                let out_lo_re = $tw_im.mul_add(-$hi_im, $tw_re.mul_add($hi_re, $lo_re));
+                let out_lo_im = $tw_im.mul_add($hi_re, $tw_re.mul_add($hi_im, $lo_im));
+                let out_hi_re = two.mul_sub($lo_re, out_lo_re);
+                let out_hi_im = two.mul_sub($lo_im, out_lo_im);
+                $lo_re = out_lo_re;
+                $lo_im = out_lo_im;
+                $hi_re = out_hi_re;
+                $hi_im = out_hi_im;
+            }};
+        }
+
+        // ---- Stage 3: dist=8, W_16 twiddles ----
+        // Butterfly pairs: (v0,v1), (v2,v3)
+        // Both pairs use the same twiddle: W_16^{0..7}
+        {
+            let tw_re = f32x8::simd_from(
+                simd,
+                [
+                    1.0_f32,                          // W_16^0
+                    0.923_879_5_f32,                  // W_16^1
+                    std::f32::consts::FRAC_1_SQRT_2,  // W_16^2
+                    0.382_683_43_f32,                 // W_16^3
+                    0.0_f32,                          // W_16^4
+                    -0.382_683_43_f32,                // W_16^5
+                    -std::f32::consts::FRAC_1_SQRT_2, // W_16^6
+                    -0.923_879_5_f32,                 // W_16^7
+                ],
+            );
+            let tw_im = f32x8::simd_from(
+                simd,
+                [
+                    0.0_f32,                          // W_16^0
+                    -0.382_683_43_f32,                // W_16^1
+                    -std::f32::consts::FRAC_1_SQRT_2, // W_16^2
+                    -0.923_879_5_f32,                 // W_16^3
+                    -1.0_f32,                         // W_16^4
+                    -0.923_879_5_f32,                 // W_16^5
+                    -std::f32::consts::FRAC_1_SQRT_2, // W_16^6
+                    -0.382_683_43_f32,                // W_16^7
+                ],
+            );
+
+            butterfly!(v0_re, v0_im, v1_re, v1_im, tw_re, tw_im);
+            butterfly!(v2_re, v2_im, v3_re, v3_im, tw_re, tw_im);
+        }
+
+        // ---- Stage 4: dist=16, W_32 twiddles ----
+        // Butterfly pairs: (v0,v2), (v1,v3)
+        // (v0,v2) uses W_32^{0..7}, (v1,v3) uses W_32^{8..15}
+        {
+            let tw_lo_re = f32x8::simd_from(
+                simd,
+                [
+                    1.0_f32,                         // W_32^0
+                    0.980_785_25_f32,                // W_32^1
+                    0.923_879_5_f32,                 // W_32^2
+                    0.831_469_6_f32,                 // W_32^3
+                    std::f32::consts::FRAC_1_SQRT_2, // W_32^4
+                    0.555_570_24_f32,                // W_32^5
+                    0.382_683_43_f32,                // W_32^6
+                    0.195_090_32_f32,                // W_32^7
+                ],
+            );
+            let tw_lo_im = f32x8::simd_from(
+                simd,
+                [
+                    0.0_f32,                          // W_32^0
+                    -0.195_090_32_f32,                // W_32^1
+                    -0.382_683_43_f32,                // W_32^2
+                    -0.555_570_24_f32,                // W_32^3
+                    -std::f32::consts::FRAC_1_SQRT_2, // W_32^4
+                    -0.831_469_6_f32,                 // W_32^5
+                    -0.923_879_5_f32,                 // W_32^6
+                    -0.980_785_25_f32,                // W_32^7
+                ],
+            );
+            let tw_hi_re = f32x8::simd_from(
+                simd,
+                [
+                    0.0_f32,                          // W_32^8
+                    -0.195_090_32_f32,                // W_32^9
+                    -0.382_683_43_f32,                // W_32^10
+                    -0.555_570_24_f32,                // W_32^11
+                    -std::f32::consts::FRAC_1_SQRT_2, // W_32^12
+                    -0.831_469_6_f32,                 // W_32^13
+                    -0.923_879_5_f32,                 // W_32^14
+                    -0.980_785_25_f32,                // W_32^15
+                ],
+            );
+            let tw_hi_im = f32x8::simd_from(
+                simd,
+                [
+                    -1.0_f32,                         // W_32^8
+                    -0.980_785_25_f32,                // W_32^9
+                    -0.923_879_5_f32,                 // W_32^10
+                    -0.831_469_6_f32,                 // W_32^11
+                    -std::f32::consts::FRAC_1_SQRT_2, // W_32^12
+                    -0.555_570_24_f32,                // W_32^13
+                    -0.382_683_43_f32,                // W_32^14
+                    -0.195_090_32_f32,                // W_32^15
+                ],
+            );
+
+            butterfly!(v0_re, v0_im, v2_re, v2_im, tw_lo_re, tw_lo_im);
+            butterfly!(v1_re, v1_im, v3_re, v3_im, tw_hi_re, tw_hi_im);
+        }
+
+        // ---- Store all vectors back ----
+        v0_re.store_slice(&mut re[0..8]);
+        v1_re.store_slice(&mut re[8..16]);
+        v2_re.store_slice(&mut re[16..24]);
+        v3_re.store_slice(&mut re[24..32]);
+
+        v0_im.store_slice(&mut im[0..8]);
+        v1_im.store_slice(&mut im[8..16]);
+        v2_im.store_slice(&mut im[16..24]);
+        v3_im.store_slice(&mut im[24..32]);
     }
 }
 
@@ -1026,6 +1250,102 @@ mod tests {
                 "im[{i}]: staged={}, codelet={}",
                 im_staged[i],
                 im_codelet[i]
+            );
+        }
+    }
+
+    #[test]
+    fn codelet_32_f32_matches_legacy() {
+        use fearless_simd::dispatch;
+
+        let simd_level = fearless_simd::Level::new();
+
+        // Test with impulse signal
+        let mut re_new = vec![0.0f32; 32];
+        let mut im_new = vec![0.0f32; 32];
+        re_new[0] = 1.0;
+
+        let mut re_legacy = re_new.clone();
+        let mut im_legacy = im_new.clone();
+
+        dispatch!(simd_level, simd => {
+            fft_dit_codelet_32_f32(simd, &mut re_new, &mut im_new);
+            fft_dit_codelet_32_staged_f32(simd, &mut re_legacy, &mut im_legacy);
+        });
+
+        for i in 0..32 {
+            assert!(
+                (re_new[i] - re_legacy[i]).abs() < 1e-5,
+                "re[{i}]: new={}, legacy={}",
+                re_new[i],
+                re_legacy[i]
+            );
+            assert!(
+                (im_new[i] - im_legacy[i]).abs() < 1e-5,
+                "im[{i}]: new={}, legacy={}",
+                im_new[i],
+                im_legacy[i]
+            );
+        }
+
+        // Test with non-trivial signal
+        let mut re_new: Vec<f32> = (1..=32).map(|i| i as f32).collect();
+        let mut im_new: Vec<f32> = (1..=32).map(|i| -(i as f32) * 0.5).collect();
+
+        let mut re_legacy = re_new.clone();
+        let mut im_legacy = im_new.clone();
+
+        dispatch!(simd_level, simd => {
+            fft_dit_codelet_32_f32(simd, &mut re_new, &mut im_new);
+            fft_dit_codelet_32_staged_f32(simd, &mut re_legacy, &mut im_legacy);
+        });
+
+        for i in 0..32 {
+            assert!(
+                (re_new[i] - re_legacy[i]).abs() < 1e-4,
+                "re[{i}]: new={}, legacy={}",
+                re_new[i],
+                re_legacy[i]
+            );
+            assert!(
+                (im_new[i] - im_legacy[i]).abs() < 1e-4,
+                "im[{i}]: new={}, legacy={}",
+                im_new[i],
+                im_legacy[i]
+            );
+        }
+    }
+
+    #[test]
+    fn codelet_32_f32_matches_legacy_multi_chunk() {
+        use fearless_simd::dispatch;
+
+        let simd_level = fearless_simd::Level::new();
+
+        let n = 128;
+        let mut re_new: Vec<f32> = (0..n).map(|i| (i as f32) * 0.1).collect();
+        let mut im_new: Vec<f32> = (0..n).map(|i| -(i as f32) * 0.05).collect();
+
+        let mut re_legacy = re_new.clone();
+        let mut im_legacy = im_new.clone();
+
+        dispatch!(simd_level, simd => {
+            fft_dit_codelet_32_f32(simd, &mut re_new, &mut im_new);
+            fft_dit_codelet_32_staged_f32(simd, &mut re_legacy, &mut im_legacy);
+        });
+
+        for i in 0..n {
+            assert!(
+                (re_new[i] - re_legacy[i]).abs() < 1e-4,
+                "re[{i}]: new={}, legacy={}",
+                re_new[i],
+                re_legacy[i]
+            );
+            assert!(
+                (im_new[i] - im_legacy[i]).abs() < 1e-4,
+                "im[{i}]: new={}, legacy={}",
+                im_new[i],
+                im_legacy[i]
             );
         }
     }
