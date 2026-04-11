@@ -6,7 +6,7 @@ use phastft::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts
 use rand::distr::StandardUniform;
 use rand::prelude::Distribution;
 use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+use rand::RngExt;
 use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 
@@ -24,7 +24,7 @@ fn generate_numbers<T: Float>(n: usize) -> (Vec<T>, Vec<T>)
 where
     StandardUniform: Distribution<T>,
 {
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = rand::make_rng::<SmallRng>();
 
     let samples: Vec<T> = (&mut rng)
         .sample_iter(StandardUniform)
@@ -50,7 +50,7 @@ fn generate_complex_numbers<T: Float + Default>(n: usize) -> Vec<Complex<T>>
 where
     StandardUniform: Distribution<T>,
 {
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = rand::make_rng::<SmallRng>();
 
     let samples: Vec<T> = (&mut rng)
         .sample_iter(StandardUniform)

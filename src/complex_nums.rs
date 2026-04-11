@@ -58,7 +58,7 @@ pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
 mod tests {
     use rand::distr::StandardUniform;
     use rand::rngs::SmallRng;
-    use rand::{Rng, SeedableRng};
+    use rand::RngExt;
 
     use super::*;
 
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn test_separate_and_combine_re_im() {
-        let mut rng = SmallRng::from_os_rng();
+        let mut rng = rand::make_rng::<SmallRng>();
         let complex_vec: Vec<f32> = (&mut rng)
             .sample_iter(StandardUniform)
             .take(16384)
