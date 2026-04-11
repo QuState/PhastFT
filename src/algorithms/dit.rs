@@ -17,6 +17,7 @@
 use fearless_simd::{dispatch, Simd};
 
 use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
+use crate::kernels::codelets::{fft_dit_codelet_32_f32, fft_dit_codelet_32_f64};
 use crate::kernels::dit::*;
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
@@ -34,12 +35,21 @@ fn recursive_dit_fft_f64<S: Simd>(
     reals: &mut [f64],
     imags: &mut [f64],
     size: usize,
+    planner: &PlannerDit64,
     opts: &Options,
 ) {
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        for stage in 0..log_size {
+        // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
+        let start_stage = if planner.use_codelet_32 {
+            fft_dit_codelet_32_f64(simd, &mut reals[..size], &mut imags[..size]);
+            5
+        } else {
+            0
+        };
+
+        for stage in start_stage..log_size {
             execute_dit_stage_f64(simd, &mut reals[..size], &mut imags[..size], stage);
         }
     } else {
@@ -51,8 +61,8 @@ fn recursive_dit_fft_f64<S: Simd>(
         // Recursively process both halves
         run_maybe_in_parallel(
             size > opts.smallest_parallel_chunk_size,
-            || recursive_dit_fft_f64(simd, re_first_half, im_first_half, half, opts),
-            || recursive_dit_fft_f64(simd, re_second_half, im_second_half, half, opts),
+            || recursive_dit_fft_f64(simd, re_first_half, im_first_half, half, planner, opts),
+            || recursive_dit_fft_f64(simd, re_second_half, im_second_half, half, planner, opts),
         );
 
         // Process remaining stages that span both halves
@@ -68,12 +78,21 @@ fn recursive_dit_fft_f32<S: Simd>(
     reals: &mut [f32],
     imags: &mut [f32],
     size: usize,
+    planner: &PlannerDit32,
     opts: &Options,
 ) {
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        for stage in 0..log_size {
+        // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
+        let start_stage = if planner.use_codelet_32 {
+            fft_dit_codelet_32_f32(simd, &mut reals[..size], &mut imags[..size]);
+            5
+        } else {
+            0
+        };
+
+        for stage in start_stage..log_size {
             execute_dit_stage_f32(simd, &mut reals[..size], &mut imags[..size], stage);
         }
     } else {
@@ -85,8 +104,8 @@ fn recursive_dit_fft_f32<S: Simd>(
         // Recursively process both halves
         run_maybe_in_parallel(
             size > opts.smallest_parallel_chunk_size,
-            || recursive_dit_fft_f32(simd, re_first_half, im_first_half, half, opts),
-            || recursive_dit_fft_f32(simd, re_second_half, im_second_half, half, opts),
+            || recursive_dit_fft_f32(simd, re_first_half, im_first_half, half, planner, opts),
+            || recursive_dit_fft_f32(simd, re_second_half, im_second_half, half, planner, opts),
         );
 
         // Process remaining stages that span both halves
@@ -212,7 +231,7 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
 
     simd.vectorize(
         #[inline(always)]
-        || recursive_dit_fft_f64(simd, reals, imags, n, opts),
+        || recursive_dit_fft_f64(simd, reals, imags, n, planner, opts),
     );
 
     // Scaling for inverse transform
@@ -280,7 +299,7 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
 
     simd.vectorize(
         #[inline(always)]
-        || recursive_dit_fft_f32(simd, reals, imags, n, opts),
+        || recursive_dit_fft_f32(simd, reals, imags, n, planner, opts),
     );
 
     // Scaling for inverse transform
