@@ -3,7 +3,7 @@
 //! A codelet is a self-contained FFT kernel that fuses multiple stages into a single function
 //! call, eliminating per-stage function call overhead and giving LLVM a wider optimization window.
 //!
-use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8, Simd, SimdBase, SimdFloat, SimdFrom};
+use fearless_simd::{f32x4, f32x8, f64x4, f64x8, Simd, SimdBase, SimdFloat, SimdFrom};
 
 /// FFT-32 codelet for `f64`: executes stages 0-4 (chunk_size 2 through 32) in a single function.
 #[inline(never)]
@@ -16,7 +16,7 @@ pub fn fft_dit_codelet_32_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [
 
 #[inline(always)]
 fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
-    // Fused stages 0+1: radix-2^2 4-point DIT in a single sweep
+    // Fuse stages 0+1 into a radix-2^2 4-point DIT in a single sweep
     reals
         .chunks_exact_mut(4)
         .zip(imags.chunks_exact_mut(4))
@@ -90,35 +90,28 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
             });
     }
 
-    // Stage 3: dist=8, chunk_size=16, W_16 twiddles via f64x8
+    // Stage 3: dist=8, chunk_size=16, W_16 twiddles via 2x f64x4
     {
-        let tw_re = f64x8::simd_from(
+        let tw_re_0_3 = f64x4::simd_from(
             simd,
             [
-                1.0,                              // W_16^0
-                0.9238795325112867,               // W_16^1
-                std::f64::consts::FRAC_1_SQRT_2,  // W_16^2
-                0.38268343236508984,              // W_16^3
-                0.0,                              // W_16^4
-                -0.38268343236508984,             // W_16^5
-                -std::f64::consts::FRAC_1_SQRT_2, // W_16^6
-                -0.9238795325112867,              // W_16^7
+                1.0,                             // W_16^0
+                0.9238795325112867,              // W_16^1
+                std::f64::consts::FRAC_1_SQRT_2, // W_16^2
+                0.38268343236508984,             // W_16^3
             ],
         );
-        let tw_im = f64x8::simd_from(
+        let tw_im_0_3 = f64x4::simd_from(
             simd,
             [
                 0.0,                              // W_16^0
                 -0.38268343236508984,             // W_16^1
                 -std::f64::consts::FRAC_1_SQRT_2, // W_16^2
                 -0.9238795325112867,              // W_16^3
-                -1.0,                             // W_16^4
-                -0.9238795325112867,              // W_16^5
-                -std::f64::consts::FRAC_1_SQRT_2, // W_16^6
-                -0.38268343236508984,             // W_16^7
             ],
         );
-        let two = f64x8::splat(simd, 2.0);
+        // W_16^{4..7} derived from W_16^{0..3} via W_16^(k+4) = -i * W_16^k
+        let two = f64x4::splat(simd, 2.0);
 
         (reals.as_chunks_mut::<16>().0.iter_mut())
             .zip(imags.as_chunks_mut::<16>().0.iter_mut())
@@ -126,20 +119,39 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
                 let (re_lo, re_hi) = re16.split_at_mut(8);
                 let (im_lo, im_hi) = im16.split_at_mut(8);
 
-                let in0_re = f64x8::from_slice(simd, re_lo);
-                let in1_re = f64x8::from_slice(simd, re_hi);
-                let in0_im = f64x8::from_slice(simd, im_lo);
-                let in1_im = f64x8::from_slice(simd, im_hi);
+                // Batch 0: elements [0..4] and [8..12] with W_16^{0..3}
+                let in0_re = f64x4::from_slice(simd, &re_lo[0..4]);
+                let in1_re = f64x4::from_slice(simd, &re_hi[0..4]);
+                let in0_im = f64x4::from_slice(simd, &im_lo[0..4]);
+                let in1_im = f64x4::from_slice(simd, &im_hi[0..4]);
 
-                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+                let out0_re = tw_im_0_3.mul_add(-in1_im, tw_re_0_3.mul_add(in1_re, in0_re));
+                let out0_im = tw_im_0_3.mul_add(in1_re, tw_re_0_3.mul_add(in1_im, in0_im));
                 let out1_re = two.mul_sub(in0_re, out0_re);
                 let out1_im = two.mul_sub(in0_im, out0_im);
 
-                out0_re.store_slice(re_lo);
-                out0_im.store_slice(im_lo);
-                out1_re.store_slice(re_hi);
-                out1_im.store_slice(im_hi);
+                out0_re.store_slice(&mut re_lo[0..4]);
+                out0_im.store_slice(&mut im_lo[0..4]);
+                out1_re.store_slice(&mut re_hi[0..4]);
+                out1_im.store_slice(&mut im_hi[0..4]);
+
+                // Batch 1: elements [4..8] and [12..16] — W_16^(k+4) = -i * W_16^k
+                //   out0_re = in0_re + tw_im·in1_re + tw_re·in1_im
+                //   out0_im = in0_im + tw_im·in1_im - tw_re·in1_re
+                let in0_re = f64x4::from_slice(simd, &re_lo[4..8]);
+                let in1_re = f64x4::from_slice(simd, &re_hi[4..8]);
+                let in0_im = f64x4::from_slice(simd, &im_lo[4..8]);
+                let in1_im = f64x4::from_slice(simd, &im_hi[4..8]);
+
+                let out0_re = tw_re_0_3.mul_add(in1_im, tw_im_0_3.mul_add(in1_re, in0_re));
+                let out0_im = tw_re_0_3.mul_add(-in1_re, tw_im_0_3.mul_add(in1_im, in0_im));
+                let out1_re = two.mul_sub(in0_re, out0_re);
+                let out1_im = two.mul_sub(in0_im, out0_im);
+
+                out0_re.store_slice(&mut re_lo[4..8]);
+                out0_im.store_slice(&mut im_lo[4..8]);
+                out1_re.store_slice(&mut re_hi[4..8]);
+                out1_im.store_slice(&mut im_hi[4..8]);
             });
     }
 
@@ -171,32 +183,7 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
                 -0.9807852804032304,              // W_32^7
             ],
         );
-        let tw_re_8_15 = f64x8::simd_from(
-            simd,
-            [
-                0.0,                              // W_32^8
-                -0.19509032201612825,             // W_32^9
-                -0.3826834323650898,              // W_32^10
-                -0.5555702330196022,              // W_32^11
-                -std::f64::consts::FRAC_1_SQRT_2, // W_32^12
-                -0.8314696123025452,              // W_32^13
-                -0.9238795325112867,              // W_32^14
-                -0.9807852804032304,              // W_32^15
-            ],
-        );
-        let tw_im_8_15 = f64x8::simd_from(
-            simd,
-            [
-                -1.0,                             // W_32^8
-                -0.9807852804032304,              // W_32^9
-                -0.9238795325112867,              // W_32^10
-                -0.8314696123025452,              // W_32^11
-                -std::f64::consts::FRAC_1_SQRT_2, // W_32^12
-                -0.5555702330196022,              // W_32^13
-                -0.3826834323650898,              // W_32^14
-                -0.19509032201612825,             // W_32^15
-            ],
-        );
+        // W_32^{8..15} derived from W_32^{0..7} via W_32^(k+8) = -i * W_32^k
         let two = f64x8::splat(simd, 2.0);
 
         for (re32, im32) in reals
@@ -224,14 +211,17 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
             out1_re.store_slice(&mut re_hi[0..8]);
             out1_im.store_slice(&mut im_hi[0..8]);
 
-            // Batch 1: elements [8..16] and [24..32] with W_32^{8..15}
+            // Batch 1: elements [8..16] and [24..32] — W_32^(k+8) = -i * W_32^k
+            // Rearranged: out0 = in0 + (-i·W)·in1
+            //   out0_re = in0_re + tw_im·in1_re + tw_re·in1_im
+            //   out0_im = in0_im + tw_im·in1_im - tw_re·in1_re
             let in0_re = f64x8::from_slice(simd, &re_lo[8..16]);
             let in1_re = f64x8::from_slice(simd, &re_hi[8..16]);
             let in0_im = f64x8::from_slice(simd, &im_lo[8..16]);
             let in1_im = f64x8::from_slice(simd, &im_hi[8..16]);
 
-            let out0_re = tw_im_8_15.mul_add(-in1_im, tw_re_8_15.mul_add(in1_re, in0_re));
-            let out0_im = tw_im_8_15.mul_add(in1_re, tw_re_8_15.mul_add(in1_im, in0_im));
+            let out0_re = tw_re_0_7.mul_add(in1_im, tw_im_0_7.mul_add(in1_re, in0_re));
+            let out0_im = tw_re_0_7.mul_add(-in1_re, tw_im_0_7.mul_add(in1_im, in0_im));
             let out1_re = two.mul_sub(in0_re, out0_re);
             let out1_im = two.mul_sub(in0_im, out0_im);
 
@@ -381,30 +371,22 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
             });
     }
 
-    // Stage 4: dist=16, chunk_size=32, W_32 twiddles via f32x16
+    // Stage 4: dist=16, chunk_size=32, W_32 twiddles via 2x f32x8
     {
-        let tw_re = f32x16::simd_from(
+        let tw_re_0_7 = f32x8::simd_from(
             simd,
             [
-                1.0_f32,                          // W_32^0
-                0.980_785_25_f32,                 // W_32^1
-                0.923_879_5_f32,                  // W_32^2
-                0.831_469_6_f32,                  // W_32^3
-                std::f32::consts::FRAC_1_SQRT_2,  // W_32^4
-                0.555_570_24_f32,                 // W_32^5
-                0.382_683_43_f32,                 // W_32^6
-                0.195_090_32_f32,                 // W_32^7
-                0.0_f32,                          // W_32^8
-                -0.195_090_32_f32,                // W_32^9
-                -0.382_683_43_f32,                // W_32^10
-                -0.555_570_24_f32,                // W_32^11
-                -std::f32::consts::FRAC_1_SQRT_2, // W_32^12
-                -0.831_469_6_f32,                 // W_32^13
-                -0.923_879_5_f32,                 // W_32^14
-                -0.980_785_25_f32,                // W_32^15
+                1.0_f32,                         // W_32^0
+                0.980_785_25_f32,                // W_32^1
+                0.923_879_5_f32,                 // W_32^2
+                0.831_469_6_f32,                 // W_32^3
+                std::f32::consts::FRAC_1_SQRT_2, // W_32^4
+                0.555_570_24_f32,                // W_32^5
+                0.382_683_43_f32,                // W_32^6
+                0.195_090_32_f32,                // W_32^7
             ],
         );
-        let tw_im = f32x16::simd_from(
+        let tw_im_0_7 = f32x8::simd_from(
             simd,
             [
                 0.0_f32,                          // W_32^0
@@ -415,17 +397,10 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
                 -0.831_469_6_f32,                 // W_32^5
                 -0.923_879_5_f32,                 // W_32^6
                 -0.980_785_25_f32,                // W_32^7
-                -1.0_f32,                         // W_32^8
-                -0.980_785_25_f32,                // W_32^9
-                -0.923_879_5_f32,                 // W_32^10
-                -0.831_469_6_f32,                 // W_32^11
-                -std::f32::consts::FRAC_1_SQRT_2, // W_32^12
-                -0.555_570_24_f32,                // W_32^13
-                -0.382_683_43_f32,                // W_32^14
-                -0.195_090_32_f32,                // W_32^15
             ],
         );
-        let two = f32x16::splat(simd, 2.0);
+        // W_32^{8..15} derived from W_32^{0..7} via W_32^(k+8) = -i * W_32^k
+        let two = f32x8::splat(simd, 2.0);
 
         (reals.as_chunks_mut::<32>().0.iter_mut())
             .zip(imags.as_chunks_mut::<32>().0.iter_mut())
@@ -433,20 +408,39 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
                 let (re_lo, re_hi) = re32.split_at_mut(16);
                 let (im_lo, im_hi) = im32.split_at_mut(16);
 
-                let in0_re = f32x16::from_slice(simd, re_lo);
-                let in1_re = f32x16::from_slice(simd, re_hi);
-                let in0_im = f32x16::from_slice(simd, im_lo);
-                let in1_im = f32x16::from_slice(simd, im_hi);
+                // Batch 0: elements [0..8] and [16..24] with W_32^{0..7}
+                let in0_re = f32x8::from_slice(simd, &re_lo[0..8]);
+                let in1_re = f32x8::from_slice(simd, &re_hi[0..8]);
+                let in0_im = f32x8::from_slice(simd, &im_lo[0..8]);
+                let in1_im = f32x8::from_slice(simd, &im_hi[0..8]);
 
-                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+                let out0_re = tw_im_0_7.mul_add(-in1_im, tw_re_0_7.mul_add(in1_re, in0_re));
+                let out0_im = tw_im_0_7.mul_add(in1_re, tw_re_0_7.mul_add(in1_im, in0_im));
                 let out1_re = two.mul_sub(in0_re, out0_re);
                 let out1_im = two.mul_sub(in0_im, out0_im);
 
-                out0_re.store_slice(re_lo);
-                out0_im.store_slice(im_lo);
-                out1_re.store_slice(re_hi);
-                out1_im.store_slice(im_hi);
+                out0_re.store_slice(&mut re_lo[0..8]);
+                out0_im.store_slice(&mut im_lo[0..8]);
+                out1_re.store_slice(&mut re_hi[0..8]);
+                out1_im.store_slice(&mut im_hi[0..8]);
+
+                // Batch 1: elements [8..16] and [24..32] — W_32^(k+8) = -i * W_32^k
+                //   out0_re = in0_re + tw_im·in1_re + tw_re·in1_im
+                //   out0_im = in0_im + tw_im·in1_im - tw_re·in1_re
+                let in0_re = f32x8::from_slice(simd, &re_lo[8..16]);
+                let in1_re = f32x8::from_slice(simd, &re_hi[8..16]);
+                let in0_im = f32x8::from_slice(simd, &im_lo[8..16]);
+                let in1_im = f32x8::from_slice(simd, &im_hi[8..16]);
+
+                let out0_re = tw_re_0_7.mul_add(in1_im, tw_im_0_7.mul_add(in1_re, in0_re));
+                let out0_im = tw_re_0_7.mul_add(-in1_re, tw_im_0_7.mul_add(in1_im, in0_im));
+                let out1_re = two.mul_sub(in0_re, out0_re);
+                let out1_im = two.mul_sub(in0_im, out0_im);
+
+                out0_re.store_slice(&mut re_lo[8..16]);
+                out0_im.store_slice(&mut im_lo[8..16]);
+                out1_re.store_slice(&mut re_hi[8..16]);
+                out1_im.store_slice(&mut im_hi[8..16]);
             });
     }
 }
