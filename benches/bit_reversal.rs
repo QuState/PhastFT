@@ -4,7 +4,7 @@ use phastft::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
 use rand::distr::StandardUniform;
 use rand::prelude::*;
 
-const LENGTHS: &[usize] = &[10, 14, 18, 20, 22, 24];
+const LENGTHS: &[usize] = &[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
 
 fn random_vec<T>(n: usize) -> Vec<T>
 where
@@ -160,6 +160,9 @@ mod old_bravo {
 fn bench_bit_reversal_f64(c: &mut Criterion) {
     let mut group = c.benchmark_group("Bit reversal f64");
     group.sample_size(20);
+    group.plot_config(
+        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
+    );
 
     for &n in LENGTHS {
         let len = 1usize << n;
@@ -171,6 +174,7 @@ fn bench_bit_reversal_f64(c: &mut Criterion) {
                 || random_vec::<f64>(n),
                 |mut data| {
                     dispatch!(simd_level, simd => bit_rev_bravo_f64(simd, &mut data, n));
+                    data
                 },
                 criterion::BatchSize::LargeInput,
             );
@@ -182,6 +186,7 @@ fn bench_bit_reversal_f64(c: &mut Criterion) {
                 || random_vec::<f64>(n),
                 |mut data| {
                     dispatch!(simd_level, simd => old_bravo::bit_rev_bravo_f64(simd, &mut data, n));
+                    data
                 },
                 criterion::BatchSize::LargeInput,
             );
@@ -193,6 +198,9 @@ fn bench_bit_reversal_f64(c: &mut Criterion) {
 fn bench_bit_reversal_f32(c: &mut Criterion) {
     let mut group = c.benchmark_group("Bit reversal f32");
     group.sample_size(20);
+    group.plot_config(
+        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
+    );
 
     for &n in LENGTHS {
         let len = 1usize << n;
@@ -204,6 +212,7 @@ fn bench_bit_reversal_f32(c: &mut Criterion) {
                 || random_vec::<f32>(n),
                 |mut data| {
                     dispatch!(simd_level, simd => bit_rev_bravo_f32(simd, &mut data, n));
+                    data
                 },
                 criterion::BatchSize::LargeInput,
             );
@@ -215,6 +224,7 @@ fn bench_bit_reversal_f32(c: &mut Criterion) {
                 || random_vec::<f32>(n),
                 |mut data| {
                     dispatch!(simd_level, simd => old_bravo::bit_rev_bravo_f32(simd, &mut data, n));
+                    data
                 },
                 criterion::BatchSize::LargeInput,
             );
