@@ -30,6 +30,8 @@ fn benchmark_rustfft_32(n: usize, iterations: usize) {
     let now = std::time::Instant::now();
     for _ in 0..iterations {
         fft.process_with_scratch(&mut signal, scratch.as_mut_slice());
+        // mark the result as used so that the compiler doesn't optimize out parts of FFT
+        std::hint::black_box(&mut signal);
     }
     let elapsed = now.elapsed().as_nanos();
     let elapsed_per_iteration = elapsed / iterations as u128;
