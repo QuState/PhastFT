@@ -37,6 +37,8 @@ fn benchmark_fftw_32(n: usize, iterations: usize) {
             &mut nums,
         )
         .unwrap();
+        // mark the result as used so that the compiler doesn't optimize out parts of FFT
+        std::hint::black_box(&mut nums);
     }
     let elapsed = now.elapsed().as_nanos();
     let elapsed_per_iteration = elapsed / iterations as u128;

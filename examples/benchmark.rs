@@ -35,6 +35,9 @@ fn benchmark_fft_64_dit(n: usize, iterations: usize) {
     let now = std::time::Instant::now();
     for _ in 0..iterations {
         fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
+        // mark the result as used so that the compiler doesn't optimize out parts of FFT
+        std::hint::black_box(&mut reals);
+        std::hint::black_box(&mut imags);
     }
     let elapsed = now.elapsed().as_nanos();
     let elapsed_per_iteration = elapsed / iterations as u128;
