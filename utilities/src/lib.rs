@@ -1,6 +1,5 @@
 pub extern crate rustfft;
 
-use std::f64::consts::PI;
 use std::fmt::Display;
 
 use rand::distr::Uniform;
@@ -27,31 +26,24 @@ pub fn assert_float_closeness<T: Float + Display>(actual: T, expected: T, epsilo
 pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
     let mut rng = SmallRng::from_os_rng();
-    let between = Uniform::try_from(0.0..1.0).unwrap();
-    let angle_dist = Uniform::try_from(0.0..2.0 * (PI as f32)).unwrap();
-    let num_amps = reals.len();
+    let dist = Uniform::try_from(-1.0f32..1.0f32).unwrap();
 
-    let mut probs: Vec<_> = (0..num_amps).map(|_| between.sample(&mut rng)).collect();
+    for (re, im) in reals.iter_mut().zip(imags.iter_mut()) {
+        *re = dist.sample(&mut rng);
+        *im = dist.sample(&mut rng);
+    }
 
-    let total: f32 = probs.iter().sum();
-    let total_recip = total.recip();
-
-    probs.iter_mut().for_each(|p| *p *= total_recip);
-
-    let angles = (0..num_amps).map(|_| angle_dist.sample(&mut rng));
-
-    probs
+    let magnitude_sq: f32 = reals
         .iter()
-        .zip(angles)
-        .enumerate()
-        .for_each(|(i, (p, a))| {
-            let p_sqrt = p.sqrt();
-            let (sin_a, cos_a) = a.sin_cos();
-            let re = p_sqrt * cos_a;
-            let im = p_sqrt * sin_a;
-            reals[i] = re;
-            imags[i] = im;
-        });
+        .zip(imags.iter())
+        .map(|(re, im)| re * re + im * im)
+        .sum();
+    let scale = magnitude_sq.sqrt().recip();
+
+    for (re, im) in reals.iter_mut().zip(imags.iter_mut()) {
+        *re *= scale;
+        *im *= scale;
+    }
 }
 
 /// Generate a random, complex, signal in the provided buffers
@@ -62,31 +54,24 @@ pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
 pub fn gen_random_signal_f64(reals: &mut [f64], imags: &mut [f64]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
     let mut rng = SmallRng::from_os_rng();
-    let between = Uniform::try_from(0.0..1.0).unwrap();
-    let angle_dist = Uniform::try_from(0.0..2.0 * PI).unwrap();
-    let num_amps = reals.len();
+    let dist = Uniform::try_from(-1.0f64..1.0f64).unwrap();
 
-    let mut probs: Vec<_> = (0..num_amps).map(|_| between.sample(&mut rng)).collect();
+    for (re, im) in reals.iter_mut().zip(imags.iter_mut()) {
+        *re = dist.sample(&mut rng);
+        *im = dist.sample(&mut rng);
+    }
 
-    let total: f64 = probs.iter().sum();
-    let total_recip = total.recip();
-
-    probs.iter_mut().for_each(|p| *p *= total_recip);
-
-    let angles = (0..num_amps).map(|_| angle_dist.sample(&mut rng));
-
-    probs
+    let magnitude_sq: f64 = reals
         .iter()
-        .zip(angles)
-        .enumerate()
-        .for_each(|(i, (p, a))| {
-            let p_sqrt = p.sqrt();
-            let (sin_a, cos_a) = a.sin_cos();
-            let re = p_sqrt * cos_a;
-            let im = p_sqrt * sin_a;
-            reals[i] = re;
-            imags[i] = im;
-        });
+        .zip(imags.iter())
+        .map(|(re, im)| re * re + im * im)
+        .sum();
+    let scale = magnitude_sq.sqrt().recip();
+
+    for (re, im) in reals.iter_mut().zip(imags.iter_mut()) {
+        *re *= scale;
+        *im *= scale;
+    }
 }
 
 #[cfg(test)]
@@ -107,6 +92,6 @@ mod tests {
             .map(|(re, im)| re.powi(2) + im.powi(2))
             .sum();
 
-        assert_f64_closeness(sum, 1.0, 1e-6);
+        assert_float_closeness(sum, 1.0, 1e-6);
     }
 }
