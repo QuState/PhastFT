@@ -1113,3 +1113,153 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
             });
     }
 }
+
+/// General DIT butterfly for f64 that runs multi-threaded
+#[cfg(feature = "parallel")]
+#[inline(never)]
+pub fn fft_dit_chunk_n_f64_parallel<S: Simd>(
+    simd: S,
+    reals: &mut [f64],
+    imags: &mut [f64],
+    twiddles_re: &[f64],
+    twiddles_im: &[f64],
+    dist: usize,
+) {
+    simd.vectorize(
+        #[inline(always)]
+        || fft_dit_chunk_n_simd_f64_parallel(simd, reals, imags, twiddles_re, twiddles_im, dist),
+    )
+}
+
+#[cfg(feature = "parallel")]
+#[inline(always)]
+fn fft_dit_chunk_n_simd_f64_parallel<S: Simd>(
+    simd: S,
+    reals: &mut [f64],
+    imags: &mut [f64],
+    twiddles_re: &[f64],
+    twiddles_im: &[f64],
+    dist: usize,
+) {
+    use rayon::prelude::*;
+    const LANES: usize = 8;
+    let chunk_size = dist * 2;
+    assert!(chunk_size >= LANES * 2);
+
+    // See fft_dit_chunk_n_simd_f64 for an explanation of the outer for / inner for_each structure.
+    for (reals_chunk, imags_chunk) in reals
+        .chunks_exact_mut(chunk_size)
+        .zip(imags.chunks_exact_mut(chunk_size))
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+
+        (reals_s0.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(reals_s1.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(imags_s0.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(imags_s1.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(twiddles_re.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles_im.as_chunks::<LANES>().0.par_iter())
+            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
+                simd.vectorize(
+                    #[inline(always)]
+                    || {
+                        let two = f64x8::splat(simd, 2.0);
+                        let in0_re = f64x8::simd_from(simd, *re_s0);
+                        let in1_re = f64x8::simd_from(simd, *re_s1);
+                        let in0_im = f64x8::simd_from(simd, *im_s0);
+                        let in1_im = f64x8::simd_from(simd, *im_s1);
+
+                        let tw_re = f64x8::simd_from(simd, *tw_re);
+                        let tw_im = f64x8::simd_from(simd, *tw_im);
+
+                        let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+                        let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+
+                        let out1_re = two.mul_sub(in0_re, out0_re);
+                        let out1_im = two.mul_sub(in0_im, out0_im);
+
+                        out0_re.store_slice(re_s0);
+                        out0_im.store_slice(im_s0);
+                        out1_re.store_slice(re_s1);
+                        out1_im.store_slice(im_s1);
+                    },
+                );
+            });
+    }
+}
+
+/// General DIT butterfly for f32 that runs multi-threaded
+#[cfg(feature = "parallel")]
+#[inline(never)]
+pub fn fft_dit_chunk_n_f32_parallel<S: Simd>(
+    simd: S,
+    reals: &mut [f32],
+    imags: &mut [f32],
+    twiddles_re: &[f32],
+    twiddles_im: &[f32],
+    dist: usize,
+) {
+    simd.vectorize(
+        #[inline(always)]
+        || fft_dit_chunk_n_simd_f32_parallel(simd, reals, imags, twiddles_re, twiddles_im, dist),
+    )
+}
+
+#[cfg(feature = "parallel")]
+#[inline(always)]
+fn fft_dit_chunk_n_simd_f32_parallel<S: Simd>(
+    simd: S,
+    reals: &mut [f32],
+    imags: &mut [f32],
+    twiddles_re: &[f32],
+    twiddles_im: &[f32],
+    dist: usize,
+) {
+    use rayon::prelude::*;
+    const LANES: usize = 16;
+    let chunk_size = dist * 2;
+    assert!(chunk_size >= LANES * 2);
+
+    // See fft_dit_chunk_n_simd_f64 for an explanation of the outer for / inner for_each structure.
+    for (reals_chunk, imags_chunk) in reals
+        .chunks_exact_mut(chunk_size)
+        .zip(imags.chunks_exact_mut(chunk_size))
+    {
+        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
+        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+
+        (reals_s0.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(reals_s1.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(imags_s0.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(imags_s1.as_chunks_mut::<LANES>().0.par_iter_mut())
+            .zip(twiddles_re.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles_im.as_chunks::<LANES>().0.par_iter())
+            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
+                simd.vectorize(
+                    #[inline(always)]
+                    || {
+                        let two = f32x16::splat(simd, 2.0);
+                        let in0_re = f32x16::simd_from(simd, *re_s0);
+                        let in1_re = f32x16::simd_from(simd, *re_s1);
+                        let in0_im = f32x16::simd_from(simd, *im_s0);
+                        let in1_im = f32x16::simd_from(simd, *im_s1);
+
+                        let tw_re = f32x16::simd_from(simd, *tw_re);
+                        let tw_im = f32x16::simd_from(simd, *tw_im);
+
+                        let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+                        let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+
+                        let out1_re = two.mul_sub(in0_re, out0_re);
+                        let out1_im = two.mul_sub(in0_im, out0_im);
+
+                        out0_re.store_slice(re_s0);
+                        out0_im.store_slice(im_s0);
+                        out1_re.store_slice(re_s1);
+                        out1_im.store_slice(im_s1);
+                    },
+                );
+            });
+    }
+}

@@ -59,6 +59,7 @@ fn recursive_dit_fft_f64<S: Simd>(
                 stage,
                 planner,
                 stage_twiddle_idx,
+                log_size - stage,
             );
         }
         stage_twiddle_idx
@@ -88,6 +89,7 @@ fn recursive_dit_fft_f64<S: Simd>(
                 stage,
                 planner,
                 stage_twiddle_idx,
+                log_size - stage,
             );
         }
 
@@ -125,6 +127,7 @@ fn recursive_dit_fft_f32<S: Simd>(
                 stage,
                 planner,
                 stage_twiddle_idx,
+                log_size - stage,
             );
         }
         stage_twiddle_idx
@@ -154,6 +157,7 @@ fn recursive_dit_fft_f32<S: Simd>(
                 stage,
                 planner,
                 stage_twiddle_idx,
+                log_size - stage,
             );
         }
 
@@ -162,6 +166,7 @@ fn recursive_dit_fft_f32<S: Simd>(
 }
 
 /// Execute a single DIT stage, dispatching to appropriate kernel based on chunk size.
+/// `stages_remaining` is `log_size - stage`, used to decide when to switch to the parallel kernel.
 /// Returns updated stage_twiddle_idx.
 fn execute_dit_stage_f64<S: Simd>(
     simd: S,
@@ -170,6 +175,7 @@ fn execute_dit_stage_f64<S: Simd>(
     stage: usize,
     planner: &PlannerDit64,
     stage_twiddle_idx: usize,
+    #[allow(unused_variables)] stages_remaining: usize,
 ) -> usize {
     let dist = 1 << stage; // 2.pow(stage)
     let chunk_size = dist * 2;
@@ -193,14 +199,24 @@ fn execute_dit_stage_f64<S: Simd>(
         fft_dit_chunk_64_f64(simd, reals, imags);
         stage_twiddle_idx
     } else {
-        // For larger chunks, use general kernel with twiddles from planner
         let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
+        // When nearing the end, use the parallelized kernel because recursion doesn't parallelize enough
+        #[cfg(feature = "parallel")]
+        {
+            if stages_remaining <= 4 {
+                fft_dit_chunk_n_f64_parallel(simd, reals, imags, twiddles_re, twiddles_im, dist);
+            } else {
+                fft_dit_chunk_n_f64(simd, reals, imags, twiddles_re, twiddles_im, dist);
+            }
+        }
+        #[cfg(not(feature = "parallel"))]
         fft_dit_chunk_n_f64(simd, reals, imags, twiddles_re, twiddles_im, dist);
         stage_twiddle_idx + 1
     }
 }
 
 /// Execute a single DIT stage, dispatching to appropriate kernel based on chunk size.
+/// `stages_remaining` is `log_size - stage`, used to decide when to switch to the parallel kernel.
 /// Returns updated stage_twiddle_idx.
 fn execute_dit_stage_f32<S: Simd>(
     simd: S,
@@ -209,6 +225,7 @@ fn execute_dit_stage_f32<S: Simd>(
     stage: usize,
     planner: &PlannerDit32,
     stage_twiddle_idx: usize,
+    #[allow(unused_variables)] stages_remaining: usize,
 ) -> usize {
     let dist = 1 << stage; // 2.pow(stage)
     let chunk_size = dist * 2;
@@ -232,8 +249,17 @@ fn execute_dit_stage_f32<S: Simd>(
         fft_dit_chunk_64_f32(simd, reals, imags);
         stage_twiddle_idx
     } else {
-        // For larger chunks, use general kernel with twiddles from planner
         let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
+        // When nearing the end, use the parallelized kernel because recursion doesn't parallelize enough
+        #[cfg(feature = "parallel")]
+        {
+            if stages_remaining <= 4 {
+                fft_dit_chunk_n_f32_parallel(simd, reals, imags, twiddles_re, twiddles_im, dist);
+            } else {
+                fft_dit_chunk_n_f32(simd, reals, imags, twiddles_re, twiddles_im, dist);
+            }
+        }
+        #[cfg(not(feature = "parallel"))]
         fft_dit_chunk_n_f32(simd, reals, imags, twiddles_re, twiddles_im, dist);
         stage_twiddle_idx + 1
     }
