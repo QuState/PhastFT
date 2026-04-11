@@ -2,94 +2,83 @@ on: [push, pull_request]
 
 name: Build
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
-      - name: Install nightly toolchain with clippy available
-        uses: actions-rs/toolchain@v1
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
           components: clippy
 
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+        run: cargo clippy --all-targets --all-features --tests -- -D warnings
 
   rustfmt:
     name: Format
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
-      - name: Install nightly toolchain with rustfmt available
-        uses: actions-rs/toolchain@v1
+      - name: Install nightly toolchain with rustfmt
+        uses: dtolnay/rust-toolchain@nightly
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
           components: rustfmt
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo +nightly fmt --all -- --check
 
   combo:
     name: Test ${{ matrix.args }}
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # ensures if one fails, the other keeps running
+      fail-fast: false
       matrix:
-        # This creates two jobs: one with the flag, one with an empty string
         args: ["--all-features", "--features=complex-nums"]
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
-      - name: Install nightly toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: ${{ matrix.args }}
+        run: cargo test ${{ matrix.args }}
 
   coverage:
     runs-on: ubuntu-latest
-    env:
-      CARGO_TERM_COLOR: always
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
-      - name: Install nightly toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
+
       - name: Generate code coverage
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
