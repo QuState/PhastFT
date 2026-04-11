@@ -6,9 +6,9 @@ use rand::distr::StandardUniform;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
-// This benchmark requires a custom cfg to run to access private functions.
+// This benchmark requires the bench-internals feature to access private functions.
 // Run it with:
-// RUSTFLAGS="--cfg phastft_bench" cargo bench --bench interleave --features complex-nums
+// cargo bench --bench interleave --features bench-internals
 
 const LENGTHS: &[usize] = &[
     6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -55,7 +55,7 @@ fn benchmark_deinterleave_f32(c: &mut Criterion) {
         group.throughput(Throughput::Bytes((len * 2 * size_of::<f32>()) as u64));
 
         group.bench_function(BenchmarkId::new("deinterleave", len), |b| {
-            let level = fearless_simd::Level::new();
+            let _level = fearless_simd::Level::new();
             b.iter_batched(
                 || generate_interleaved_f32(len),
                 |input| deinterleave(&input),
@@ -77,7 +77,7 @@ fn benchmark_deinterleave_f64(c: &mut Criterion) {
         group.throughput(Throughput::Bytes((len * 2 * size_of::<f64>()) as u64));
 
         group.bench_function(BenchmarkId::new("deinterleave", len), |b| {
-            let level = fearless_simd::Level::new();
+            let _level = fearless_simd::Level::new();
             b.iter_batched(
                 || generate_interleaved_f64(len),
                 |input| deinterleave(&input),

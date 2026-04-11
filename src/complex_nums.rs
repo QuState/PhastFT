@@ -1,7 +1,7 @@
 //! Functions for complex numbers such as interleave/deinterleave
 //!
 //! They are not part of the public API because the module they're in is private.
-//! They can be accessed with `--cfg phastft_bench` for benchmarking only.
+//! They can be accessed with `--features bench-internals` for benchmarking only.
 
 use bytemuck::{cast_slice, cast_slice_mut, Pod};
 use num_complex::Complex;
