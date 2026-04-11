@@ -967,34 +967,62 @@ fn fft_dit_chunk_64_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
 }
 
 /// General DIT butterfly for f64
+///
+/// Generates twiddle factors on the fly using the arbitrary-offset approach.
+/// `num_points` is the number of roots of unity for this stage (i.e. chunk_size = dist * 2).
 #[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f64<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
-    twiddles_re: &[f64],
-    twiddles_im: &[f64],
+    num_points: usize,
     dist: usize,
 ) {
     simd.vectorize(
         #[inline(always)]
-        || fft_dit_chunk_n_simd_f64(simd, reals, imags, twiddles_re, twiddles_im, dist),
+        || fft_dit_chunk_n_simd_f64(simd, reals, imags, num_points, dist),
     )
 }
 
 /// General DIT butterfly for f64
+///
+/// Generates twiddle factors on the fly using a streaming SIMD approach:
+/// Maintains a SIMD vector of LANES twiddles and advances it each iteration
+/// by multiplying with a scalar step factor W^LANES (pure arithmetic, no sin_cos).
+/// To prevent floating-point drift, re-seeds from sin_cos every RESEED iterations.
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_n_simd_f64<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
-    twiddles_re: &[f64],
-    twiddles_im: &[f64],
+    num_points: usize,
     dist: usize,
 ) {
     const LANES: usize = 8;
+    const RESEED: usize = 1024;
     let chunk_size = dist * 2;
+    assert_eq!(chunk_size, num_points);
     assert!(chunk_size >= LANES * 2);
+
+    let theta = -2.0 * std::f64::consts::PI / num_points as f64;
+
+    // Pre-compute base twiddle chunk: W^0, W^1, ..., W^{LANES-1}
+    let mut base_re = [0.0_f64; LANES];
+    let mut base_im = [0.0_f64; LANES];
+    for i in 0..LANES {
+        let angle = theta * i as f64;
+        let (s, c) = angle.sin_cos();
+        base_re[i] = c;
+        base_im[i] = s;
+    }
+    let base_re_v = f64x8::simd_from(simd, base_re);
+    let base_im_v = f64x8::simd_from(simd, base_im);
+
+    // Streaming step factor: W^LANES as a scalar, splatted for SIMD multiply
+    let step_angle = theta * LANES as f64;
+    let (step_s, step_c) = step_angle.sin_cos();
+    let step_re = f64x8::splat(simd, step_c);
+    let step_im = f64x8::splat(simd, step_s);
 
     // The structure of outer for loop with inner for_each is intentional: on x86
     // fearless_simd needs inlining all the way down to intrinsics to work properly,
@@ -1010,68 +1038,113 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
         let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
         let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
-        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                let two = f64x8::splat(simd, 2.0);
-                let in0_re = f64x8::simd_from(simd, *re_s0);
-                let in1_re = f64x8::simd_from(simd, *re_s1);
-                let in0_im = f64x8::simd_from(simd, *im_s0);
-                let in1_im = f64x8::simd_from(simd, *im_s1);
+        // Initialize streaming twiddle state to base chunk (anchor = W^0 = 1)
+        let mut tw_re = base_re_v;
+        let mut tw_im = base_im_v;
 
-                let tw_re = f64x8::simd_from(simd, *tw_re);
-                let tw_im = f64x8::simd_from(simd, *tw_im);
+        for (lane_idx, (((re_s0, re_s1), im_s0), im_s1)) in
+            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
+                .enumerate()
+        {
+            let two = f64x8::splat(simd, 2.0);
 
-                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+            // Re-seed from sin_cos every RESEED iterations to combat drift
+            if lane_idx % RESEED == 0 && lane_idx > 0 {
+                let offset = lane_idx * LANES;
+                let start_angle = theta * offset as f64;
+                let (s_start, c_start) = start_angle.sin_cos();
+                let anchor_re = f64x8::splat(simd, c_start);
+                let anchor_im = f64x8::splat(simd, s_start);
+                tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
+                tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
+            }
 
-                // Use FMA for out1 = 2*in0 - out0
-                let out1_re = two.mul_sub(in0_re, out0_re);
-                let out1_im = two.mul_sub(in0_im, out0_im);
+            let in0_re = f64x8::simd_from(simd, *re_s0);
+            let in1_re = f64x8::simd_from(simd, *re_s1);
+            let in0_im = f64x8::simd_from(simd, *im_s0);
+            let in1_im = f64x8::simd_from(simd, *im_s1);
 
-                out0_re.store_slice(re_s0);
-                out0_im.store_slice(im_s0);
-                out1_re.store_slice(re_s1);
-                out1_im.store_slice(im_s1);
-            });
+            // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+            let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+            // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+            let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+
+            // Use FMA for out1 = 2*in0 - out0
+            let out1_re = two.mul_sub(in0_re, out0_re);
+            let out1_im = two.mul_sub(in0_im, out0_im);
+
+            out0_re.store_slice(re_s0);
+            out0_im.store_slice(im_s0);
+            out1_re.store_slice(re_s1);
+            out1_im.store_slice(im_s1);
+
+            // Advance streaming twiddles: multiply by W^LANES
+            let prev_re = tw_re;
+            tw_re = step_im.mul_add(-tw_im, step_re * prev_re);
+            tw_im = step_im.mul_add(prev_re, step_re * tw_im);
+        }
     }
 }
 
 /// General DIT butterfly for f32
+///
+/// Generates twiddle factors on the fly using the arbitrary-offset approach.
+/// `num_points` is the number of roots of unity for this stage (i.e. chunk_size = dist * 2).
 #[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f32<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
-    twiddles_re: &[f32],
-    twiddles_im: &[f32],
+    num_points: usize,
     dist: usize,
 ) {
     simd.vectorize(
         #[inline(always)]
-        || fft_dit_chunk_n_simd_f32(simd, reals, imags, twiddles_re, twiddles_im, dist),
+        || fft_dit_chunk_n_simd_f32(simd, reals, imags, num_points, dist),
     )
 }
 
 /// General DIT butterfly for f32
+///
+/// Generates twiddle factors on the fly using a streaming SIMD approach.
+/// See `fft_dit_chunk_n_simd_f64` for detailed explanation.
 #[inline(always)] // required by fearless_simd
 fn fft_dit_chunk_n_simd_f32<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
-    twiddles_re: &[f32],
-    twiddles_im: &[f32],
+    num_points: usize,
     dist: usize,
 ) {
     const LANES: usize = 16;
+    const RESEED: usize = 1024;
     let chunk_size = dist * 2;
+    assert_eq!(chunk_size, num_points);
     assert!(chunk_size >= LANES * 2);
+
+    // Compute base twiddles and step factor in f64 for precision, then convert to f32
+    let theta_f64 = -2.0 * std::f64::consts::PI / num_points as f64;
+
+    // Pre-compute base twiddle chunk: W^0, W^1, ..., W^{LANES-1}
+    let mut base_re = [0.0_f32; LANES];
+    let mut base_im = [0.0_f32; LANES];
+    for i in 0..LANES {
+        let angle = theta_f64 * i as f64;
+        let (s, c) = angle.sin_cos();
+        base_re[i] = c as f32;
+        base_im[i] = s as f32;
+    }
+    let base_re_v = f32x16::simd_from(simd, base_re);
+    let base_im_v = f32x16::simd_from(simd, base_im);
+
+    // Streaming step factor: W^LANES as a scalar, splatted for SIMD multiply
+    let step_angle = theta_f64 * LANES as f64;
+    let (step_s, step_c) = step_angle.sin_cos();
+    let step_re = f32x16::splat(simd, step_c as f32);
+    let step_im = f32x16::splat(simd, step_s as f32);
 
     // see fft_dit_chunk_n_simd_f64 for an explanation of this structure
     for (reals_chunk, imags_chunk) in reals
@@ -1081,35 +1154,53 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
         let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
         let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
 
-        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                let two = f32x16::splat(simd, 2.0);
-                let in0_re = f32x16::simd_from(simd, *re_s0);
-                let in1_re = f32x16::simd_from(simd, *re_s1);
-                let in0_im = f32x16::simd_from(simd, *im_s0);
-                let in1_im = f32x16::simd_from(simd, *im_s1);
+        // Initialize streaming twiddle state to base chunk (anchor = W^0 = 1)
+        let mut tw_re = base_re_v;
+        let mut tw_im = base_im_v;
 
-                let tw_re = f32x16::simd_from(simd, *tw_re);
-                let tw_im = f32x16::simd_from(simd, *tw_im);
+        for (lane_idx, (((re_s0, re_s1), im_s0), im_s1)) in
+            (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
+                .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
+                .enumerate()
+        {
+            let two = f32x16::splat(simd, 2.0);
 
-                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+            // Re-seed from sin_cos every RESEED iterations to combat drift
+            if lane_idx % RESEED == 0 && lane_idx > 0 {
+                let offset = lane_idx * LANES;
+                let start_angle = theta_f64 * offset as f64;
+                let (s_start, c_start) = start_angle.sin_cos();
+                let anchor_re = f32x16::splat(simd, c_start as f32);
+                let anchor_im = f32x16::splat(simd, s_start as f32);
+                tw_re = anchor_im.mul_add(-base_im_v, anchor_re * base_re_v);
+                tw_im = anchor_im.mul_add(base_re_v, anchor_re * base_im_v);
+            }
 
-                // Use FMA for out1 = 2*in0 - out0
-                let out1_re = two.mul_sub(in0_re, out0_re);
-                let out1_im = two.mul_sub(in0_im, out0_im);
+            let in0_re = f32x16::simd_from(simd, *re_s0);
+            let in1_re = f32x16::simd_from(simd, *re_s1);
+            let in0_im = f32x16::simd_from(simd, *im_s0);
+            let in1_im = f32x16::simd_from(simd, *im_s1);
 
-                out0_re.store_slice(re_s0);
-                out0_im.store_slice(im_s0);
-                out1_re.store_slice(re_s1);
-                out1_im.store_slice(im_s1);
-            });
+            // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
+            let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
+            // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
+            let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+
+            // Use FMA for out1 = 2*in0 - out0
+            let out1_re = two.mul_sub(in0_re, out0_re);
+            let out1_im = two.mul_sub(in0_im, out0_im);
+
+            out0_re.store_slice(re_s0);
+            out0_im.store_slice(im_s0);
+            out1_re.store_slice(re_s1);
+            out1_im.store_slice(im_s1);
+
+            // Advance streaming twiddles: multiply by W^LANES
+            let prev_re = tw_re;
+            tw_re = step_im.mul_add(-tw_im, step_re * prev_re);
+            tw_im = step_im.mul_add(prev_re, step_re * tw_im);
+        }
     }
 }
