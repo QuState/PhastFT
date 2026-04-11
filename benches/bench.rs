@@ -78,7 +78,7 @@ fn benchmark_forward_f32(c: &mut Criterion) {
         let len = 1 << n; // 2.pow(n)
         group.throughput(Throughput::ElementsAndBytes {
             elements: len as u64,
-            bytes: (len * size_of::<f32>()) as u64,
+            bytes: (2 * len * size_of::<f32>()) as u64,
         });
 
         let id = "PhastFT DIT";
@@ -129,7 +129,7 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
         let len = 1 << n; // 2.pow(n)
         group.throughput(Throughput::ElementsAndBytes {
             elements: len as u64,
-            bytes: (len * size_of::<f32>()) as u64,
+            bytes: (2 * len * size_of::<f32>()) as u64,
         });
 
         let id = "PhastFT DIT";
@@ -180,7 +180,7 @@ fn benchmark_forward_f64(c: &mut Criterion) {
         let len = 1 << n; // 2.pow(n)
         group.throughput(Throughput::ElementsAndBytes {
             elements: len as u64,
-            bytes: (len * size_of::<f64>()) as u64,
+            bytes: (2 * len * size_of::<f64>()) as u64,
         });
 
         let id = "PhastFT DIT";
@@ -231,7 +231,7 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
         let len = 1 << n; // 2.pow(n)
         group.throughput(Throughput::ElementsAndBytes {
             elements: len as u64,
-            bytes: (len * size_of::<f64>()) as u64,
+            bytes: (2 * len * size_of::<f64>()) as u64,
         });
 
         let id = "PhastFT DIT";
