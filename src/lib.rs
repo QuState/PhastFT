@@ -29,8 +29,6 @@ mod kernels;
 pub mod options;
 mod parallel;
 pub mod planner;
-#[cfg(test)]
-mod twiddles;
 
 pub use algorithms::dit::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
 
