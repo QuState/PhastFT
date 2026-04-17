@@ -12,6 +12,10 @@ use fearless_simd::{
 /// Register-resident implementation: all 32 complex values are loaded into f64x4 vectors,
 /// all 5 butterfly stages execute in registers with no intermediate memory traffic,
 /// then results are stored back.
+///
+/// In reality there is a lot of spilling to the stack,
+/// but empirically it performs consistently better than loading/storing after every step
+/// or even reducing the load/store traffic with radix-2^2.
 #[inline(never)]
 pub fn fft_dit_codelet_32_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
