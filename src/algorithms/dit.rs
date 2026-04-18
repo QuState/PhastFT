@@ -17,7 +17,7 @@
 use fearless_simd::{dispatch, Simd};
 
 use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
-use crate::kernels::codelets::{fft_dit_codelet_32_f32, fft_dit_codelet_32_f64};
+use crate::kernels::codelets::{fft_dit_codelet_16_f64, fft_dit_codelet_32_f32};
 use crate::kernels::dit::*;
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
@@ -42,10 +42,10 @@ fn recursive_dit_fft_f64<S: Simd>(
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
-        let codelet_stages = 5;
+        // Use FFT-16 codelet to fuse stages 0-3 into a single pass per 16-element chunk
+        let codelet_stages = 4;
         let start_stage = if stage_twiddle_idx == 0 && size >= power_of_two(codelet_stages) {
-            fft_dit_codelet_32_f64(simd, &mut reals[..size], &mut imags[..size]);
+            fft_dit_codelet_16_f64(simd, &mut reals[..size], &mut imags[..size]);
             codelet_stages
         } else {
             0

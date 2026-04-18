@@ -7,30 +7,30 @@ use fearless_simd::{
     f32x4, f32x8, f64x4, Simd, SimdBase, SimdCombine, SimdFloat, SimdFrom, SimdSplit,
 };
 
-/// FFT-32 codelet for `f64`: executes stages 0-4 (chunk_size 2 through 32) in a single function.
+/// FFT-16 codelet for `f64`: executes stages 0-3 (chunk_size 2 through 16) in a single function.
 ///
-/// Register-resident implementation: all 32 complex values are loaded into f64x4 vectors,
-/// all 5 butterfly stages execute in registers with no intermediate memory traffic,
+/// Register-resident implementation: all 16 complex values are loaded into f64x4 vectors,
+/// all 4 butterfly stages execute in registers with no intermediate memory traffic,
 /// then results are stored back.
 ///
-/// In reality there is a lot of spilling to the stack,
-/// but empirically it performs consistently better than loading/storing after every step
-/// or even reducing the load/store traffic with radix-2^2.
+/// The limiting factor is register pressure: we cannot fuse more stages on AVX2 or NEON.
+/// Trying to do so incurs haphazard loads/stores from the stack and ends up being slower
+/// than running orderly single-stage passes that load/store predictably.
 #[inline(never)]
-pub fn fft_dit_codelet_32_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
+pub fn fft_dit_codelet_16_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     simd.vectorize(
         #[inline(always)]
-        || fft_dit_codelet_32_simd_f64(simd, reals, imags),
+        || fft_dit_codelet_16_simd_f64(simd, reals, imags),
     )
 }
 
 #[inline(always)]
-fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
+fn fft_dit_codelet_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
     assert_eq!(reals.len(), imags.len());
 
     let two = f64x4::splat(simd, 2.0);
 
-    for (re, im) in reals.chunks_exact_mut(32).zip(imags.chunks_exact_mut(32)) {
+    for (re, im) in reals.chunks_exact_mut(16).zip(imags.chunks_exact_mut(16)) {
         macro_rules! transpose4x4_f64 {
             ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
                 let (t0, t1) = $g0.interleave($g2);
@@ -82,8 +82,7 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
             }};
         }
 
-        // ---- Load first group and do stages 0+1 ----
-        // Deferring v4-v7 loads reduces peak register pressure during transpose.
+        // ---- Load and do stages 0+1 ----
         let mut v0_re = f64x4::from_slice(simd, &re[0..4]);
         let mut v1_re = f64x4::from_slice(simd, &re[4..8]);
         let mut v2_re = f64x4::from_slice(simd, &re[8..12]);
@@ -94,18 +93,6 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
         let mut v3_im = f64x4::from_slice(simd, &im[12..16]);
 
         radix4_transpose!(v0_re, v1_re, v2_re, v3_re, v0_im, v1_im, v2_im, v3_im);
-
-        // ---- Load second group and do stages 0+1 ----
-        let mut v4_re = f64x4::from_slice(simd, &re[16..20]);
-        let mut v5_re = f64x4::from_slice(simd, &re[20..24]);
-        let mut v6_re = f64x4::from_slice(simd, &re[24..28]);
-        let mut v7_re = f64x4::from_slice(simd, &re[28..32]);
-        let mut v4_im = f64x4::from_slice(simd, &im[16..20]);
-        let mut v5_im = f64x4::from_slice(simd, &im[20..24]);
-        let mut v6_im = f64x4::from_slice(simd, &im[24..28]);
-        let mut v7_im = f64x4::from_slice(simd, &im[28..32]);
-
-        radix4_transpose!(v4_re, v5_re, v6_re, v7_re, v4_im, v5_im, v6_im, v7_im);
 
         // Butterfly macro: twiddle-multiply hi, then add/sub with lo.
         // out_lo = lo + tw*hi, out_hi = lo - tw*hi (via 2*lo - out_lo).
@@ -123,7 +110,7 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
         }
 
         // ---- Stage 2: dist=4, W_8 twiddles ----
-        // Butterfly pairs: (v0,v1), (v2,v3), (v4,v5), (v6,v7)
+        // Butterfly pairs: (v0,v1), (v2,v3)
         // All pairs use the same twiddle: W_8^{0,1,2,3}
         {
             let tw_re = f64x4::simd_from(
@@ -147,14 +134,12 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
 
             butterfly!(v0_re, v0_im, v1_re, v1_im, tw_re, tw_im);
             butterfly!(v2_re, v2_im, v3_re, v3_im, tw_re, tw_im);
-            butterfly!(v4_re, v4_im, v5_re, v5_im, tw_re, tw_im);
-            butterfly!(v6_re, v6_im, v7_re, v7_im, tw_re, tw_im);
         }
 
         // ---- Stage 3: dist=8, W_16 twiddles ----
-        // Butterfly pairs: (v0,v2), (v1,v3), (v4,v6), (v5,v7)
-        // (v0,v2) and (v4,v6) use W_16^{0,1,2,3}
-        // (v1,v3) and (v5,v7) use W_16^{4,5,6,7}
+        // Butterfly pairs: (v0,v2), (v1,v3)
+        // (v0,v2) uses W_16^{0,1,2,3}
+        // (v1,v3) uses W_16^{4,5,6,7}
         {
             let tw_lo_re = f64x4::simd_from(
                 simd,
@@ -195,94 +180,6 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
 
             butterfly!(v0_re, v0_im, v2_re, v2_im, tw_lo_re, tw_lo_im);
             butterfly!(v1_re, v1_im, v3_re, v3_im, tw_hi_re, tw_hi_im);
-            butterfly!(v4_re, v4_im, v6_re, v6_im, tw_lo_re, tw_lo_im);
-            butterfly!(v5_re, v5_im, v7_re, v7_im, tw_hi_re, tw_hi_im);
-        }
-
-        // ---- Stage 4: dist=16, W_32 twiddles ----
-        // Butterfly pairs: (v0,v4), (v1,v5), (v2,v6), (v3,v7)
-        // Each pair uses its own twiddle: W_32^{0..3}, W_32^{4..7}, W_32^{8..11}, W_32^{12..15}
-        {
-            let tw0_re = f64x4::simd_from(
-                simd,
-                [
-                    1.0,                // W_32^0
-                    0.9807852804032304, // W_32^1
-                    0.9238795325112867, // W_32^2
-                    0.8314696123025452, // W_32^3
-                ],
-            );
-            let tw0_im = f64x4::simd_from(
-                simd,
-                [
-                    0.0,                  // W_32^0
-                    -0.19509032201612825, // W_32^1
-                    -0.3826834323650898,  // W_32^2
-                    -0.5555702330196022,  // W_32^3
-                ],
-            );
-
-            let tw1_re = f64x4::simd_from(
-                simd,
-                [
-                    std::f64::consts::FRAC_1_SQRT_2, // W_32^4
-                    0.5555702330196022,              // W_32^5
-                    0.3826834323650898,              // W_32^6
-                    0.19509032201612825,             // W_32^7
-                ],
-            );
-            let tw1_im = f64x4::simd_from(
-                simd,
-                [
-                    -std::f64::consts::FRAC_1_SQRT_2, // W_32^4
-                    -0.8314696123025452,              // W_32^5
-                    -0.9238795325112867,              // W_32^6
-                    -0.9807852804032304,              // W_32^7
-                ],
-            );
-
-            let tw2_re = f64x4::simd_from(
-                simd,
-                [
-                    0.0,                  // W_32^8
-                    -0.19509032201612825, // W_32^9
-                    -0.3826834323650898,  // W_32^10
-                    -0.5555702330196022,  // W_32^11
-                ],
-            );
-            let tw2_im = f64x4::simd_from(
-                simd,
-                [
-                    -1.0,                // W_32^8
-                    -0.9807852804032304, // W_32^9
-                    -0.9238795325112867, // W_32^10
-                    -0.8314696123025452, // W_32^11
-                ],
-            );
-
-            let tw3_re = f64x4::simd_from(
-                simd,
-                [
-                    -std::f64::consts::FRAC_1_SQRT_2, // W_32^12
-                    -0.8314696123025452,              // W_32^13
-                    -0.9238795325112867,              // W_32^14
-                    -0.9807852804032304,              // W_32^15
-                ],
-            );
-            let tw3_im = f64x4::simd_from(
-                simd,
-                [
-                    -std::f64::consts::FRAC_1_SQRT_2, // W_32^12
-                    -0.5555702330196022,              // W_32^13
-                    -0.3826834323650898,              // W_32^14
-                    -0.19509032201612825,             // W_32^15
-                ],
-            );
-
-            butterfly!(v0_re, v0_im, v4_re, v4_im, tw0_re, tw0_im);
-            butterfly!(v1_re, v1_im, v5_re, v5_im, tw1_re, tw1_im);
-            butterfly!(v2_re, v2_im, v6_re, v6_im, tw2_re, tw2_im);
-            butterfly!(v3_re, v3_im, v7_re, v7_im, tw3_re, tw3_im);
         }
 
         // ---- Store all vectors back ----
@@ -290,19 +187,11 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
         v1_re.store_slice(&mut re[4..8]);
         v2_re.store_slice(&mut re[8..12]);
         v3_re.store_slice(&mut re[12..16]);
-        v4_re.store_slice(&mut re[16..20]);
-        v5_re.store_slice(&mut re[20..24]);
-        v6_re.store_slice(&mut re[24..28]);
-        v7_re.store_slice(&mut re[28..32]);
 
         v0_im.store_slice(&mut im[0..4]);
         v1_im.store_slice(&mut im[4..8]);
         v2_im.store_slice(&mut im[8..12]);
         v3_im.store_slice(&mut im[12..16]);
-        v4_im.store_slice(&mut im[16..20]);
-        v5_im.store_slice(&mut im[20..24]);
-        v6_im.store_slice(&mut im[24..28]);
-        v7_im.store_slice(&mut im[28..32]);
     }
 }
 
@@ -599,13 +488,12 @@ mod tests {
     use super::*;
     use crate::kernels::dit::*;
 
-    fn run_stages_0_to_4_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
-        assert_eq!(reals.len(), 32);
+    fn run_stages_0_to_3_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut [f64]) {
+        assert_eq!(reals.len(), 16);
         fft_dit_chunk_2(simd, reals, imags);
         fft_dit_chunk_4_f64(simd, reals, imags);
         fft_dit_chunk_8_f64(simd, reals, imags);
         fft_dit_chunk_16_f64(simd, reals, imags);
-        fft_dit_chunk_32_f64(simd, reals, imags);
     }
 
     fn run_stages_0_to_4_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f32]) {
@@ -618,14 +506,14 @@ mod tests {
     }
 
     #[test]
-    fn codelet_32_f64_matches_staged() {
+    fn codelet_16_f64_matches_staged() {
         use fearless_simd::dispatch;
 
         let simd_level = fearless_simd::Level::new();
 
         // Test with a simple impulse signal
-        let mut re_staged = vec![0.0f64; 32];
-        let mut im_staged = vec![0.0f64; 32];
+        let mut re_staged = vec![0.0f64; 16];
+        let mut im_staged = vec![0.0f64; 16];
         re_staged[0] = 1.0;
 
         let mut re_codelet = re_staged.clone();
@@ -634,12 +522,12 @@ mod tests {
         dispatch!(simd_level, simd => {
             simd.vectorize(
                 #[inline(always)]
-                || run_stages_0_to_4_f64(simd, &mut re_staged, &mut im_staged),
+                || run_stages_0_to_3_f64(simd, &mut re_staged, &mut im_staged),
             );
-            fft_dit_codelet_32_f64(simd, &mut re_codelet, &mut im_codelet);
+            fft_dit_codelet_16_f64(simd, &mut re_codelet, &mut im_codelet);
         });
 
-        for i in 0..32 {
+        for i in 0..16 {
             assert!(
                 (re_staged[i] - re_codelet[i]).abs() < 1e-14,
                 "re[{i}]: staged={}, codelet={}",
@@ -654,8 +542,8 @@ mod tests {
             );
         }
 
-        let mut re_staged: Vec<f64> = (1..=32).map(|i| i as f64).collect();
-        let mut im_staged: Vec<f64> = (1..=32).map(|i| -(i as f64) * 0.5).collect();
+        let mut re_staged: Vec<f64> = (1..=16).map(|i| i as f64).collect();
+        let mut im_staged: Vec<f64> = (1..=16).map(|i| -(i as f64) * 0.5).collect();
 
         let mut re_codelet = re_staged.clone();
         let mut im_codelet = im_staged.clone();
@@ -663,12 +551,12 @@ mod tests {
         dispatch!(simd_level, simd => {
             simd.vectorize(
                 #[inline(always)]
-                || run_stages_0_to_4_f64(simd, &mut re_staged, &mut im_staged),
+                || run_stages_0_to_3_f64(simd, &mut re_staged, &mut im_staged),
             );
-            fft_dit_codelet_32_f64(simd, &mut re_codelet, &mut im_codelet);
+            fft_dit_codelet_16_f64(simd, &mut re_codelet, &mut im_codelet);
         });
 
-        for i in 0..32 {
+        for i in 0..16 {
             assert!(
                 (re_staged[i] - re_codelet[i]).abs() < 1e-10,
                 "re[{i}]: staged={}, codelet={}",
@@ -751,12 +639,12 @@ mod tests {
     }
 
     #[test]
-    fn codelet_32_f64_multi_chunk() {
+    fn codelet_16_f64_multi_chunk() {
         use fearless_simd::dispatch;
 
         let simd_level = fearless_simd::Level::new();
 
-        // Test that the codelet correctly processes multiple 32-element chunks
+        // Test that the codelet correctly processes multiple 16-element chunks
         let n = 128;
         let mut re_staged: Vec<f64> = (0..n).map(|i| (i as f64) * 0.1).collect();
         let mut im_staged: Vec<f64> = (0..n).map(|i| -(i as f64) * 0.05).collect();
@@ -766,17 +654,17 @@ mod tests {
 
         dispatch!(simd_level, simd => {
             // Run individual stage kernels on all chunks
-            for chunk_start in (0..n).step_by(32) {
-                let re = &mut re_staged[chunk_start..chunk_start + 32];
-                let im = &mut im_staged[chunk_start..chunk_start + 32];
+            for chunk_start in (0..n).step_by(16) {
+                let re = &mut re_staged[chunk_start..chunk_start + 16];
+                let im = &mut im_staged[chunk_start..chunk_start + 16];
                 simd.vectorize(
                     #[inline(always)]
-                    || run_stages_0_to_4_f64(simd, re, im),
+                    || run_stages_0_to_3_f64(simd, re, im),
                 );
             }
 
             // Run codelet on the full array
-            fft_dit_codelet_32_f64(simd, &mut re_codelet, &mut im_codelet);
+            fft_dit_codelet_16_f64(simd, &mut re_codelet, &mut im_codelet);
         });
 
         for i in 0..n {
