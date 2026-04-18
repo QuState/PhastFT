@@ -4,7 +4,7 @@
 //! call, eliminating per-stage function call overhead and giving LLVM a wider optimization window.
 //!
 use fearless_simd::{
-    f32x16, f32x4, f32x8, f64x4, Simd, SimdBase, SimdCombine, SimdFloat, SimdFrom, SimdSplit,
+    f32x4, f32x8, f64x4, Simd, SimdBase, SimdCombine, SimdFloat, SimdFrom, SimdSplit,
 };
 
 /// FFT-32 codelet for `f64`: executes stages 0-4 (chunk_size 2 through 32) in a single function.
