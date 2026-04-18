@@ -43,9 +43,10 @@ fn recursive_dit_fft_f64<S: Simd>(
 
     if size <= L1_BLOCK_SIZE {
         // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
-        let start_stage = if planner.use_codelet_32 {
+        let codelet_stages = 5;
+        let start_stage = if stage_twiddle_idx == 0 && size >= power_of_two(codelet_stages) {
             fft_dit_codelet_32_f64(simd, &mut reals[..size], &mut imags[..size]);
-            5
+            codelet_stages
         } else {
             0
         };
@@ -109,9 +110,10 @@ fn recursive_dit_fft_f32<S: Simd>(
 
     if size <= L1_BLOCK_SIZE {
         // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
-        let start_stage = if planner.use_codelet_32 {
+        let codelet_stages = 5;
+        let start_stage = if stage_twiddle_idx == 0 && size >= power_of_two(codelet_stages) {
             fft_dit_codelet_32_f32(simd, &mut reals[..size], &mut imags[..size]);
-            5
+            codelet_stages
         } else {
             0
         };
@@ -388,4 +390,11 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
             *z_im *= -scaling_factor;
         }
     }
+}
+
+#[inline]
+fn power_of_two(power: usize) -> usize {
+    // 2.pow() requires a lot of ugly type annotations so here's a helper function
+    debug_assert!(power < usize::BITS as usize);
+    1 << power
 }
