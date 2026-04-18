@@ -33,16 +33,11 @@ fn fft_dit_codelet_32_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
     for (re, im) in reals.chunks_exact_mut(32).zip(imags.chunks_exact_mut(32)) {
         macro_rules! transpose4x4_f64 {
             ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
-                let t0 = $g0.zip_low($g2);
-                let t1 = $g0.zip_high($g2);
-                let t2 = $g1.zip_low($g3);
-                let t3 = $g1.zip_high($g3);
-                (
-                    t0.zip_low(t2),
-                    t0.zip_high(t2),
-                    t1.zip_low(t3),
-                    t1.zip_high(t3),
-                )
+                let (t0, t1) = $g0.interleave($g2);
+                let (t2, t3) = $g1.interleave($g3);
+                let (r0, r1) = t0.interleave(t2);
+                let (r2, r3) = t1.interleave(t3);
+                (r0, r1, r2, r3)
             }};
         }
 
@@ -352,16 +347,11 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
         {
             macro_rules! transpose4x4 {
                 ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
-                    let t0 = $g0.zip_low($g2);
-                    let t1 = $g0.zip_high($g2);
-                    let t2 = $g1.zip_low($g3);
-                    let t3 = $g1.zip_high($g3);
-                    (
-                        t0.zip_low(t2),
-                        t0.zip_high(t2),
-                        t1.zip_low(t3),
-                        t1.zip_high(t3),
-                    )
+                    let (t0, t1) = $g0.interleave($g2);
+                    let (t2, t3) = $g1.interleave($g3);
+                    let (r0, r1) = t0.interleave(t2);
+                    let (r2, r3) = t1.interleave(t3);
+                    (r0, r1, r2, r3)
                 }};
             }
 
