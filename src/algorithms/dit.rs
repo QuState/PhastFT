@@ -285,6 +285,17 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
+    // IFFT via swap trick: swap(IDFT(z)) = (1/N) * DFT(swap(z)), where
+    // swap(a + bi) = b + ai. Hand the caller's imag slice to the forward
+    // FFT as its "reals" arg (and vice versa); after the 1/N scale below,
+    // the slices already hold IDFT(z) in the caller's slots — saving a
+    // full conjugation pass over `imags`. After this rebind, `reals` and
+    // `imags` are positional names, not semantic.
+    let (reals, imags) = match planner.direction {
+        Direction::Forward => (reals, imags),
+        Direction::Reverse => (imags, reals),
+    };
+
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
@@ -302,13 +313,6 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
         },
     );
 
-    // Handle inverse FFT
-    if let Direction::Reverse = planner.direction {
-        for z_im in imags.iter_mut() {
-            *z_im = -*z_im;
-        }
-    }
-
     simd.vectorize(
         #[inline(always)]
         || recursive_dit_fft_f64(simd, reals, imags, n, planner, opts, 0),
@@ -319,7 +323,7 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
         let scaling_factor = 1.0 / n as f64;
         for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
             *z_re *= scaling_factor;
-            *z_im *= -scaling_factor;
+            *z_im *= scaling_factor;
         }
     }
 }
@@ -353,6 +357,12 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
+    // See `fft_64_dit_with_planner_and_opts_impl` for the swap-trick rationale.
+    let (reals, imags) = match planner.direction {
+        Direction::Forward => (reals, imags),
+        Direction::Reverse => (imags, reals),
+    };
+
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
@@ -370,13 +380,6 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
         },
     );
 
-    // Handle inverse FFT
-    if let Direction::Reverse = planner.direction {
-        for z_im in imags.iter_mut() {
-            *z_im = -*z_im;
-        }
-    }
-
     simd.vectorize(
         #[inline(always)]
         || recursive_dit_fft_f32(simd, reals, imags, n, planner, opts, 0),
@@ -387,7 +390,7 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
         let scaling_factor = 1.0 / n as f32;
         for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
             *z_re *= scaling_factor;
-            *z_im *= -scaling_factor;
+            *z_im *= scaling_factor;
         }
     }
 }
