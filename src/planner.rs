@@ -59,7 +59,7 @@ macro_rules! impl_planner_dit_for {
             ///   leave performance on the table on platforms with large L1i caches.
             /// - [`PlannerMode::Tune`]: Benchmarks both paths at plan time. Use this
             ///   when you can afford extra planning time (e.g., planner is reused).
-            pub fn with_mode(num_points: usize, direction: Direction, mode: PlannerMode) -> Self {
+            pub fn with_mode(num_points: usize, direction: Direction, _mode: PlannerMode) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
 
                 let simd_level = fearless_simd::Level::new();
