@@ -42,8 +42,6 @@ macro_rules! impl_planner_dit_for {
             pub(crate) log_n: usize,
             /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
             pub(crate) simd_level: fearless_simd::Level,
-            /// Whether to use the fused 32-point codelet for stages 0-4 in L1 blocks
-            pub(crate) use_codelet_32: bool,
         }
 
         impl $struct_name {
@@ -91,109 +89,14 @@ macro_rules! impl_planner_dit_for {
                     }
                 }
 
-                let use_codelet_32 = Self::estimate_use_codelet_32(log_n);
-
-                let mut planner = Self {
+                let planner = Self {
                     stage_twiddles,
                     direction,
                     log_n,
                     simd_level,
-                    use_codelet_32,
                 };
-
-                if matches!(mode, PlannerMode::Tune) {
-                    planner.tune_codelet_32(num_points);
-                }
 
                 planner
-            }
-
-            /// Conservative, arch-independent heuristic for whether the 32-point
-            /// codelet is beneficial.
-            ///
-            /// At small sizes (N ≤ 8192) the codelet dominates runtime and
-            /// cross-block kernel eviction from the µop cache doesn't matter.
-            /// At large sizes the codelet's code footprint can evict the
-            /// cross-block kernel on platforms with small L1i caches (e.g., 32KB
-            /// on x86). Use [`PlannerMode::Tune`] to discover the real threshold
-            /// on your hardware.
-            fn estimate_use_codelet_32(log_n: usize) -> bool {
-                // Codelet needs at least 32 elements (5 stages)
-                if log_n < 5 {
-                    return false;
-                }
-
-                // Conservative threshold: enable only for N ≤ 8192 where the
-                // codelet dominates runtime. On platforms with large L1i (e.g.,
-                // Apple Silicon at 192KB), Tune mode will discover that the
-                // codelet wins at larger sizes too.
-                // log_n <= 13
-                true
-            }
-
-            /// Benchmark both paths and set `use_codelet_32` to whichever is faster.
-            fn tune_codelet_32(&mut self, num_points: usize) {
-                if self.log_n < 5 {
-                    self.use_codelet_32 = false;
-                    return;
-                }
-
-                let opts = crate::options::Options {
-                    multithreaded_bit_reversal: false,
-                    smallest_parallel_chunk_size: usize::MAX,
-                };
-
-                // Generate random complex signal via xorshift64 (no rand dependency)
-                let mut rng_state: u64 = 0x517C_C1B7_2722_0A95;
-                let mut next_f = || -> $precision {
-                    rng_state ^= rng_state << 13;
-                    rng_state ^= rng_state >> 7;
-                    rng_state ^= rng_state << 17;
-                    (rng_state as $precision) / (u64::MAX as $precision) * 2.0 - 1.0
-                };
-                let reals_orig: Vec<$precision> = (0..num_points).map(|_| next_f()).collect();
-                let imags_orig: Vec<$precision> = (0..num_points).map(|_| next_f()).collect();
-                let mut reals = reals_orig.clone();
-                let mut imags = imags_orig.clone();
-
-                const WARMUP: usize = 3;
-                const ITERS: usize = 5;
-
-                // Time WITHOUT codelet
-                self.use_codelet_32 = false;
-                for _ in 0..WARMUP {
-                    reals.copy_from_slice(&reals_orig);
-                    imags.copy_from_slice(&imags_orig);
-                    $fft_func(&mut reals, &mut imags, &*self, &opts);
-                }
-
-                let mut best_without = std::time::Duration::MAX;
-                for _ in 0..ITERS {
-                    reals.copy_from_slice(&reals_orig);
-                    imags.copy_from_slice(&imags_orig);
-                    let start = std::time::Instant::now();
-                    $fft_func(&mut reals, &mut imags, &*self, &opts);
-                    best_without = best_without.min(start.elapsed());
-                }
-
-                // Time WITH codelet
-                self.use_codelet_32 = true;
-                for _ in 0..WARMUP {
-                    reals.copy_from_slice(&reals_orig);
-                    imags.copy_from_slice(&imags_orig);
-                    $fft_func(&mut reals, &mut imags, &*self, &opts);
-                }
-
-                let mut best_with = std::time::Duration::MAX;
-                for _ in 0..ITERS {
-                    reals.copy_from_slice(&reals_orig);
-                    imags.copy_from_slice(&imags_orig);
-                    let start = std::time::Instant::now();
-                    $fft_func(&mut reals, &mut imags, &*self, &opts);
-                    best_with = best_with.min(start.elapsed());
-                }
-
-                self.use_codelet_32 = best_with < best_without;
             }
         }
     };
