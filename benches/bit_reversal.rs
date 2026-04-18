@@ -89,8 +89,7 @@ mod old_bravo {
                                 let idx1 = i + offset + stride;
                                 let vec0 = chunks_a[idx0];
                                 let vec1 = chunks_a[idx1];
-                                chunks_a[idx0] = vec0.zip_low(vec1);
-                                chunks_a[idx1] = vec0.zip_high(vec1);
+                                (chunks_a[idx0], chunks_a[idx1]) = vec0.interleave(vec1);
                             }
                             i += stride * 2;
                         }
@@ -117,8 +116,7 @@ mod old_bravo {
                                     let idx1 = i + offset + stride;
                                     let vec0 = chunks_b[idx0];
                                     let vec1 = chunks_b[idx1];
-                                    chunks_b[idx0] = vec0.zip_low(vec1);
-                                    chunks_b[idx1] = vec0.zip_high(vec1);
+                                    (chunks_b[idx0], chunks_b[idx1]) = vec0.interleave(vec1);
                                 }
                                 i += stride * 2;
                             }
