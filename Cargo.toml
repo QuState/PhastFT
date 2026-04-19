@@ -37,6 +37,10 @@ name = "bench"
 harness = false
 
 [[bench]]
+name = "rustfft"
+harness = false
+
+[[bench]]
 name = "planner"
 harness = false
 
@@ -53,6 +57,18 @@ harness = false
 name = "bit_reversal"
 harness = false
 required-features = ["bench-internals"]
+
+[[bench]]
+name = "fftw_estimate"
+harness = false
+
+[[bench]]
+name = "fftw_measure"
+harness = false
+
+[[bench]]
+name = "fftw_patient"
+harness = false
 
 [profile.profiling]
 inherits = "release"
