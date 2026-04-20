@@ -20,8 +20,10 @@ use utilities::rustfft::num_complex::Complex;
 // `[[bench]]` binary so FFTW's global per-process wisdom cache cannot leak
 // between modes; each run starts with a fresh process and empty wisdom. The
 // benchmark group names are shared with benches/bench.rs ("Forward f32",
-// "Forward f64") so criterion's HTML report auto-overlays the PhastFT, RustFFT,
-// and three FFTW series at `target/criterion/Forward <precision>/report/`.
+// "Forward f64") so every bench binary writes into the same
+// `target/criterion/<group>/<id>/<size>/` tree. Criterion itself does NOT
+// auto-aggregate across bench binaries — use `benches/plot_criterion_overlay.py`
+// to produce a single overlay plot per group after all five benches have run.
 //
 // FFTW's MEASURE is the default rigor level and is encoded as bit value 0
 // in the fftw crate's Flag bitflags (types.rs in fftw-0.8.0). Bitwise-OR'ing

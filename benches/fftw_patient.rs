@@ -20,8 +20,10 @@ use utilities::rustfft::num_complex::Complex;
 // `[[bench]]` binary so FFTW's global per-process wisdom cache cannot leak
 // between modes; each run starts with a fresh process and empty wisdom. The
 // benchmark group names are shared with benches/bench.rs ("Forward f32",
-// "Forward f64") so criterion's HTML report auto-overlays the PhastFT, RustFFT,
-// and three FFTW series at `target/criterion/Forward <precision>/report/`.
+// "Forward f64") so every bench binary writes into the same
+// `target/criterion/<group>/<id>/<size>/` tree. Criterion itself does NOT
+// auto-aggregate across bench binaries — use `benches/plot_criterion_overlay.py`
+// to produce a single overlay plot per group after all five benches have run.
 //
 // PATIENT is FFTW's most thorough planner; at sizes beyond ~2^18 its planning
 // time grows from seconds to minutes. LENGTHS is therefore capped at 2^18 to

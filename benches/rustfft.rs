@@ -15,9 +15,12 @@ use utilities::rustfft::FftPlanner;
 // The RustFFT series lives in its own `[[bench]]` binary so it can be run
 // independently of the PhastFT series. The benchmark group names are shared
 // with benches/bench.rs ("Forward f32", "Inverse f32", "Forward f64",
-// "Inverse f64") so criterion's HTML report auto-overlays this series with the
-// PhastFT DIT and FFTW (Estimate / Measure / Patient) series at
-// `target/criterion/<group>/report/`.
+// "Inverse f64") so that each bench binary writes into the same
+// `target/criterion/<group>/<id>/<size>/` tree. Criterion itself does NOT
+// auto-aggregate across bench binaries — the last bench to finish overwrites
+// `target/criterion/<group>/report/{lines,violin}.svg` with a report that
+// mentions only its own IDs. Use `benches/plot_criterion_overlay.py` to
+// produce a single overlay plot per group after running all five benches.
 
 const LENGTHS: &[usize] = &[
     6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
