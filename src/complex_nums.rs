@@ -7,8 +7,33 @@ use bytemuck::cast_slice;
 use num_complex::Complex;
 use num_traits::Float;
 
+#[cfg(feature = "parallel")]
+fn deinterleave_parallel<T: Copy + Send + Sync>(input: &[T]) -> (Vec<T>, Vec<T>) {
+    const CHUNK_SIZE: usize = 8;
+    let out_vec_len = input.len() * 2 / CHUNK_SIZE;
+    let (mut re, mut im) = (
+        Vec::with_capacity(out_vec_len),
+        Vec::with_capacity(out_vec_len),
+    );
+    use rayon::prelude::*;
+    input
+        .as_chunks::<CHUNK_SIZE>()
+        .0
+        .par_iter()
+        .map(|c| ([c[0], c[2], c[4], c[6]], [c[1], c[3], c[5], c[7]]))
+        .unzip_into_vecs(&mut re, &mut im);
+    (re.into_flattened(), im.into_flattened())
+}
+
 /// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
-pub fn deinterleave<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
+pub fn deinterleave<T: Copy + Send + Sync>(input: &[T]) -> (Vec<T>, Vec<T>) {
+    #[cfg(not(feature = "parallel"))]
+    return deinterleave_sequential(input);
+    #[cfg(feature = "parallel")]
+    return deinterleave_parallel(input);
+}
+
+fn deinterleave_sequential<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
     // Despite relying on autovectorization, this is the fastest approach
     // because we don't need to initialize the output Vecs.
     // The Vecs are also allocated up front without intermediate reallocations.
@@ -38,13 +63,44 @@ pub fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
     deinterleave(complex_t)
 }
 
+#[cfg(feature = "parallel")]
+fn combine_re_im_parallel<T: Float + Send + Sync>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
+    assert_eq!(reals.len(), imags.len());
+
+    const CHUNK_SIZE: usize = 4;
+    use rayon::prelude::*;
+    let mut output: Vec<[Complex<T>; CHUNK_SIZE]> = Vec::with_capacity(reals.len() / CHUNK_SIZE);
+    reals
+        .as_chunks::<CHUNK_SIZE>()
+        .0
+        .par_iter()
+        .zip(imags.as_chunks::<CHUNK_SIZE>().0.par_iter())
+        .map(|(re, im)| {
+            [
+                Complex::new(re[0], im[0]),
+                Complex::new(re[1], im[1]),
+                Complex::new(re[2], im[2]),
+                Complex::new(re[3], im[3]),
+            ]
+        })
+        .collect_into_vec(&mut output);
+    output.into_flattened()
+}
+
 /// Utility function to combine separate vectors of real and imaginary components
 /// into a single vector of Complex Number Structs.
 ///
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
+pub fn combine_re_im<T: Float + Send + Sync>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
+    #[cfg(not(feature = "parallel"))]
+    return combine_re_im_sequential(reals, imags);
+    #[cfg(feature = "parallel")]
+    return combine_re_im_parallel(reals, imags);
+}
+
+fn combine_re_im_sequential<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
     assert_eq!(reals.len(), imags.len());
 
     reals
