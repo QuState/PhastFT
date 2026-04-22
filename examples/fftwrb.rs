@@ -24,8 +24,12 @@ fn bench32(n: usize, iterations: usize) {
     let mut imags = vec![0.0f32; big_n];
     let mut nums: AlignedVec<Complex<f32>> = AlignedVec::new(big_n);
 
-    let mut plan =
-        C2CPlan32::aligned(&[big_n], Sign::Forward, Flag::DESTROYINPUT | Flag::PATIENT).unwrap();
+    let mut plan = C2CPlan32::aligned(
+        &[big_n],
+        Sign::Forward,
+        Flag::DESTROYINPUT | Flag::MEASURE | Flag::CONSERVEMEMORY,
+    )
+    .unwrap();
 
     let batch = batch_size(n).min(iterations.max(1));
     let batches = (iterations / batch).max(1);
