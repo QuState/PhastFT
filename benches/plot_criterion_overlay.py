@@ -59,7 +59,7 @@ PALETTE = {
     "PhastFT DIT":   "#D55E00",
     "FFTW Estimate": "#009E73",
     "FFTW Measure":  "#E69F00",
-    "FFTW Patient":  "#CC79A7",
+    "FFTW Conserve": "#CC79A7",
 }
 _FALLBACK_COLORS = ["#56B4E9", "#F0E442", "#000000"]
 
@@ -70,7 +70,7 @@ SERIES_ORDER = [
     "PhastFT DIT",
     "FFTW Estimate",
     "FFTW Measure",
-    "FFTW Patient",
+    "FFTW Conserve",
 ]
 
 

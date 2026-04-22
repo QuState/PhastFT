@@ -16,7 +16,7 @@ use utilities::rustfft::num_complex::Complex;
 // PhastFT. Criterion is not a good fit for measuring long-running tasks — see
 // examples/benchmark.rs for the benchmarking harness for large sizes.
 //
-// Each FFTW planning mode (Estimate / Measure / Patient) lives in its own
+// Each FFTW planning mode (Estimate / Measure / Conserve) lives in its own
 // `[[bench]]` binary so FFTW's global per-process wisdom cache cannot leak
 // between modes; each run starts with a fresh process and empty wisdom. The
 // benchmark group names are shared with benches/bench.rs ("Forward f32",

@@ -67,7 +67,7 @@ name = "fftw_measure"
 harness = false
 
 [[bench]]
-name = "fftw_patient"
+name = "fftw_conserve"
 harness = false
 
 [profile.profiling]

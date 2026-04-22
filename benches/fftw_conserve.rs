@@ -16,7 +16,7 @@ use utilities::rustfft::num_complex::Complex;
 // PhastFT. Criterion is not a good fit for measuring long-running tasks — see
 // examples/benchmark.rs for the benchmarking harness for large sizes.
 //
-// Each FFTW planning mode (Estimate / Measure / Patient) lives in its own
+// Each FFTW planning mode (Estimate / Measure / Conserve) lives in its own
 // `[[bench]]` binary so FFTW's global per-process wisdom cache cannot leak
 // between modes; each run starts with a fresh process and empty wisdom. The
 // benchmark group names are shared with benches/bench.rs ("Forward f32",
@@ -25,12 +25,18 @@ use utilities::rustfft::num_complex::Complex;
 // auto-aggregate across bench binaries — use `benches/plot_criterion_overlay.py`
 // to produce a single overlay plot per group after all five benches have run.
 //
-// PATIENT is FFTW's most thorough planner; at sizes beyond ~2^18 its planning
-// time grows from seconds to minutes. LENGTHS is therefore capped at 2^18 to
-// keep a full `cargo bench --bench fftw_patient` run tractable. ESTIMATE and
-// MEASURE use the full bench.rs range.
+// This series combines MEASURE with FFTW_CONSERVE_MEMORY so FFTW selects
+// memory-efficient plan variants during the same search it would run for
+// plain MEASURE. This is a more faithful comparison for PhastFT, which is
+// also designed for low memory overhead — plain PATIENT / MEASURE let FFTW
+// spend memory freely in pursuit of speed. MEASURE has bit value 0 in the
+// fftw crate's Flag bitflags (types.rs in fftw-0.8.0), so `| Flag::MEASURE`
+// is a no-op at runtime; it is kept here so the selected rigor level is
+// visible alongside CONSERVEMEMORY.
 
-const LENGTHS: &[usize] = &[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+const LENGTHS: &[usize] = &[
+    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+];
 
 // Distribution parity with benches/bench.rs::generate_numbers (bench.rs:23-47).
 // Do NOT substitute utilities::gen_random_signal_f* — those use Uniform(-1, 1)
@@ -76,12 +82,16 @@ fn benchmark_forward_f32(c: &mut Criterion) {
             bytes: (2 * len * size_of::<f32>()) as u64,
         });
 
-        let id = "FFTW Patient";
+        let id = "FFTW Conserve";
         // Plan construction is outside iter_batched so planning cost is
         // excluded from per-sample timings — matches how bench.rs excludes
         // RustFFT's FftPlanner construction.
-        let mut plan =
-            C2CPlan32::aligned(&[len], Sign::Forward, Flag::DESTROYINPUT | Flag::PATIENT).unwrap();
+        let mut plan = C2CPlan32::aligned(
+            &[len],
+            Sign::Forward,
+            Flag::DESTROYINPUT | Flag::MEASURE | Flag::CONSERVEMEMORY,
+        )
+        .unwrap();
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
@@ -126,9 +136,13 @@ fn benchmark_forward_f64(c: &mut Criterion) {
             bytes: (2 * len * size_of::<f64>()) as u64,
         });
 
-        let id = "FFTW Patient";
-        let mut plan =
-            C2CPlan64::aligned(&[len], Sign::Forward, Flag::DESTROYINPUT | Flag::PATIENT).unwrap();
+        let id = "FFTW Conserve";
+        let mut plan = C2CPlan64::aligned(
+            &[len],
+            Sign::Forward,
+            Flag::DESTROYINPUT | Flag::MEASURE | Flag::CONSERVEMEMORY,
+        )
+        .unwrap();
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
