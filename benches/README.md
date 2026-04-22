@@ -20,27 +20,24 @@ cd ~/PhastFT/pyphastft
 pip install .
 ```
 
-5. Run the `FFTW3-RB` vs. `RustFFT` vs. `PhastFT` benchmarks`
+5. Run the `FFTW3-RB` vs. `RustFFT` vs. `PhastFT` benchmarks
 
 ```bash
-python run_benches.py
+./benchmark.sh <n-lower-bound> <n-upper-bound>
 ```
+
+Per-size invocation order is randomized so no single library always runs first.
+Results land in a timestamped `benchmark-data.<ts>/` directory.
 
 6. Plot the results
 
 ```bash
-python benchmark_plots.py
+uv run benchmark_plots.py
 ```
 
-The generated images will be saved in your working directory.
-
-7. Run the python benchmarks and plot the results
-
-```bash
-python py_benchmarks.py
-```
-
-The generated images will be saved in your working directory.
+The bar plot shows the median runtime per size with IQR error whiskers,
+normalized against RustFFT's median. Generated PNGs are saved in the current
+directory.
 
 ## Benchmark Configuration
 

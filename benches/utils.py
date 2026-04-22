@@ -1,10 +1,12 @@
 """
 Utility functions for plotting that are common to all scripts
 """
-
 import os
 import re
+from collections.abc import Iterable
 from datetime import datetime
+
+_SIZE_FILE_RE = re.compile(r"^size_(\d+)$")
 
 SYMBOLS = {
     "customary": ("B", "K", "M", "G", "T", "P", "E", "Z", "Y"),
@@ -74,3 +76,27 @@ def find_directory(pattern="benchmark-data"):
         )  # Return the latest matching directory
     else:
         return None  # No matching directory found
+
+
+def discover_sizes(root_dir: str, lib_names: Iterable[str]) -> list[int]:
+    """
+    Return sorted n values with data under every `<root_dir>/<lib>/size_<n>`
+    """
+    common: set[int] | None = None
+    for lib in lib_names:
+        lib_dir = os.path.join(root_dir, lib)
+        if not os.path.isdir(lib_dir):
+            raise FileNotFoundError(f"missing library subdirectory: {lib_dir}")
+        sizes = {
+            int(m.group(1))
+            for name in os.listdir(lib_dir)
+            if (m := _SIZE_FILE_RE.match(name))
+        }
+        if not sizes:
+            raise FileNotFoundError(f"no size_<n> files under {lib_dir}")
+        common = sizes if common is None else common & sizes
+    if not common:
+        raise RuntimeError(
+            f"no sizes common to all libraries in {root_dir}: {list(lib_names)}"
+        )
+    return sorted(common)

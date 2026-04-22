@@ -8,83 +8,96 @@ use fftw::types::{Flag, Sign};
 use utilities::rustfft::num_complex::Complex;
 use utilities::{gen_random_signal_f32, gen_random_signal_f64};
 
-fn benchmark_fftw_32(n: usize, iterations: usize) {
-    let big_n = 1 << n; // 2.pow(n)
+// See examples/benchmark.rs for the rationale behind batch-timing.
+fn batch_size(n: usize) -> usize {
+    match n {
+        0..=7 => 256,
+        8..=9 => 32,
+        _ => 1,
+    }
+}
+
+fn bench32(n: usize, iterations: usize) {
+    let big_n = 1usize << n;
 
     let mut reals = vec![0.0f32; big_n];
     let mut imags = vec![0.0f32; big_n];
-
-    gen_random_signal_f32(&mut reals, &mut imags);
-    let mut nums = AlignedVec::new(big_n);
-    reals
-        .drain(..)
-        .zip(imags.drain(..))
-        .zip(nums.iter_mut())
-        .for_each(|((re, im), z)| *z = Complex::new(re, im));
+    let mut nums: AlignedVec<Complex<f32>> = AlignedVec::new(big_n);
 
     let mut plan = C2CPlan32::aligned(
         &[big_n],
-        Sign::Backward,
-        Flag::DESTROYINPUT | Flag::ESTIMATE,
+        Sign::Forward,
+        Flag::DESTROYINPUT | Flag::MEASURE | Flag::CONSERVEMEMORY,
     )
     .unwrap();
 
-    let now = std::time::Instant::now();
-    for _ in 0..iterations {
-        plan.c2c(
-            // SAFETY: See above comment.
-            unsafe { &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), big_n) },
-            &mut nums,
-        )
-        .unwrap();
-        // mark the result as used so that the compiler doesn't optimize out parts of FFT
-        std::hint::black_box(&mut nums);
+    let batch = batch_size(n).min(iterations.max(1));
+    let batches = (iterations / batch).max(1);
+    for _ in 0..batches {
+        gen_random_signal_f32(&mut reals, &mut imags);
+        nums.iter_mut()
+            .zip(reals.iter())
+            .zip(imags.iter())
+            .for_each(|((z, &re), &im)| *z = Complex::new(re, im));
+
+        let now = std::time::Instant::now();
+        for _ in 0..batch {
+            plan.c2c(
+                // SAFETY: `nums` is alive for the whole call, big_n matches the
+                // allocation size, and FFTW permits in-place execution via
+                // DESTROYINPUT. The raw pointer is only used to form a disjoint
+                // mutable view so the borrow checker accepts passing `&mut nums`
+                // twice (input and output).
+                unsafe { &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), big_n) },
+                &mut nums,
+            )
+            .unwrap();
+            std::hint::black_box(&mut nums);
+        }
+        let elapsed = now.elapsed().as_nanos();
+        println!("{}", elapsed / batch as u128);
     }
-    let elapsed = now.elapsed().as_nanos();
-    let elapsed_per_iteration = elapsed / iterations as u128;
-    println!("{elapsed_per_iteration}");
 }
 
-fn benchmark_fftw_64(n: usize, iterations: usize) {
-    let big_n = 1 << n; // 2.pow(n)
+fn bench64(n: usize, iterations: usize) {
+    let big_n = 1usize << n;
 
-    let mut reals = vec![0.0; big_n];
-    let mut imags = vec![0.0; big_n];
+    let mut reals = vec![0.0f64; big_n];
+    let mut imags = vec![0.0f64; big_n];
+    let mut nums: AlignedVec<Complex<f64>> = AlignedVec::new(big_n);
 
-    gen_random_signal_f64(&mut reals, &mut imags);
-    let mut nums = AlignedVec::new(big_n);
-    reals
-        .drain(..)
-        .zip(imags.drain(..))
-        .zip(nums.iter_mut())
-        .for_each(|((re, im), z)| *z = Complex::new(re, im));
+    let mut plan =
+        C2CPlan64::aligned(&[big_n], Sign::Forward, Flag::DESTROYINPUT | Flag::PATIENT).unwrap();
 
-    let mut plan = C2CPlan64::aligned(
-        &[big_n],
-        Sign::Backward,
-        Flag::DESTROYINPUT | Flag::ESTIMATE,
-    )
-    .unwrap();
+    let batch = batch_size(n).min(iterations.max(1));
+    let batches = (iterations / batch).max(1);
+    for _ in 0..batches {
+        gen_random_signal_f64(&mut reals, &mut imags);
+        nums.iter_mut()
+            .zip(reals.iter())
+            .zip(imags.iter())
+            .for_each(|((z, &re), &im)| *z = Complex::new(re, im));
 
-    let now = std::time::Instant::now();
-    for _ in 0..iterations {
-        plan.c2c(
-            // SAFETY: See above comment.
-            unsafe { &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), big_n) },
-            &mut nums,
-        )
-        .unwrap();
+        let now = std::time::Instant::now();
+        for _ in 0..batch {
+            plan.c2c(
+                // SAFETY: see bench32 comment above.
+                unsafe { &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), big_n) },
+                &mut nums,
+            )
+            .unwrap();
+            std::hint::black_box(&mut nums);
+        }
+        let elapsed = now.elapsed().as_nanos();
+        println!("{}", elapsed / batch as u128);
     }
-    let elapsed = now.elapsed().as_nanos();
-    let elapsed_per_iteration = elapsed / iterations as u128;
-    println!("{elapsed_per_iteration}");
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     assert!(
         args.len() >= 4,
-        "Usage {} <32|64> <n> <iterations>",
+        "Usage: {} <32|64> <n> <iterations>",
         args[0]
     );
 
@@ -92,8 +105,8 @@ fn main() {
     let iterations = usize::from_str(&args[3]).unwrap();
 
     match args[1].as_str() {
-        "32" => benchmark_fftw_32(n, iterations),
-        "64" => benchmark_fftw_64(n, iterations),
-        other => panic!("Invalid precision: {other}. Please pass 32 or 64"),
+        "32" => bench32(n, iterations),
+        "64" => bench64(n, iterations),
+        other => panic!("Invalid precision: {other}. Use 32 or 64"),
     }
 }
