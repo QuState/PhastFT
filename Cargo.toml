@@ -32,6 +32,10 @@ fftw = "0.8.0"
 rand = "0.10.1"
 utilities = { path = "utilities" }
 
+[[example]]
+name = "benchmark_interleaved"
+required-features = ["complex-nums"]
+
 [[bench]]
 name = "bench"
 harness = false

@@ -13,7 +13,7 @@
 use num_complex::Complex;
 
 #[cfg(feature = "complex-nums")]
-use crate::complex_nums::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
+use crate::complex_nums::{deinterleave_complex_inplace, interleave_complex_inplace};
 use crate::options::Options;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
@@ -34,7 +34,7 @@ pub use algorithms::dit::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_plan
 
 #[cfg(feature = "complex-nums")]
 macro_rules! impl_fft_interleaved_for {
-    ($func_name:ident, $precision:ty, $fft_func:ident, $deinterleaving_func: ident, $planner:ty) => {
+    ($func_name:ident, $precision:ty, $fft_func:ident, $planner:ty) => {
         /// FFT Interleaved -- this is an alternative to [`fft_64`]/[`fft_32`] in the case where
         /// the input data is a array of [`Complex`].
         ///
@@ -43,9 +43,11 @@ macro_rules! impl_fft_interleaved_for {
         /// **Note**: This function has to make a deinterleaved copy of the data.
         /// For maximum performance with minimal memory usage, use [fft_64_dit_with_planner_and_opts].
         pub fn $func_name(signal: &mut [Complex<$precision>], planner: &$planner, opts: &Options) {
-            let (mut reals, mut imags) = $deinterleaving_func(signal);
-            $fft_func(&mut reals, &mut imags, planner, opts);
-            signal.copy_from_slice(&combine_re_im(&reals, &imags))
+            {
+                let (reals, imags) = deinterleave_complex_inplace(signal);
+                $fft_func(reals, imags, planner, opts);
+            }
+            interleave_complex_inplace(signal);
         }
     };
 }
@@ -55,7 +57,6 @@ impl_fft_interleaved_for!(
     fft_32_interleaved_with_planner_and_opts,
     f32,
     fft_32_dit_with_planner_and_opts,
-    deinterleave_complex32,
     PlannerDit32
 );
 #[cfg(feature = "complex-nums")]
@@ -63,7 +64,6 @@ impl_fft_interleaved_for!(
     fft_64_interleaved_with_planner_and_opts,
     f64,
     fft_64_dit_with_planner_and_opts,
-    deinterleave_complex64,
     PlannerDit64
 );
 
@@ -310,7 +310,7 @@ mod tests {
     #[cfg(feature = "complex-nums")]
     #[test]
     fn fft_interleaved_correctness() {
-        let n = 10;
+        let n = 14;
         let big_n = 1 << n; // 2.pow(n)
         let mut actual_signal: Vec<_> = (1..=big_n).map(|i| Complex::new(i as f64, 0.0)).collect();
         let mut expected_reals: Vec<_> = (1..=big_n).map(|i| i as f64).collect();
@@ -328,7 +328,7 @@ mod tests {
                 assert_float_closeness(z.im, z_im, 1e-10);
             });
 
-        let n = 10;
+        let n = 14;
         let big_n = 1 << n; // 2.pow(n)
         let mut actual_signal: Vec<_> = (1..=big_n).map(|i| Complex::new(i as f32, 0.0)).collect();
         let mut expected_reals: Vec<_> = (1..=big_n).map(|i| i as f32).collect();
