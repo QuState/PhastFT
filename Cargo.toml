@@ -78,3 +78,6 @@ debug = true
 all-features = true
 
 [lints.rust]
+
+[patch.crates-io]
+fearless_simd = {git = "https://github.com/linebender/fearless_simd"}

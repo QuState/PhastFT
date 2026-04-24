@@ -7,20 +7,6 @@ use fearless_simd::{
     f32x4, f32x8, f64x4, Simd, SimdBase, SimdCombine, SimdFloat, SimdFrom, SimdSplit,
 };
 
-/// Equivalent to `a.interleave(b)` — returns `(a.zip_low(b), a.zip_high(b))`.
-/// Slow polyfill for <https://github.com/linebender/fearless_simd/pull/206>
-#[inline(always)]
-fn interleave_f64x4<S: Simd>(a: f64x4<S>, b: f64x4<S>) -> (f64x4<S>, f64x4<S>) {
-    (a.zip_low(b), a.zip_high(b))
-}
-
-/// Equivalent to `a.interleave(b)` — returns `(a.zip_low(b), a.zip_high(b))`.
-/// Slow polyfill for <https://github.com/linebender/fearless_simd/pull/206>
-#[inline(always)]
-fn interleave_f32x4<S: Simd>(a: f32x4<S>, b: f32x4<S>) -> (f32x4<S>, f32x4<S>) {
-    (a.zip_low(b), a.zip_high(b))
-}
-
 /// FFT-16 codelet for `f64`: executes stages 0-3 (chunk_size 2 through 16) in a single function.
 ///
 /// Register-resident implementation: all 16 complex values are loaded into f64x4 vectors,
@@ -47,10 +33,10 @@ fn fft_dit_codelet_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
     for (re, im) in reals.chunks_exact_mut(16).zip(imags.chunks_exact_mut(16)) {
         macro_rules! transpose4x4_f64 {
             ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
-                let (t0, t1) = interleave_f64x4($g0, $g2);
-                let (t2, t3) = interleave_f64x4($g1, $g3);
-                let (r0, r1) = interleave_f64x4(t0, t2);
-                let (r2, r3) = interleave_f64x4(t1, t3);
+                let (t0, t1) = $g0.interleave($g2);
+                let (t2, t3) = $g1.interleave($g3);
+                let (r0, r1) = t0.interleave(t2);
+                let (r2, r3) = t1.interleave(t3);
                 (r0, r1, r2, r3)
             }};
         }
@@ -250,10 +236,10 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
         {
             macro_rules! transpose4x4 {
                 ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
-                    let (t0, t1) = interleave_f32x4($g0, $g2);
-                    let (t2, t3) = interleave_f32x4($g1, $g3);
-                    let (r0, r1) = interleave_f32x4(t0, t2);
-                    let (r2, r3) = interleave_f32x4(t1, t3);
+                    let (t0, t1) = $g0.interleave($g2);
+                    let (t2, t3) = $g1.interleave($g3);
+                    let (r0, r1) = t0.interleave(t2);
+                    let (r2, r3) = t1.interleave(t3);
                     (r0, r1, r2, r3)
                 }};
             }
