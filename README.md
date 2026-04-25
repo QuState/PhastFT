@@ -78,7 +78,7 @@ For purely real-valued input signals, the R2C transform is approximately
 2x faster than running a full complex FFT with zeroed imaginary components:
 
 ```rust
-use phastft::{r2c_fft_f64, c2r_ifft_f64};
+use phastft::{r2c_fft_f64, c2r_fft_f64};
 
 let n = 1 << 16;
 let signal: Vec<f64> = (0..n).map(|i| (i as f64).sin()).collect();
@@ -89,7 +89,7 @@ r2c_fft_f64(&signal, &mut spec_re, &mut spec_im);
 
 // Recover original signal
 let mut recovered = vec![0.0; n];
-c2r_ifft_f64(&spec_re, &spec_im, &mut recovered);
+c2r_fft_f64(&spec_re, &spec_im, &mut recovered);
 ```
 
 For repeated FFTs of the same size, use a planner to avoid

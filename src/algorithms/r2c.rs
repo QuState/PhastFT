@@ -202,10 +202,10 @@ pub fn r2c_fft_f32_with_planner(
 /// # Panics
 ///
 /// Panics if lengths don't match or N is not a power of 2 ≥ 4.
-pub fn c2r_ifft_f64(input_re: &[f64], input_im: &[f64], output: &mut [f64]) {
+pub fn c2r_fft_f64(input_re: &[f64], input_im: &[f64], output: &mut [f64]) {
     let n = input_re.len();
     let planner = PlannerR2c64::new(n);
-    c2r_ifft_f64_with_planner(input_re, input_im, output, &planner);
+    c2r_fft_f64_with_planner(input_re, input_im, output, &planner);
 }
 
 /// Performs the inverse real-valued FFT of f64 data using a pre-computed planner.
@@ -213,7 +213,7 @@ pub fn c2r_ifft_f64(input_re: &[f64], input_im: &[f64], output: &mut [f64]) {
 /// # Panics
 ///
 /// Panics if input length doesn't match the planner size.
-pub fn c2r_ifft_f64_with_planner(
+pub fn c2r_fft_f64_with_planner(
     input_re: &[f64],
     input_im: &[f64],
     output: &mut [f64],
@@ -335,7 +335,7 @@ mod tests {
             r2c_fft_f64(&original, &mut spec_re, &mut spec_im);
 
             let mut recovered = vec![0.0; n];
-            c2r_ifft_f64(&spec_re, &spec_im, &mut recovered);
+            c2r_fft_f64(&spec_re, &spec_im, &mut recovered);
 
             for k in 0..n {
                 assert_float_closeness(recovered[k], original[k], 1e-6);
@@ -373,11 +373,11 @@ mod tests {
         r2c_fft_f64(&input, &mut spec_re, &mut spec_im);
 
         let mut recovered_1 = vec![0.0; n];
-        c2r_ifft_f64(&spec_re, &spec_im, &mut recovered_1);
+        c2r_fft_f64(&spec_re, &spec_im, &mut recovered_1);
 
         let planner = PlannerR2c64::new(n);
         let mut recovered_2 = vec![0.0; n];
-        c2r_ifft_f64_with_planner(&spec_re, &spec_im, &mut recovered_2, &planner);
+        c2r_fft_f64_with_planner(&spec_re, &spec_im, &mut recovered_2, &planner);
 
         for k in 0..n {
             assert_float_closeness(recovered_1[k], recovered_2[k], 1e-12);
@@ -398,7 +398,7 @@ mod tests {
             r2c_fft_f64(&original_re, &mut spec_re, &mut spec_im);
 
             let mut recovered = vec![0.0; n];
-            c2r_ifft_f64(&spec_re, &spec_im, &mut recovered);
+            c2r_fft_f64(&spec_re, &spec_im, &mut recovered);
 
             for k in 0..n {
                 assert_float_closeness(recovered[k], original_re[k], 1e-6);
