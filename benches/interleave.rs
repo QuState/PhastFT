@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criteri
 use phastft::complex_nums::{combine_re_im, deinterleave};
 use rand::distr::StandardUniform;
 use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+use rand::RngExt;
 
 // This benchmark requires the bench-internals feature to access private functions.
 // Run it with:
@@ -13,7 +13,7 @@ const LENGTHS: &[usize] = &[
 ];
 
 fn generate_interleaved_f32(n: usize) -> Vec<f32> {
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = rand::make_rng::<SmallRng>();
     (&mut rng)
         .sample_iter(StandardUniform)
         .take(2 * n)
@@ -21,7 +21,7 @@ fn generate_interleaved_f32(n: usize) -> Vec<f32> {
 }
 
 fn generate_interleaved_f64(n: usize) -> Vec<f64> {
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = rand::make_rng::<SmallRng>();
     (&mut rng)
         .sample_iter(StandardUniform)
         .take(2 * n)
@@ -29,14 +29,14 @@ fn generate_interleaved_f64(n: usize) -> Vec<f64> {
 }
 
 fn generate_re_im_f32(n: usize) -> (Vec<f32>, Vec<f32>) {
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = rand::make_rng::<SmallRng>();
     let reals: Vec<f32> = (&mut rng).sample_iter(StandardUniform).take(n).collect();
     let imags: Vec<f32> = (&mut rng).sample_iter(StandardUniform).take(n).collect();
     (reals, imags)
 }
 
 fn generate_re_im_f64(n: usize) -> (Vec<f64>, Vec<f64>) {
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng = rand::make_rng::<SmallRng>();
     let reals: Vec<f64> = (&mut rng).sample_iter(StandardUniform).take(n).collect();
     let imags: Vec<f64> = (&mut rng).sample_iter(StandardUniform).take(n).collect();
     (reals, imags)

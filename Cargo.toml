@@ -15,7 +15,7 @@ exclude = ["assets", "scripts", "benches"]
 [dependencies]
 num-traits = "0.2.19"
 num-complex = { version = "0.4.6", features = ["bytemuck"], optional = true }
-bytemuck = { version = "1.23.2", optional = true }
+bytemuck = { version = "1.25.0", optional = true }
 rayon = { version = "1.11.0", optional = true }
 fearless_simd = "0.4.0"
 
@@ -26,13 +26,18 @@ parallel = ["dep:rayon"]
 bench-internals = ["complex-nums"]
 
 [dev-dependencies]
-criterion = "0.8.0"
+criterion = "0.8.2"
+fearless_simd = "0.4.0"
 fftw = "0.8.0"
-rand = "0.9.2"
+rand = "0.10.1"
 utilities = { path = "utilities" }
 
 [[bench]]
 name = "bench"
+harness = false
+
+[[bench]]
+name = "rustfft"
 harness = false
 
 [[bench]]
@@ -46,6 +51,23 @@ required-features = ["complex-nums"]
 
 [[bench]]
 name = "heuristic_vs_tune"
+harness = false
+
+[[bench]]
+name = "bit_reversal"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "fftw_estimate"
+harness = false
+
+[[bench]]
+name = "fftw_measure"
+harness = false
+
+[[bench]]
+name = "fftw_conserve"
 harness = false
 
 [profile.profiling]

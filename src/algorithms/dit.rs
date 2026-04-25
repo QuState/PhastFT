@@ -17,7 +17,7 @@
 use fearless_simd::{dispatch, Simd};
 
 use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
-use crate::kernels::codelets::{fft_dit_codelet_32_f32, fft_dit_codelet_32_f64};
+use crate::kernels::codelets::{fft_dit_codelet_16_f64, fft_dit_codelet_32_f32};
 use crate::kernels::dit::*;
 use crate::options::Options;
 use crate::parallel::run_maybe_in_parallel;
@@ -42,10 +42,11 @@ fn recursive_dit_fft_f64<S: Simd>(
     let log_size = size.ilog2() as usize;
 
     if size <= L1_BLOCK_SIZE {
-        // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
-        let start_stage = if planner.use_codelet_32 {
-            fft_dit_codelet_32_f64(simd, &mut reals[..size], &mut imags[..size]);
-            5
+        // Use FFT-16 codelet to fuse stages 0-3 into a single pass per 16-element chunk
+        let codelet_stages = 4;
+        let start_stage = if stage_twiddle_idx == 0 && size >= power_of_two(codelet_stages) {
+            fft_dit_codelet_16_f64(simd, &mut reals[..size], &mut imags[..size]);
+            codelet_stages
         } else {
             0
         };
@@ -109,9 +110,10 @@ fn recursive_dit_fft_f32<S: Simd>(
 
     if size <= L1_BLOCK_SIZE {
         // Use FFT-32 codelet to fuse stages 0-4 into a single pass per 32-element chunk
-        let start_stage = if planner.use_codelet_32 {
+        let codelet_stages = 5;
+        let start_stage = if stage_twiddle_idx == 0 && size >= power_of_two(codelet_stages) {
             fft_dit_codelet_32_f32(simd, &mut reals[..size], &mut imags[..size]);
-            5
+            codelet_stages
         } else {
             0
         };
@@ -283,6 +285,17 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
+    // IFFT via swap trick: swap(IDFT(z)) = (1/N) * DFT(swap(z)), where
+    // swap(a + bi) = b + ai. Hand the caller's imag slice to the forward
+    // FFT as its "reals" arg (and vice versa); after the 1/N scale below,
+    // the slices already hold IDFT(z) in the caller's slots — saving a
+    // full conjugation pass over `imags`. After this rebind, `reals` and
+    // `imags` are positional names, not semantic.
+    let (reals, imags) = match planner.direction {
+        Direction::Forward => (reals, imags),
+        Direction::Reverse => (imags, reals),
+    };
+
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
@@ -300,13 +313,6 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
         },
     );
 
-    // Handle inverse FFT
-    if let Direction::Reverse = planner.direction {
-        for z_im in imags.iter_mut() {
-            *z_im = -*z_im;
-        }
-    }
-
     simd.vectorize(
         #[inline(always)]
         || recursive_dit_fft_f64(simd, reals, imags, n, planner, opts, 0),
@@ -317,7 +323,7 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
         let scaling_factor = 1.0 / n as f64;
         for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
             *z_re *= scaling_factor;
-            *z_im *= -scaling_factor;
+            *z_im *= scaling_factor;
         }
     }
 }
@@ -351,6 +357,12 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
     let log_n = n.ilog2() as usize;
     assert_eq!(log_n, planner.log_n);
 
+    // See `fft_64_dit_with_planner_and_opts_impl` for the swap-trick rationale.
+    let (reals, imags) = match planner.direction {
+        Direction::Forward => (reals, imags),
+        Direction::Reverse => (imags, reals),
+    };
+
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
         opts.multithreaded_bit_reversal,
@@ -368,13 +380,6 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
         },
     );
 
-    // Handle inverse FFT
-    if let Direction::Reverse = planner.direction {
-        for z_im in imags.iter_mut() {
-            *z_im = -*z_im;
-        }
-    }
-
     simd.vectorize(
         #[inline(always)]
         || recursive_dit_fft_f32(simd, reals, imags, n, planner, opts, 0),
@@ -385,7 +390,14 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
         let scaling_factor = 1.0 / n as f32;
         for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
             *z_re *= scaling_factor;
-            *z_im *= -scaling_factor;
+            *z_im *= scaling_factor;
         }
     }
+}
+
+#[inline]
+fn power_of_two(power: usize) -> usize {
+    // 2.pow() requires a lot of ugly type annotations so here's a helper function
+    debug_assert!(power < usize::BITS as usize);
+    1 << power
 }
