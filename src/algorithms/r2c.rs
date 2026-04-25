@@ -106,7 +106,7 @@ impl_untangle!(untangle_f32, f32);
 /// ```
 pub fn r2c_fft_f64(input_re: &[f64], output_re: &mut [f64], output_im: &mut [f64]) {
     let n = input_re.len();
-    let planner = PlannerR2c64::new(n, Direction::Forward);
+    let planner = PlannerR2c64::new(n);
     r2c_fft_f64_with_planner(input_re, output_re, output_im, &planner);
 }
 
@@ -155,7 +155,7 @@ pub fn r2c_fft_f64_with_planner(
 /// See [`r2c_fft_f64`] for details. This is the single-precision variant.
 pub fn r2c_fft_f32(input_re: &[f32], output_re: &mut [f32], output_im: &mut [f32]) {
     let n = input_re.len();
-    let planner = PlannerR2c32::new(n, Direction::Forward);
+    let planner = PlannerR2c32::new(n);
     r2c_fft_f32_with_planner(input_re, output_re, output_im, &planner);
 }
 
@@ -204,13 +204,11 @@ pub fn r2c_fft_f32_with_planner(
 /// Panics if lengths don't match or N is not a power of 2 ≥ 4.
 pub fn c2r_ifft_f64(input_re: &[f64], input_im: &[f64], output: &mut [f64]) {
     let n = input_re.len();
-    let planner = PlannerR2c64::new(n, Direction::Reverse);
+    let planner = PlannerR2c64::new(n);
     c2r_ifft_f64_with_planner(input_re, input_im, output, &planner);
 }
 
 /// Performs the inverse real-valued FFT of f64 data using a pre-computed planner.
-///
-/// The planner must have been created with `Direction::Reverse`.
 ///
 /// # Panics
 ///
@@ -240,11 +238,12 @@ pub fn c2r_ifft_f64_with_planner(
         let wzy_re = 0.5 * (re_first[k] - re_second[k]);
         let wzy_im = 0.5 * (im_first[k] - im_second[k]);
 
-        // W^{-k} stored in planner (created with Direction::Reverse)
+        // Planner stores forward W^k; C2R needs W^{-k}, so flip the sign on
+        // every w_im term to consume the conjugate without a separate table.
         let c = planner.w_re[k];
         let s = planner.w_im[k];
-        let zy_re = c * wzy_re - s * wzy_im;
-        let zy_im = c * wzy_im + s * wzy_re;
+        let zy_re = c * wzy_re + s * wzy_im;
+        let zy_im = c * wzy_im - s * wzy_re;
 
         // Z[k] = Zx[k] + j · Zy[k]
         z_re[k] = zx_re - zy_im;
@@ -353,7 +352,7 @@ mod tests {
         let mut out_im_1 = vec![0.0; n];
         r2c_fft_f64(&input, &mut out_re_1, &mut out_im_1);
 
-        let planner = PlannerR2c64::new(n, Direction::Forward);
+        let planner = PlannerR2c64::new(n);
         let mut out_re_2 = vec![0.0; n];
         let mut out_im_2 = vec![0.0; n];
         r2c_fft_f64_with_planner(&input, &mut out_re_2, &mut out_im_2, &planner);
@@ -376,7 +375,7 @@ mod tests {
         let mut recovered_1 = vec![0.0; n];
         c2r_ifft_f64(&spec_re, &spec_im, &mut recovered_1);
 
-        let planner = PlannerR2c64::new(n, Direction::Reverse);
+        let planner = PlannerR2c64::new(n);
         let mut recovered_2 = vec![0.0; n];
         c2r_ifft_f64_with_planner(&spec_re, &spec_im, &mut recovered_2, &planner);
 

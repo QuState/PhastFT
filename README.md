@@ -96,7 +96,7 @@ For repeated FFTs of the same size, use a planner to avoid
 re-computing twiddle factors:
 
 ```rust
-use phastft::planner::{Direction, PlannerR2c64};
+use phastft::planner::PlannerR2c64;
 use phastft::r2c_fft_f64_with_planner;
 
 let n = 1 << 16;
@@ -104,8 +104,8 @@ let signal: Vec<f64> = (0..n).map(|i| (i as f64).sin()).collect();
 let mut spec_re = vec![0.0; n];
 let mut spec_im = vec![0.0; n];
 
-let planner = PlannerR2c64::new(n, Direction::Forward);
-// reuse `planner` across calls
+let planner = PlannerR2c64::new(n);
+// reuse `planner` across R2C and C2R calls
 r2c_fft_f64_with_planner(&signal, &mut spec_re, &mut spec_im, &planner);
 ```
 
