@@ -52,7 +52,7 @@ fn benchmark_heuristic_vs_tune_f64(c: &mut Criterion) {
 
         let options = Options::guess_options(len);
 
-        let planner_heuristic = PlannerDit64::new(len, Direction::Forward);
+        let planner_heuristic = PlannerDit64::new(len);
         group.bench_function(BenchmarkId::new("Heuristic", len), |b| {
             b.iter_batched(
                 || generate_numbers::<f64>(len),
@@ -60,6 +60,7 @@ fn benchmark_heuristic_vs_tune_f64(c: &mut Criterion) {
                     fft_64_dit_with_planner_and_opts(
                         &mut reals,
                         &mut imags,
+                        Direction::Forward,
                         &planner_heuristic,
                         &options,
                     );
@@ -68,7 +69,7 @@ fn benchmark_heuristic_vs_tune_f64(c: &mut Criterion) {
             );
         });
 
-        let planner_tune = PlannerDit64::with_mode(len, Direction::Forward, PlannerMode::Tune);
+        let planner_tune = PlannerDit64::with_mode(len, PlannerMode::Tune);
         group.bench_function(BenchmarkId::new("Tune", len), |b| {
             b.iter_batched(
                 || generate_numbers::<f64>(len),
@@ -76,6 +77,7 @@ fn benchmark_heuristic_vs_tune_f64(c: &mut Criterion) {
                     fft_64_dit_with_planner_and_opts(
                         &mut reals,
                         &mut imags,
+                        Direction::Forward,
                         &planner_tune,
                         &options,
                     );
@@ -103,7 +105,7 @@ fn benchmark_heuristic_vs_tune_f32(c: &mut Criterion) {
 
         let options = Options::guess_options(len);
 
-        let planner_heuristic = PlannerDit32::new(len, Direction::Forward);
+        let planner_heuristic = PlannerDit32::new(len);
         group.bench_function(BenchmarkId::new("Heuristic", len), |b| {
             b.iter_batched(
                 || generate_numbers::<f32>(len),
@@ -111,6 +113,7 @@ fn benchmark_heuristic_vs_tune_f32(c: &mut Criterion) {
                     fft_32_dit_with_planner_and_opts(
                         &mut reals,
                         &mut imags,
+                        Direction::Forward,
                         &planner_heuristic,
                         &options,
                     );
@@ -119,7 +122,7 @@ fn benchmark_heuristic_vs_tune_f32(c: &mut Criterion) {
             );
         });
 
-        let planner_tune = PlannerDit32::with_mode(len, Direction::Forward, PlannerMode::Tune);
+        let planner_tune = PlannerDit32::with_mode(len, PlannerMode::Tune);
         group.bench_function(BenchmarkId::new("Tune", len), |b| {
             b.iter_batched(
                 || generate_numbers::<f32>(len),
@@ -127,6 +130,7 @@ fn benchmark_heuristic_vs_tune_f32(c: &mut Criterion) {
                     fft_32_dit_with_planner_and_opts(
                         &mut reals,
                         &mut imags,
+                        Direction::Forward,
                         &planner_tune,
                         &options,
                     );

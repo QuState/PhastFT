@@ -31,13 +31,15 @@ pub enum PlannerMode {
 
 macro_rules! impl_planner_dit_for {
     ($struct_name:ident, $precision:ident, $fft_func:path) => {
-        /// DIT-specific planner that pre-computes twiddles for all stages
+        /// DIT-specific planner that pre-computes twiddles for all stages.
+        ///
+        /// The planner is direction-agnostic: the same instance can drive both
+        /// forward and inverse transforms. Direction is supplied per-call to
+        /// the `fft_*_dit*` functions.
         pub struct $struct_name {
             /// Twiddles for each stage that needs them (stages with chunk_size > 64)
             /// Each element contains (twiddles_re, twiddles_im) for that stage
             pub(crate) stage_twiddles: Vec<(Vec<$precision>, Vec<$precision>)>,
-            /// The direction of the FFT
-            pub(crate) direction: Direction,
             /// The log2 of the FFT size
             pub(crate) log_n: usize,
             /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
@@ -49,8 +51,8 @@ macro_rules! impl_planner_dit_for {
             ///
             /// Uses [`PlannerMode::Heuristic`] to decide algorithm variants.
             /// For explicit control, use [`Self::with_mode`].
-            pub fn new(num_points: usize, direction: Direction) -> Self {
-                Self::with_mode(num_points, direction, PlannerMode::Heuristic)
+            pub fn new(num_points: usize) -> Self {
+                Self::with_mode(num_points, PlannerMode::Heuristic)
             }
 
             /// Create a DIT planner with explicit control over algorithm selection.
@@ -59,7 +61,7 @@ macro_rules! impl_planner_dit_for {
             ///   leave performance on the table on platforms with large L1i caches.
             /// - [`PlannerMode::Tune`]: Benchmarks both paths at plan time. Use this
             ///   when you can afford extra planning time (e.g., planner is reused).
-            pub fn with_mode(num_points: usize, direction: Direction, _mode: PlannerMode) -> Self {
+            pub fn with_mode(num_points: usize, _mode: PlannerMode) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
 
                 let simd_level = fearless_simd::Level::new();
@@ -89,14 +91,11 @@ macro_rules! impl_planner_dit_for {
                     }
                 }
 
-                let planner = Self {
+                Self {
                     stage_twiddles,
-                    direction,
                     log_n,
                     simd_level,
-                };
-
-                planner
+                }
             }
         }
     };
@@ -196,7 +195,7 @@ macro_rules! impl_planner_r2c_for {
                 let (w_re, w_im) = $twiddle_fn(n, direction);
 
                 Self {
-                    dit_planner: $dit_planner::new(half, direction),
+                    dit_planner: $dit_planner::new(half),
                     w_re,
                     w_im,
                     n,

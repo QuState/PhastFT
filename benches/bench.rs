@@ -60,7 +60,7 @@ fn benchmark_forward_f32(c: &mut Criterion) {
 
         let id = "PhastFT DIT";
         let options = Options::guess_options(len);
-        let planner_dit = PlannerDit32::new(len, Direction::Forward);
+        let planner_dit = PlannerDit32::new(len);
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
@@ -69,6 +69,7 @@ fn benchmark_forward_f32(c: &mut Criterion) {
                     fft_32_dit_with_planner_and_opts(
                         &mut reals,
                         &mut imags,
+                        Direction::Forward,
                         &planner_dit,
                         &options,
                     );
@@ -98,7 +99,7 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
 
         let id = "PhastFT DIT";
         let options = Options::guess_options(len);
-        let planner_dit = PlannerDit32::new(len, Direction::Reverse);
+        let planner_dit = PlannerDit32::new(len);
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
@@ -107,6 +108,7 @@ fn benchmark_inverse_f32(c: &mut Criterion) {
                     fft_32_dit_with_planner_and_opts(
                         &mut reals,
                         &mut imags,
+                        Direction::Reverse,
                         &planner_dit,
                         &options,
                     );
@@ -136,7 +138,7 @@ fn benchmark_forward_f64(c: &mut Criterion) {
 
         let id = "PhastFT DIT";
         let options = Options::guess_options(len);
-        let planner_dit = PlannerDit64::new(len, Direction::Forward);
+        let planner_dit = PlannerDit64::new(len);
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
@@ -145,6 +147,7 @@ fn benchmark_forward_f64(c: &mut Criterion) {
                     fft_64_dit_with_planner_and_opts(
                         &mut reals,
                         &mut imags,
+                        Direction::Forward,
                         &planner_dit,
                         &options,
                     );
@@ -174,7 +177,7 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
 
         let id = "PhastFT DIT";
         let options = Options::guess_options(len);
-        let planner_dit = PlannerDit64::new(len, Direction::Reverse);
+        let planner_dit = PlannerDit64::new(len);
 
         group.bench_function(BenchmarkId::new(id, len), |b| {
             b.iter_batched(
@@ -183,6 +186,7 @@ fn benchmark_inverse_f64(c: &mut Criterion) {
                     fft_64_dit_with_planner_and_opts(
                         &mut reals,
                         &mut imags,
+                        Direction::Reverse,
                         &planner_dit,
                         &options,
                     );

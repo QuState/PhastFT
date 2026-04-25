@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use phastft::planner::{Direction, PlannerDit32, PlannerDit64};
+use phastft::planner::{PlannerDit32, PlannerDit64};
 use utilities::rustfft::FftPlanner;
 
 const LENGTHS: &[usize] = &[
@@ -16,7 +16,7 @@ fn benchmark_planner_f32(c: &mut Criterion) {
         let len = 1 << n;
 
         group.bench_function(BenchmarkId::new("PhastFT DIT", len), |b| {
-            b.iter(|| PlannerDit32::new(len, Direction::Forward));
+            b.iter(|| PlannerDit32::new(len));
         });
 
         group.bench_function(BenchmarkId::new("RustFFT", len), |b| {
@@ -39,7 +39,7 @@ fn benchmark_planner_f64(c: &mut Criterion) {
         let len = 1 << n;
 
         group.bench_function(BenchmarkId::new("PhastFT DIT", len), |b| {
-            b.iter(|| PlannerDit64::new(len, Direction::Forward));
+            b.iter(|| PlannerDit64::new(len));
         });
 
         group.bench_function(BenchmarkId::new("RustFFT", len), |b| {

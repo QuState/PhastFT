@@ -46,8 +46,8 @@ let mut imags: Vec<f64> = (1..=big_n).map(|i| i as f64).collect();
 fft_64_dit(&mut reals, &mut imags, Direction::Forward);
 
 // Or with a reusable planner for better performance with multiple FFTs
-let planner = PlannerDit64::new(big_n, Direction::Forward);
-fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
+let planner = PlannerDit64::new(big_n);
+fft_64_dit_with_planner(&mut reals, &mut imags, Direction::Forward, &planner);
 ```
 
 #### Complex Number Support (Interleaved Format)

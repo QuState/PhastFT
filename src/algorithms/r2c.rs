@@ -132,7 +132,13 @@ pub fn r2c_fft_f64_with_planner(
     let (mut z_re, mut z_im) = deinterleave(input_re);
 
     let opts = Options::guess_options(half);
-    fft_64_dit_with_planner_and_opts(&mut z_re, &mut z_im, &planner.dit_planner, &opts);
+    fft_64_dit_with_planner_and_opts(
+        &mut z_re,
+        &mut z_im,
+        Direction::Forward,
+        &planner.dit_planner,
+        &opts,
+    );
 
     untangle_f64(
         &z_re,
@@ -170,7 +176,13 @@ pub fn r2c_fft_f32_with_planner(
     let (mut z_re, mut z_im) = deinterleave(input_re);
 
     let opts = Options::guess_options(half);
-    fft_32_dit_with_planner_and_opts(&mut z_re, &mut z_im, &planner.dit_planner, &opts);
+    fft_32_dit_with_planner_and_opts(
+        &mut z_re,
+        &mut z_im,
+        Direction::Forward,
+        &planner.dit_planner,
+        &opts,
+    );
 
     untangle_f32(
         &z_re,
@@ -240,7 +252,13 @@ pub fn c2r_ifft_f64_with_planner(
     }
 
     let opts = Options::guess_options(half);
-    fft_64_dit_with_planner_and_opts(&mut z_re, &mut z_im, &planner.dit_planner, &opts);
+    fft_64_dit_with_planner_and_opts(
+        &mut z_re,
+        &mut z_im,
+        Direction::Reverse,
+        &planner.dit_planner,
+        &opts,
+    );
 
     for k in 0..half {
         output[2 * k] = z_re[k];
