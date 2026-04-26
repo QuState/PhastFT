@@ -1,210 +1,74 @@
-use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
-use num_traits::Float;
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use phastft::options::Options;
 use phastft::planner::{Direction, PlannerDit32, PlannerDit64};
 use phastft::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
-use rand::distr::StandardUniform;
-use rand::prelude::Distribution;
-use rand::rngs::SmallRng;
-use rand::RngExt;
+
+mod common;
+use common::{groups, ids, split_complex, sweep_complex, LENGTHS};
 
 // IMPORTANT NOTE:
-// This benchmark only measures small sizes, which are not the focus of PhastFT.
+// This benchmark only measures small-to-mid sizes, which are not the focus of
+// PhastFT. Criterion is not a good fit for measuring long-running tasks — see
+// examples/benchmark.rs for the harness for large sizes.
 //
-// Criterion is not a good fit for measuring long-running tasks.
-// See examples/benchmark.rs for the benchmarking harness for large sizes.
+// The PhastFT, RustFFT, and FFTW bench binaries all write into the same
+// `target/criterion/<group>/<id>/<size>/` tree; criterion does NOT auto-
+// aggregate across binaries, so use `benches/plot_criterion_overlay.py` to
+// produce a single overlay plot per group after running them all.
 
-const LENGTHS: &[usize] = &[
-    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-];
-
-fn generate_numbers<T: Float>(n: usize) -> (Vec<T>, Vec<T>)
-where
-    StandardUniform: Distribution<T>,
-{
-    let mut rng = rand::make_rng::<SmallRng>();
-
-    let samples: Vec<T> = (&mut rng)
-        .sample_iter(StandardUniform)
-        .take(2 * n)
-        .collect();
-
-    let mut reals = vec![T::zero(); n];
-    let mut imags = vec![T::zero(); n];
-
-    for ((z_re, z_im), rand_chunk) in reals
-        .iter_mut()
-        .zip(imags.iter_mut())
-        .zip(samples.chunks_exact(2))
-    {
-        *z_re = rand_chunk[0];
-        *z_im = rand_chunk[1];
-    }
-
-    (reals, imags)
-}
-
-fn benchmark_forward_f32(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Forward f32");
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
-    group.sample_size(20);
-
-    for n in LENGTHS.iter() {
-        let len = 1 << n; // 2.pow(n)
-        group.throughput(Throughput::ElementsAndBytes {
-            elements: len as u64,
-            bytes: (2 * len * size_of::<f32>()) as u64,
-        });
-
-        let id = "PhastFT DIT";
-        let options = Options::guess_options(len);
-        let planner_dit = PlannerDit32::new(len);
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || generate_numbers::<f32>(len),
-                |(mut reals, mut imags)| {
-                    fft_32_dit_with_planner_and_opts(
-                        &mut reals,
-                        &mut imags,
-                        Direction::Forward,
-                        &planner_dit,
-                        &options,
+macro_rules! phastft_c2c {
+    ($name:ident, $float:ty, $planner:ty, $fft:ident, $dir:expr, $group:expr) => {
+        fn $name(c: &mut Criterion) {
+            sweep_complex::<$float, _>(c, $group, LENGTHS, |g, len| {
+                let opts = Options::guess_options(len);
+                let planner = <$planner>::new(len);
+                g.bench_function(BenchmarkId::new(ids::PHASTFT_DIT, len), |b| {
+                    b.iter_batched(
+                        || split_complex::<$float>(len),
+                        |(mut reals, mut imags)| {
+                            $fft(&mut reals, &mut imags, $dir, &planner, &opts);
+                            std::hint::black_box((&mut reals, &mut imags));
+                        },
+                        BatchSize::SmallInput,
                     );
-                    std::hint::black_box(&mut reals);
-                    std::hint::black_box(&mut imags);
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-    group.finish();
+                });
+            });
+        }
+    };
 }
 
-fn benchmark_inverse_f32(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Inverse f32");
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
-    group.sample_size(20);
-
-    for n in LENGTHS.iter() {
-        let len = 1 << n; // 2.pow(n)
-        group.throughput(Throughput::ElementsAndBytes {
-            elements: len as u64,
-            bytes: (2 * len * size_of::<f32>()) as u64,
-        });
-
-        let id = "PhastFT DIT";
-        let options = Options::guess_options(len);
-        let planner_dit = PlannerDit32::new(len);
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || generate_numbers::<f32>(len),
-                |(mut reals, mut imags)| {
-                    fft_32_dit_with_planner_and_opts(
-                        &mut reals,
-                        &mut imags,
-                        Direction::Reverse,
-                        &planner_dit,
-                        &options,
-                    );
-                    std::hint::black_box(&mut reals);
-                    std::hint::black_box(&mut imags);
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-    group.finish();
-}
-
-fn benchmark_forward_f64(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Forward f64");
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
-    group.sample_size(20);
-
-    for n in LENGTHS.iter() {
-        let len = 1 << n; // 2.pow(n)
-        group.throughput(Throughput::ElementsAndBytes {
-            elements: len as u64,
-            bytes: (2 * len * size_of::<f64>()) as u64,
-        });
-
-        let id = "PhastFT DIT";
-        let options = Options::guess_options(len);
-        let planner_dit = PlannerDit64::new(len);
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || generate_numbers::<f64>(len),
-                |(mut reals, mut imags)| {
-                    fft_64_dit_with_planner_and_opts(
-                        &mut reals,
-                        &mut imags,
-                        Direction::Forward,
-                        &planner_dit,
-                        &options,
-                    );
-                    std::hint::black_box(&mut reals);
-                    std::hint::black_box(&mut imags);
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-    group.finish();
-}
-
-fn benchmark_inverse_f64(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Inverse f64");
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
-    group.sample_size(20);
-
-    for n in LENGTHS.iter() {
-        let len = 1 << n; // 2.pow(n)
-        group.throughput(Throughput::ElementsAndBytes {
-            elements: len as u64,
-            bytes: (2 * len * size_of::<f64>()) as u64,
-        });
-
-        let id = "PhastFT DIT";
-        let options = Options::guess_options(len);
-        let planner_dit = PlannerDit64::new(len);
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || generate_numbers::<f64>(len),
-                |(mut reals, mut imags)| {
-                    fft_64_dit_with_planner_and_opts(
-                        &mut reals,
-                        &mut imags,
-                        Direction::Reverse,
-                        &planner_dit,
-                        &options,
-                    );
-                    std::hint::black_box(&mut reals);
-                    std::hint::black_box(&mut imags);
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-    group.finish();
-}
-
-criterion_group!(
-    benches,
-    benchmark_forward_f32,
-    benchmark_inverse_f32,
-    benchmark_forward_f64,
-    benchmark_inverse_f64,
+phastft_c2c!(
+    fwd_f32,
+    f32,
+    PlannerDit32,
+    fft_32_dit_with_planner_and_opts,
+    Direction::Forward,
+    groups::C2C_FORWARD_F32
 );
+phastft_c2c!(
+    inv_f32,
+    f32,
+    PlannerDit32,
+    fft_32_dit_with_planner_and_opts,
+    Direction::Reverse,
+    groups::C2C_INVERSE_F32
+);
+phastft_c2c!(
+    fwd_f64,
+    f64,
+    PlannerDit64,
+    fft_64_dit_with_planner_and_opts,
+    Direction::Forward,
+    groups::C2C_FORWARD_F64
+);
+phastft_c2c!(
+    inv_f64,
+    f64,
+    PlannerDit64,
+    fft_64_dit_with_planner_and_opts,
+    Direction::Reverse,
+    groups::C2C_INVERSE_F64
+);
+
+criterion_group!(benches, fwd_f32, inv_f32, fwd_f64, inv_f64);
 criterion_main!(benches);

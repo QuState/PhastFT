@@ -1,162 +1,32 @@
-use std::ptr::slice_from_raw_parts_mut;
+use criterion::{criterion_group, criterion_main, Criterion};
+use fftw::types::Flag;
 
-use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
-use fftw::array::AlignedVec;
-use fftw::plan::{C2CPlan, C2CPlan32, C2CPlan64};
-use fftw::types::{Flag, Sign};
-use num_traits::Float;
-use rand::distr::StandardUniform;
-use rand::prelude::Distribution;
-use rand::rngs::SmallRng;
-use rand::RngExt;
-use utilities::rustfft::num_complex::Complex;
+mod common;
+mod fftw_lib;
 
 // IMPORTANT NOTE:
-// This benchmark only measures small-to-mid sizes, which are not the focus of
-// PhastFT. Criterion is not a good fit for measuring long-running tasks — see
-// examples/benchmark.rs for the benchmarking harness for large sizes.
+// This benchmark only measures small-to-mid sizes; criterion is not a good
+// fit for measuring long-running tasks — see examples/benchmark.rs for the
+// harness for large sizes.
 //
 // Each FFTW planning mode (Estimate / Measure / Conserve) lives in its own
 // `[[bench]]` binary so FFTW's global per-process wisdom cache cannot leak
-// between modes; each run starts with a fresh process and empty wisdom. The
-// benchmark group names are shared with benches/bench.rs ("Forward f32",
-// "Forward f64") so every bench binary writes into the same
-// `target/criterion/<group>/<id>/<size>/` tree. Criterion itself does NOT
-// auto-aggregate across bench binaries — use `benches/plot_criterion_overlay.py`
-// to produce a single overlay plot per group after all five benches have run.
+// between modes; each run starts with a fresh process and empty wisdom.
+// Group names are shared with bench.rs / rustfft.rs / the other fftw_*.rs
+// binaries; criterion does NOT auto-aggregate across binaries — use
+// `benches/plot_criterion_overlay.py` for the cross-binary overlay.
 //
-// FFTW's MEASURE is the default rigor level and is encoded as bit value 0
-// in the fftw crate's Flag bitflags (types.rs in fftw-0.8.0). Bitwise-OR'ing
-// it is effectively a no-op at runtime, but the explicit `| Flag::MEASURE`
-// documents the selected mode for readers.
+// FFTW's MEASURE is the default rigor level (bit value 0 in the fftw crate's
+// Flag bitflags), so `| Flag::MEASURE` is a no-op at runtime; it is kept here
+// so the selected rigor level is visible alongside the other flags.
 
-const LENGTHS: &[usize] = &[
-    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-];
-
-// Distribution parity with benches/bench.rs::generate_numbers (bench.rs:23-47).
-// Do NOT substitute utilities::gen_random_signal_f* — those use Uniform(-1, 1)
-// followed by L2 normalization, which would bias the FFTW series relative to
-// the PhastFT/RustFFT series that share the same criterion group.
-fn generate_numbers<T: Float>(n: usize) -> (Vec<T>, Vec<T>)
-where
-    StandardUniform: Distribution<T>,
-{
-    let mut rng = rand::make_rng::<SmallRng>();
-
-    let samples: Vec<T> = (&mut rng)
-        .sample_iter(StandardUniform)
-        .take(2 * n)
-        .collect();
-
-    let mut reals = vec![T::zero(); n];
-    let mut imags = vec![T::zero(); n];
-
-    for ((z_re, z_im), rand_chunk) in reals
-        .iter_mut()
-        .zip(imags.iter_mut())
-        .zip(samples.chunks_exact(2))
-    {
-        *z_re = rand_chunk[0];
-        *z_im = rand_chunk[1];
-    }
-
-    (reals, imags)
-}
-
-fn benchmark_forward_f32(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Forward f32");
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
+fn run(c: &mut Criterion) {
+    fftw_lib::run_all(
+        c,
+        common::ids::FFTW_MEASURE,
+        Flag::DESTROYINPUT | Flag::MEASURE,
     );
-    group.sample_size(20);
-
-    for n in LENGTHS.iter() {
-        let len = 1 << n; // 2.pow(n)
-        group.throughput(Throughput::ElementsAndBytes {
-            elements: len as u64,
-            bytes: (2 * len * size_of::<f32>()) as u64,
-        });
-
-        let id = "FFTW Measure";
-        // Plan construction is outside iter_batched so planning cost is
-        // excluded from per-sample timings — matches how bench.rs excludes
-        // RustFFT's FftPlanner construction.
-        let mut plan =
-            C2CPlan32::aligned(&[len], Sign::Forward, Flag::DESTROYINPUT | Flag::MEASURE).unwrap();
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || {
-                    let (reals, imags) = generate_numbers::<f32>(len);
-                    let mut nums: AlignedVec<Complex<f32>> = AlignedVec::new(len);
-                    for (z, (&re, &im)) in nums.iter_mut().zip(reals.iter().zip(imags.iter())) {
-                        *z = Complex::new(re, im);
-                    }
-                    nums
-                },
-                |mut nums| {
-                    plan.c2c(
-                        // SAFETY: identical shape to examples/fftwrb.rs:42-48.
-                        // DESTROYINPUT permits in-place c2c; the raw slice aliases
-                        // `nums` for the duration of the call and `len` matches
-                        // the AlignedVec allocation.
-                        unsafe { &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), len) },
-                        &mut nums,
-                    )
-                    .unwrap();
-                    std::hint::black_box(&mut nums);
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-    group.finish();
 }
 
-fn benchmark_forward_f64(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Forward f64");
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
-    group.sample_size(20);
-
-    for n in LENGTHS.iter() {
-        let len = 1 << n; // 2.pow(n)
-        group.throughput(Throughput::ElementsAndBytes {
-            elements: len as u64,
-            bytes: (2 * len * size_of::<f64>()) as u64,
-        });
-
-        let id = "FFTW Measure";
-        let mut plan =
-            C2CPlan64::aligned(&[len], Sign::Forward, Flag::DESTROYINPUT | Flag::MEASURE).unwrap();
-
-        group.bench_function(BenchmarkId::new(id, len), |b| {
-            b.iter_batched(
-                || {
-                    let (reals, imags) = generate_numbers::<f64>(len);
-                    let mut nums: AlignedVec<Complex<f64>> = AlignedVec::new(len);
-                    for (z, (&re, &im)) in nums.iter_mut().zip(reals.iter().zip(imags.iter())) {
-                        *z = Complex::new(re, im);
-                    }
-                    nums
-                },
-                |mut nums| {
-                    plan.c2c(
-                        // SAFETY: see benchmark_forward_f32 above.
-                        unsafe { &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), len) },
-                        &mut nums,
-                    )
-                    .unwrap();
-                    std::hint::black_box(&mut nums);
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-    group.finish();
-}
-
-criterion_group!(benches, benchmark_forward_f32, benchmark_forward_f64);
+criterion_group!(benches, run);
 criterion_main!(benches);

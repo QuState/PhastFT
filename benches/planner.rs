@@ -2,55 +2,29 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use phastft::planner::{PlannerDit32, PlannerDit64};
 use utilities::rustfft::FftPlanner;
 
-const LENGTHS: &[usize] = &[
-    6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-];
+mod common;
+use common::{groups, ids, sweep_complex, LENGTHS};
 
-fn benchmark_planner_f32(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Planner f32");
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
-
-    for n in LENGTHS.iter() {
-        let len = 1 << n;
-
-        group.bench_function(BenchmarkId::new("PhastFT DIT", len), |b| {
-            b.iter(|| PlannerDit32::new(len));
-        });
-
-        group.bench_function(BenchmarkId::new("RustFFT", len), |b| {
-            b.iter(|| {
-                let mut planner = FftPlanner::<f32>::new();
-                planner.plan_fft_forward(len)
+macro_rules! planner_bench {
+    ($name:ident, $float:ty, $planner:ty, $group:expr) => {
+        fn $name(c: &mut Criterion) {
+            sweep_complex::<$float, _>(c, $group, LENGTHS, |g, len| {
+                g.bench_function(BenchmarkId::new(ids::PHASTFT_DIT, len), |b| {
+                    b.iter(|| <$planner>::new(len));
+                });
+                g.bench_function(BenchmarkId::new(ids::RUSTFFT, len), |b| {
+                    b.iter(|| {
+                        let mut planner = FftPlanner::<$float>::new();
+                        planner.plan_fft_forward(len)
+                    });
+                });
             });
-        });
-    }
-    group.finish();
+        }
+    };
 }
 
-fn benchmark_planner_f64(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Planner f64");
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
+planner_bench!(planner_f32, f32, PlannerDit32, groups::PLANNER_F32);
+planner_bench!(planner_f64, f64, PlannerDit64, groups::PLANNER_F64);
 
-    for n in LENGTHS.iter() {
-        let len = 1 << n;
-
-        group.bench_function(BenchmarkId::new("PhastFT DIT", len), |b| {
-            b.iter(|| PlannerDit64::new(len));
-        });
-
-        group.bench_function(BenchmarkId::new("RustFFT", len), |b| {
-            b.iter(|| {
-                let mut planner = FftPlanner::<f64>::new();
-                planner.plan_fft_forward(len)
-            });
-        });
-    }
-    group.finish();
-}
-
-criterion_group!(benches, benchmark_planner_f32, benchmark_planner_f64);
+criterion_group!(benches, planner_f32, planner_f64);
 criterion_main!(benches);

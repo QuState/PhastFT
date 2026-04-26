@@ -3,6 +3,8 @@
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
 
+use crate::options::Options;
+
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
 /// Forward is for running the regular FFT
 #[derive(Copy, Clone)]
@@ -120,14 +122,16 @@ fn compute_r2c_twiddles_f64(n: usize) -> (Vec<f64>, Vec<f64>) {
     let mut w_re = vec![0.0f64; half];
     let mut w_im = vec![0.0f64; half];
 
-    // Forward R2C twiddles W_N^k = exp(-2 * pi * i * k / N); C2R conjugates at use time.
+    // Forward R2C twiddles 0.5 * W_N^k = 0.5 * exp(-2 * pi * i * k / N).
+    // The 0.5 factor is folded in here so the untangle / c2r-preprocess hot
+    // loops avoid one multiply per bin. C2R conjugates at use time.
     let angle_step = -std::f64::consts::PI / half as f64;
     let (st, ct) = angle_step.sin_cos();
     let (mut wr, mut wi) = (1.0f64, 0.0f64);
 
     for k in 0..half {
-        w_re[k] = wr;
-        w_im[k] = wi;
+        w_re[k] = 0.5 * wr;
+        w_im[k] = 0.5 * wi;
         let tmp = wr;
         wr = tmp * ct - wi * st;
         wi = tmp * st + wi * ct;
@@ -141,15 +145,14 @@ fn compute_r2c_twiddles_f32(n: usize) -> (Vec<f32>, Vec<f32>) {
     let mut w_re = vec![0.0f32; half];
     let mut w_im = vec![0.0f32; half];
 
-    // Forward R2C twiddles W_N^k = exp(-2 * pi * i * k / N); C2R conjugates at use time.
-    // Compute in f64 to avoid recurrence drift, then cast to f32.
+    // 0.5 folded in (see f64 variant). Compute in f64 to avoid recurrence drift, then cast.
     let angle_step = -std::f64::consts::PI / half as f64;
     let (st, ct) = angle_step.sin_cos();
     let (mut wr, mut wi) = (1.0f64, 0.0f64);
 
     for k in 0..half {
-        w_re[k] = wr as f32;
-        w_im[k] = wi as f32;
+        w_re[k] = (0.5 * wr) as f32;
+        w_im[k] = (0.5 * wi) as f32;
         let tmp = wr;
         wr = tmp * ct - wi * st;
         wi = tmp * st + wi * ct;
@@ -170,10 +173,14 @@ macro_rules! impl_planner_r2c_for {
         pub struct $struct_name {
             /// Inner DIT planner for the N/2 complex FFT
             pub(crate) dit_planner: $dit_planner,
-            /// Pre-computed untangle twiddle factors (real parts)
+            /// Pre-computed untangle twiddle factors (real parts).
+            /// 0.5 is pre-folded in so the hot loops avoid a per-bin multiply.
             pub(crate) w_re: Vec<$precision>,
-            /// Pre-computed untangle twiddle factors (imaginary parts)
+            /// Pre-computed untangle twiddle factors (imaginary parts), 0.5 folded in.
             pub(crate) w_im: Vec<$precision>,
+            /// Inner-FFT options. Cached at plan time so r2c/c2r entry points
+            /// don't recompute `Options::guess_options(half)` per call.
+            pub(crate) inner_opts: Options,
             /// Full real signal length N
             pub(crate) n: usize,
         }
@@ -193,6 +200,7 @@ macro_rules! impl_planner_r2c_for {
                     dit_planner: $dit_planner::new(half),
                     w_re,
                     w_im,
+                    inner_opts: Options::guess_options(half),
                     n,
                 }
             }
