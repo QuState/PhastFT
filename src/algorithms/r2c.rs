@@ -147,176 +147,99 @@ fn simd_deinterleave_f32<S: Simd>(
 // — the reverse of the front lanes. We reverse once on load, do all math in
 // the front-lane convention, then reverse-store the mirror writes.
 
-#[inline(always)] // required by fearless_simd
-fn simd_untangle_inplace_f64<S: Simd>(
-    simd: S,
-    output_re: &mut [f64],
-    output_im: &mut [f64],
-    w_re: &[f64],
-    w_im: &[f64],
-    half: usize,
-) {
-    let a0 = output_re[0];
-    let b0 = output_im[0];
-    output_re[0] = a0 + b0;
-    output_im[0] = 0.0;
-    output_re[half] = a0 - b0;
-    output_im[half] = 0.0;
+macro_rules! impl_simd_untangle_inplace {
+    ($name:ident, $T:ty, $V:ident, $rev:ident, $lanes:expr) => {
+        #[inline(always)] // required by fearless_simd
+        fn $name<S: Simd>(
+            simd: S,
+            output_re: &mut [$T],
+            output_im: &mut [$T],
+            w_re: &[$T],
+            w_im: &[$T],
+            half: usize,
+        ) {
+            let a0 = output_re[0];
+            let b0 = output_im[0];
+            output_re[0] = a0 + b0;
+            output_im[0] = 0.0;
+            output_re[half] = a0 - b0;
+            output_im[half] = 0.0;
 
-    let q = half / 2;
-    const LANES: usize = 4;
-    let half_v = f64x4::splat(simd, 0.5);
+            let q = half / 2;
+            const LANES: usize = $lanes;
+            let half_v = $V::splat(simd, 0.5);
 
-    let mut k = 1;
-    // Process while a full LANES-block stays strictly below the self-pair at q.
-    while k + LANES <= q {
-        let mirror_low = half - k - (LANES - 1);
+            let mut k = 1;
+            // Process while a full LANES-block stays strictly below the self-pair at q.
+            while k + LANES <= q {
+                let mirror_low = half - k - (LANES - 1);
 
-        let a = f64x4::from_slice(simd, &output_re[k..k + LANES]);
-        let b = f64x4::from_slice(simd, &output_im[k..k + LANES]);
-        let c_loaded = f64x4::from_slice(simd, &output_re[mirror_low..mirror_low + LANES]);
-        let d_loaded = f64x4::from_slice(simd, &output_im[mirror_low..mirror_low + LANES]);
-        let c = rev_f64x4(simd, c_loaded);
-        let d = rev_f64x4(simd, d_loaded);
+                let a = $V::from_slice(simd, &output_re[k..k + LANES]);
+                let b = $V::from_slice(simd, &output_im[k..k + LANES]);
+                let c_loaded = $V::from_slice(simd, &output_re[mirror_low..mirror_low + LANES]);
+                let d_loaded = $V::from_slice(simd, &output_im[mirror_low..mirror_low + LANES]);
+                let c = $rev(simd, c_loaded);
+                let d = $rev(simd, d_loaded);
 
-        let s_re = half_v * (a + c);
-        let s_im = half_v * (b - d);
-        let t_re = b + d;
-        let t_im = c - a;
+                let s_re = half_v * (a + c);
+                let s_im = half_v * (b - d);
+                let t_re = b + d;
+                let t_im = c - a;
 
-        let wkr_h = f64x4::from_slice(simd, &w_re[k..k + LANES]);
-        let wki_h = f64x4::from_slice(simd, &w_im[k..k + LANES]);
-        let wzr = wkr_h * t_re - wki_h * t_im;
-        let wzi = wkr_h * t_im + wki_h * t_re;
+                let wkr_h = $V::from_slice(simd, &w_re[k..k + LANES]);
+                let wki_h = $V::from_slice(simd, &w_im[k..k + LANES]);
+                let wzr = wkr_h * t_re - wki_h * t_im;
+                let wzi = wkr_h * t_im + wki_h * t_re;
 
-        let out_re_k = s_re + wzr;
-        let out_im_k = s_im + wzi;
-        let out_re_m = s_re - wzr;
-        let out_im_m = wzi - s_im;
+                let out_re_k = s_re + wzr;
+                let out_im_k = s_im + wzi;
+                let out_re_m = s_re - wzr;
+                let out_im_m = wzi - s_im;
 
-        out_re_k.store_slice(&mut output_re[k..k + LANES]);
-        out_im_k.store_slice(&mut output_im[k..k + LANES]);
-        rev_f64x4(simd, out_re_m).store_slice(&mut output_re[mirror_low..mirror_low + LANES]);
-        rev_f64x4(simd, out_im_m).store_slice(&mut output_im[mirror_low..mirror_low + LANES]);
+                out_re_k.store_slice(&mut output_re[k..k + LANES]);
+                out_im_k.store_slice(&mut output_im[k..k + LANES]);
+                $rev(simd, out_re_m).store_slice(&mut output_re[mirror_low..mirror_low + LANES]);
+                $rev(simd, out_im_m).store_slice(&mut output_im[mirror_low..mirror_low + LANES]);
 
-        k += LANES;
-    }
+                k += LANES;
+            }
 
-    // Scalar tail (k in [k, q)) — typically <LANES iterations.
-    while k < q {
-        let mirror = half - k;
-        let a = output_re[k];
-        let b = output_im[k];
-        let c = output_re[mirror];
-        let d = output_im[mirror];
+            // Scalar tail (k in [k, q)) — typically <LANES iterations.
+            while k < q {
+                let mirror = half - k;
+                let a = output_re[k];
+                let b = output_im[k];
+                let c = output_re[mirror];
+                let d = output_im[mirror];
 
-        let s_re = 0.5 * (a + c);
-        let s_im = 0.5 * (b - d);
-        let t_re = b + d;
-        let t_im = c - a;
+                let s_re = 0.5 * (a + c);
+                let s_im = 0.5 * (b - d);
+                let t_re = b + d;
+                let t_im = c - a;
 
-        let wkr_h = w_re[k];
-        let wki_h = w_im[k];
-        let wzr = wkr_h * t_re - wki_h * t_im;
-        let wzi = wkr_h * t_im + wki_h * t_re;
+                let wkr_h = w_re[k];
+                let wki_h = w_im[k];
+                let wzr = wkr_h * t_re - wki_h * t_im;
+                let wzi = wkr_h * t_im + wki_h * t_re;
 
-        output_re[k] = s_re + wzr;
-        output_im[k] = s_im + wzi;
-        output_re[mirror] = s_re - wzr;
-        output_im[mirror] = wzi - s_im;
-        k += 1;
-    }
+                output_re[k] = s_re + wzr;
+                output_im[k] = s_im + wzi;
+                output_re[mirror] = s_re - wzr;
+                output_im[mirror] = wzi - s_im;
+                k += 1;
+            }
 
-    // Self-pair at k = q (always exists since N >= 4 ⇒ q >= 1).
-    let a = output_re[q];
-    let b = output_im[q];
-    output_re[q] = a + 2.0 * w_re[q] * b;
-    output_im[q] = 2.0 * w_im[q] * b;
+            // Self-pair at k = q (always exists since N >= 4 ⇒ q >= 1).
+            let a = output_re[q];
+            let b = output_im[q];
+            output_re[q] = a + 2.0 * w_re[q] * b;
+            output_im[q] = 2.0 * w_im[q] * b;
+        }
+    };
 }
 
-#[inline(always)] // required by fearless_simd
-fn simd_untangle_inplace_f32<S: Simd>(
-    simd: S,
-    output_re: &mut [f32],
-    output_im: &mut [f32],
-    w_re: &[f32],
-    w_im: &[f32],
-    half: usize,
-) {
-    let a0 = output_re[0];
-    let b0 = output_im[0];
-    output_re[0] = a0 + b0;
-    output_im[0] = 0.0;
-    output_re[half] = a0 - b0;
-    output_im[half] = 0.0;
-
-    let q = half / 2;
-    const LANES: usize = 8;
-    let half_v = f32x8::splat(simd, 0.5);
-
-    let mut k = 1;
-    while k + LANES <= q {
-        let mirror_low = half - k - (LANES - 1);
-
-        let a = f32x8::from_slice(simd, &output_re[k..k + LANES]);
-        let b = f32x8::from_slice(simd, &output_im[k..k + LANES]);
-        let c_loaded = f32x8::from_slice(simd, &output_re[mirror_low..mirror_low + LANES]);
-        let d_loaded = f32x8::from_slice(simd, &output_im[mirror_low..mirror_low + LANES]);
-        let c = rev_f32x8(simd, c_loaded);
-        let d = rev_f32x8(simd, d_loaded);
-
-        let s_re = half_v * (a + c);
-        let s_im = half_v * (b - d);
-        let t_re = b + d;
-        let t_im = c - a;
-
-        let wkr_h = f32x8::from_slice(simd, &w_re[k..k + LANES]);
-        let wki_h = f32x8::from_slice(simd, &w_im[k..k + LANES]);
-        let wzr = wkr_h * t_re - wki_h * t_im;
-        let wzi = wkr_h * t_im + wki_h * t_re;
-
-        let out_re_k = s_re + wzr;
-        let out_im_k = s_im + wzi;
-        let out_re_m = s_re - wzr;
-        let out_im_m = wzi - s_im;
-
-        out_re_k.store_slice(&mut output_re[k..k + LANES]);
-        out_im_k.store_slice(&mut output_im[k..k + LANES]);
-        rev_f32x8(simd, out_re_m).store_slice(&mut output_re[mirror_low..mirror_low + LANES]);
-        rev_f32x8(simd, out_im_m).store_slice(&mut output_im[mirror_low..mirror_low + LANES]);
-
-        k += LANES;
-    }
-
-    while k < q {
-        let mirror = half - k;
-        let a = output_re[k];
-        let b = output_im[k];
-        let c = output_re[mirror];
-        let d = output_im[mirror];
-
-        let s_re = 0.5 * (a + c);
-        let s_im = 0.5 * (b - d);
-        let t_re = b + d;
-        let t_im = c - a;
-
-        let wkr_h = w_re[k];
-        let wki_h = w_im[k];
-        let wzr = wkr_h * t_re - wki_h * t_im;
-        let wzi = wkr_h * t_im + wki_h * t_re;
-
-        output_re[k] = s_re + wzr;
-        output_im[k] = s_im + wzi;
-        output_re[mirror] = s_re - wzr;
-        output_im[mirror] = wzi - s_im;
-        k += 1;
-    }
-
-    let a = output_re[q];
-    let b = output_im[q];
-    output_re[q] = a + 2.0 * w_re[q] * b;
-    output_im[q] = 2.0 * w_im[q] * b;
-}
+impl_simd_untangle_inplace!(simd_untangle_inplace_f64, f64, f64x4, rev_f64x4, 4);
+impl_simd_untangle_inplace!(simd_untangle_inplace_f32, f32, f32x8, rev_f32x8, 8);
 
 // ---------------------------------------------------------------------------
 // SIMD c2r preprocess
