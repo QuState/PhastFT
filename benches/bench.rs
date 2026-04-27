@@ -1,3 +1,14 @@
+//! Important: this benchmark only measures small-to-mid sizes, which are
+//! not the focus of PhastFT. Criterion is not a good fit for measuring
+//! long-running tasks — see `examples/benchmark.rs` for the harness for
+//! large sizes.
+//!
+//! The PhastFT, RustFFT, and FFTW bench binaries all write into the same
+//! `target/criterion/<group>/<id>/<size>/` tree; criterion does NOT
+//! auto-aggregate across binaries, so use
+//! `benches/plot_criterion_overlay.py` to produce a single overlay plot per
+//! group after running them all.
+
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use phastft::options::Options;
 use phastft::planner::{Direction, PlannerDit32, PlannerDit64};
@@ -5,16 +16,6 @@ use phastft::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts
 
 mod common;
 use common::{groups, ids, split_complex, sweep_complex, LENGTHS};
-
-// IMPORTANT NOTE:
-// This benchmark only measures small-to-mid sizes, which are not the focus of
-// PhastFT. Criterion is not a good fit for measuring long-running tasks — see
-// examples/benchmark.rs for the harness for large sizes.
-//
-// The PhastFT, RustFFT, and FFTW bench binaries all write into the same
-// `target/criterion/<group>/<id>/<size>/` tree; criterion does NOT auto-
-// aggregate across binaries, so use `benches/plot_criterion_overlay.py` to
-// produce a single overlay plot per group after running them all.
 
 macro_rules! phastft_c2c {
     ($name:ident, $float:ty, $planner:ty, $fft:ident, $dir:expr, $group:expr) => {

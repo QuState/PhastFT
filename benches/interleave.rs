@@ -1,3 +1,10 @@
+//! Requires the `bench-internals` feature to access private functions in the
+//! crate root. Run with:
+//!
+//! ```sh
+//! cargo bench --bench interleave --features bench-internals
+//! ```
+
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use phastft::complex_nums::{combine_re_im, deinterleave};
 use rand::distr::StandardUniform;
@@ -6,10 +13,6 @@ use rand::RngExt;
 
 mod common;
 use common::{groups, ids, sweep_complex, LENGTHS};
-
-// Requires the bench-internals feature to access private functions in the
-// crate root. Run with:
-//   cargo bench --bench interleave --features bench-internals
 
 fn interleaved<T>(n: usize) -> Vec<T>
 where

@@ -1,3 +1,12 @@
+//! Important: this benchmark only measures small-to-mid sizes; criterion is
+//! not a good fit for measuring long-running tasks — see
+//! `examples/benchmark.rs` for the harness for large sizes.
+//!
+//! The RustFFT series lives in its own `[[bench]]` binary so it can be
+//! re-run independently. Group names are shared with `bench.rs` /
+//! `fftw_*.rs`; criterion does NOT auto-aggregate across binaries — use
+//! `benches/plot_criterion_overlay.py` for the cross-binary overlay.
+
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use num_traits::Zero;
 use utilities::rustfft::num_complex::Complex;
@@ -5,16 +14,6 @@ use utilities::rustfft::FftPlanner;
 
 mod common;
 use common::{groups, ids, interleaved_complex, sweep_complex, LENGTHS};
-
-// IMPORTANT NOTE:
-// This benchmark only measures small-to-mid sizes; criterion is not a good
-// fit for measuring long-running tasks — see examples/benchmark.rs for the
-// harness for large sizes.
-//
-// The RustFFT series lives in its own `[[bench]]` binary so it can be re-run
-// independently. Group names are shared with bench.rs / fftw_*.rs; criterion
-// does NOT auto-aggregate across binaries — use
-// `benches/plot_criterion_overlay.py` for the cross-binary overlay.
 
 macro_rules! rustfft_c2c {
     ($name:ident, $float:ty, $plan_method:ident, $group:expr) => {

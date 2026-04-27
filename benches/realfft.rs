@@ -1,3 +1,14 @@
+//! Important: this benchmark only measures small-to-mid sizes; criterion is
+//! not a good fit for measuring long-running tasks — see
+//! `examples/benchmark.rs` for the harness for large sizes.
+//!
+//! Unlike the C2C cross-library comparison (split across `bench.rs` vs.
+//! `rustfft.rs` vs. `fftw_*.rs`), both PhastFT R2C/C2R and the realfft
+//! baseline live in this single bench binary. The split-per-library
+//! convention exists primarily to isolate FFTW's per-process wisdom cache
+//! between planning modes; realfft has no such cache, so a single binary
+//! suffices and gives a self-contained PhastFT-vs-realfft comparison.
+
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use phastft::planner::{PlannerR2c32, PlannerR2c64};
 use phastft::{
@@ -8,18 +19,6 @@ use realfft::RealFftPlanner;
 
 mod common;
 use common::{groups, ids, real_signal, spectrum_interleaved, spectrum_split, sweep_real, LENGTHS};
-
-// IMPORTANT NOTE:
-// This benchmark only measures small-to-mid sizes; criterion is not a good
-// fit for measuring long-running tasks — see examples/benchmark.rs for the
-// harness for large sizes.
-//
-// Unlike the C2C cross-library comparison (split across bench.rs vs.
-// rustfft.rs vs. fftw_*.rs), both PhastFT R2C/C2R and the realfft baseline
-// live in this single bench binary. The split-per-library convention exists
-// primarily to isolate FFTW's per-process wisdom cache between planning
-// modes; realfft has no such cache, so a single binary suffices and gives a
-// self-contained PhastFT-vs-realfft comparison.
 //
 // Group names (snake_case): r2c_f32 / r2c_f64 / c2r_f32 / c2r_f64 — distinct
 // from the C2C groups, so no overlay aggregation across binaries needed.
