@@ -108,11 +108,16 @@ as `--baseline` arguments. The overlay script humanizes group names at
 plot time — chart titles read "C2C Forward (f32)".
 
 Size sweeps (`LENGTHS`, `BIT_REVERSAL_LENGTHS`, `PLANNER_MODE_LENGTHS`),
-sample-distribution helpers, throughput helpers, the per-bench loop
-runners (`sweep_complex` / `sweep_real`), and group / ID constants all
-live in `benches/common/mod.rs` so renames touch one file. The shared
-FFTW C2C bench body lives in `benches/fftw_lib/mod.rs` and is consumed
-by all three FFTW bench binaries.
+sample-distribution helpers (`split_complex` / `interleaved_complex` /
+`real_signal` / `spectrum_*`), throughput helpers (`throughput_complex` /
+`throughput_real`), the per-bench loop runner (`bench_at_sizes`), and
+group / ID constants all live in `benches/common/mod.rs` so renames
+touch one file. `bench_at_sizes` takes the throughput function as an
+argument, so each bench file picks its data layout (split vs.
+interleaved) independently of the throughput accounting (paired vs.
+single scalar). The shared FFTW C2C bench body lives in
+`benches/fftw_lib/mod.rs` and is consumed by all three FFTW bench
+binaries.
 
 ## 2. Shell-driven cross-library pipeline
 

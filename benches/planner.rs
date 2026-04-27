@@ -3,22 +3,28 @@ use phastft::planner::{PlannerDit32, PlannerDit64};
 use utilities::rustfft::FftPlanner;
 
 mod common;
-use common::{groups, ids, sweep_complex, LENGTHS};
+use common::{bench_at_sizes, groups, ids, throughput_complex, LENGTHS};
 
 macro_rules! planner_bench {
     ($name:ident, $float:ty, $planner:ty, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            sweep_complex::<$float, _>(c, $group, LENGTHS, |g, len| {
-                g.bench_function(BenchmarkId::new(ids::PHASTFT_DIT, len), |b| {
-                    b.iter(|| <$planner>::new(len));
-                });
-                g.bench_function(BenchmarkId::new(ids::RUSTFFT, len), |b| {
-                    b.iter(|| {
-                        let mut planner = FftPlanner::<$float>::new();
-                        planner.plan_fft_forward(len)
+            bench_at_sizes(
+                c,
+                $group,
+                LENGTHS,
+                throughput_complex::<$float>,
+                |g, len| {
+                    g.bench_function(BenchmarkId::new(ids::PHASTFT_DIT, len), |b| {
+                        b.iter(|| <$planner>::new(len));
                     });
-                });
-            });
+                    g.bench_function(BenchmarkId::new(ids::RUSTFFT, len), |b| {
+                        b.iter(|| {
+                            let mut planner = FftPlanner::<$float>::new();
+                            planner.plan_fft_forward(len)
+                        });
+                    });
+                },
+            );
         }
     };
 }

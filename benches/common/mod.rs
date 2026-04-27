@@ -59,15 +59,20 @@ pub fn make_group<'c>(c: &'c mut Criterion, name: &str) -> BenchmarkGroup<'c, Wa
     group
 }
 
-/// Run `bench_at_size(group, len)` for every `len = 1 << n` in `lengths`,
-/// reporting complex throughput (`2 * len * size_of::<T>()` bytes per
-/// iteration). Wraps the LENGTHS loop + `make_group` + per-size
-/// `throughput()` + `group.finish()` so each bench file just declares the
-/// per-size body.
-pub fn sweep_complex<T, F>(
+/// Run `bench_at_size(group, len)` for every `len = 2^n` in `lengths`,
+/// setting `group.throughput(throughput(len))` per size. Wraps the
+/// LENGTHS loop + `make_group` + per-size `throughput()` + `group.finish()`
+/// so each bench file just declares the per-size body.
+///
+/// `throughput` selects the accounting model independently of the input
+/// data layout — pass `throughput_complex::<T>` when each element is a
+/// real/imag pair (split or interleaved layout), `throughput_real::<T>`
+/// when each element is a single scalar (R2C / C2R / bit-reversal).
+pub fn bench_at_sizes<F>(
     c: &mut Criterion,
     group_name: &str,
     lengths: &[usize],
+    throughput: impl Fn(usize) -> Throughput,
     mut bench_at_size: F,
 ) where
     F: FnMut(&mut BenchmarkGroup<'_, WallTime>, usize),
@@ -75,28 +80,7 @@ pub fn sweep_complex<T, F>(
     let mut group = make_group(c, group_name);
     for &n in lengths {
         let len = 1 << n;
-        group.throughput(throughput_complex::<T>(len));
-        bench_at_size(&mut group, len);
-    }
-    group.finish();
-}
-
-/// Same as `sweep_complex`, but reports real throughput
-/// (`len * size_of::<T>()` bytes per iteration) — for R2C / C2R groups and
-/// the bit-reversal kernel, which see a single real-valued buffer per
-/// sample.
-pub fn sweep_real<T, F>(
-    c: &mut Criterion,
-    group_name: &str,
-    lengths: &[usize],
-    mut bench_at_size: F,
-) where
-    F: FnMut(&mut BenchmarkGroup<'_, WallTime>, usize),
-{
-    let mut group = make_group(c, group_name);
-    for &n in lengths {
-        let len = 1 << n;
-        group.throughput(throughput_real::<T>(len));
+        group.throughput(throughput(len));
         bench_at_size(&mut group, len);
     }
     group.finish();

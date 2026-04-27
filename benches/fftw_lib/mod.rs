@@ -18,7 +18,7 @@ use fftw::plan::{C2CPlan, C2CPlan32, C2CPlan64};
 use fftw::types::{Flag, Sign};
 use utilities::rustfft::num_complex::Complex;
 
-use crate::common::{groups, split_complex, sweep_complex, LENGTHS};
+use crate::common::{bench_at_sizes, groups, split_complex, throughput_complex, LENGTHS};
 
 macro_rules! fftw_sweep {
     ($name:ident, $float:ty, $plan:ty, $sign:expr, $group:expr) => {
@@ -28,37 +28,45 @@ macro_rules! fftw_sweep {
             // closure. Round-trip through the underlying `u32` bits, which
             // are Copy, and reconstruct the flag set per `n`.
             let flag_bits = flags.bits();
-            sweep_complex::<$float, _>(c, $group, LENGTHS, move |g, len| {
-                let mut plan =
-                    <$plan>::aligned(&[len], $sign, Flag::from_bits_retain(flag_bits)).unwrap();
-                g.bench_function(BenchmarkId::new(id, len), |b| {
-                    b.iter_batched(
-                        || {
-                            let (reals, imags) = split_complex::<$float>(len);
-                            let mut nums: AlignedVec<Complex<$float>> = AlignedVec::new(len);
-                            for (z, (&re, &im)) in
-                                nums.iter_mut().zip(reals.iter().zip(imags.iter()))
-                            {
-                                *z = Complex::new(re, im);
-                            }
-                            nums
-                        },
-                        |mut nums| {
-                            plan.c2c(
-                                // SAFETY: identical shape to examples/fftwrb.rs:42-48.
-                                // DESTROYINPUT permits in-place c2c; the raw slice
-                                // aliases `nums` for the duration of the call and
-                                // `len` matches the AlignedVec allocation.
-                                unsafe { &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), len) },
-                                &mut nums,
-                            )
-                            .unwrap();
-                            std::hint::black_box(&mut nums);
-                        },
-                        BatchSize::SmallInput,
-                    );
-                });
-            });
+            bench_at_sizes(
+                c,
+                $group,
+                LENGTHS,
+                throughput_complex::<$float>,
+                move |g, len| {
+                    let mut plan =
+                        <$plan>::aligned(&[len], $sign, Flag::from_bits_retain(flag_bits)).unwrap();
+                    g.bench_function(BenchmarkId::new(id, len), |b| {
+                        b.iter_batched(
+                            || {
+                                let (reals, imags) = split_complex::<$float>(len);
+                                let mut nums: AlignedVec<Complex<$float>> = AlignedVec::new(len);
+                                for (z, (&re, &im)) in
+                                    nums.iter_mut().zip(reals.iter().zip(imags.iter()))
+                                {
+                                    *z = Complex::new(re, im);
+                                }
+                                nums
+                            },
+                            |mut nums| {
+                                plan.c2c(
+                                    // SAFETY: identical shape to examples/fftwrb.rs:42-48.
+                                    // DESTROYINPUT permits in-place c2c; the raw slice
+                                    // aliases `nums` for the duration of the call and
+                                    // `len` matches the AlignedVec allocation.
+                                    unsafe {
+                                        &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), len)
+                                    },
+                                    &mut nums,
+                                )
+                                .unwrap();
+                                std::hint::black_box(&mut nums);
+                            },
+                            BatchSize::SmallInput,
+                        );
+                    });
+                },
+            );
         }
     };
 }

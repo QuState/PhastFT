@@ -5,7 +5,7 @@ use rand::distr::StandardUniform;
 use rand::prelude::*;
 
 mod common;
-use common::{groups, ids, sweep_real, BIT_REVERSAL_LENGTHS};
+use common::{bench_at_sizes, groups, ids, throughput_real, BIT_REVERSAL_LENGTHS};
 
 fn random_vec<T>(n: usize) -> Vec<T>
 where
@@ -161,7 +161,12 @@ mod old_bravo {
 macro_rules! bit_reversal_bench {
     ($name:ident, $float:ty, $cobravo:path, $bravo:path, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            sweep_real::<$float, _>(c, $group, BIT_REVERSAL_LENGTHS, |g, len| {
+            bench_at_sizes(
+                c,
+                $group,
+                BIT_REVERSAL_LENGTHS,
+                throughput_real::<$float>,
+                |g, len| {
                 let n = len.trailing_zeros() as usize;
                 let simd_level = Level::new();
                 g.bench_function(BenchmarkId::new(ids::COBRAVO, len), |b| {

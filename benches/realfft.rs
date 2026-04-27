@@ -18,7 +18,10 @@ use phastft::{
 use realfft::RealFftPlanner;
 
 mod common;
-use common::{groups, ids, real_signal, spectrum_interleaved, spectrum_split, sweep_real, LENGTHS};
+use common::{
+    bench_at_sizes, groups, ids, real_signal, spectrum_interleaved, spectrum_split,
+    throughput_real, LENGTHS,
+};
 //
 // Group names (snake_case): r2c_f32 / r2c_f64 / c2r_f32 / c2r_f64 — distinct
 // from the C2C groups, so no overlay aggregation across binaries needed.
@@ -26,7 +29,7 @@ use common::{groups, ids, real_signal, spectrum_interleaved, spectrum_split, swe
 macro_rules! r2c_bench {
     ($name:ident, $float:ty, $planner:ty, $fft_fn:ident, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            sweep_real::<$float, _>(c, $group, LENGTHS, |g, len| {
+            bench_at_sizes(c, $group, LENGTHS, throughput_real::<$float>, |g, len| {
                 // Plan + output buffers allocated outside iter_batched —
                 // planning and allocation cost is excluded from per-sample timings.
                 let phast_planner = <$planner>::new(len);
@@ -67,7 +70,7 @@ macro_rules! r2c_bench {
 macro_rules! c2r_bench {
     ($name:ident, $float:ty, $planner:ty, $fft_fn:ident, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            sweep_real::<$float, _>(c, $group, LENGTHS, |g, len| {
+            bench_at_sizes(c, $group, LENGTHS, throughput_real::<$float>, |g, len| {
                 let phast_planner = <$planner>::new(len);
                 let mut phast_output = vec![0 as $float; len];
                 let mut phast_scratch_re = vec![0 as $float; len / 2];

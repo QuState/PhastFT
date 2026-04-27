@@ -6,47 +6,31 @@
 //! ```
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
-use phastft::complex_nums::{combine_re_im, deinterleave};
-use rand::distr::StandardUniform;
-use rand::rngs::SmallRng;
-use rand::RngExt;
+use phastft::complex_nums::{combine_re_im, deinterleave_complex32, deinterleave_complex64};
 
 mod common;
-use common::{groups, ids, sweep_complex, LENGTHS};
-
-fn interleaved<T>(n: usize) -> Vec<T>
-where
-    StandardUniform: rand::prelude::Distribution<T>,
-{
-    let mut rng = rand::make_rng::<SmallRng>();
-    (&mut rng)
-        .sample_iter(StandardUniform)
-        .take(2 * n)
-        .collect()
-}
-
-fn re_im_pair<T>(n: usize) -> (Vec<T>, Vec<T>)
-where
-    StandardUniform: rand::prelude::Distribution<T>,
-{
-    let mut rng = rand::make_rng::<SmallRng>();
-    let reals: Vec<T> = (&mut rng).sample_iter(StandardUniform).take(n).collect();
-    let imags: Vec<T> = (&mut rng).sample_iter(StandardUniform).take(n).collect();
-    (reals, imags)
-}
+use common::{
+    bench_at_sizes, groups, ids, interleaved_complex, split_complex, throughput_complex, LENGTHS,
+};
 
 macro_rules! deinterleave_bench {
-    ($name:ident, $float:ty, $group:expr) => {
+    ($name:ident, $float:ty, $deinter_fn:ident, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            sweep_complex::<$float, _>(c, $group, LENGTHS, |g, len| {
-                g.bench_function(BenchmarkId::new(ids::DEINTERLEAVE, len), |b| {
-                    b.iter_batched(
-                        || interleaved::<$float>(len),
-                        |input| deinterleave(&input),
-                        BatchSize::SmallInput,
-                    );
-                });
-            });
+            bench_at_sizes(
+                c,
+                $group,
+                LENGTHS,
+                throughput_complex::<$float>,
+                |g, len| {
+                    g.bench_function(BenchmarkId::new(ids::DEINTERLEAVE, len), |b| {
+                        b.iter_batched(
+                            || interleaved_complex::<$float>(len),
+                            |input| $deinter_fn(&input),
+                            BatchSize::SmallInput,
+                        );
+                    });
+                },
+            );
         }
     };
 }
@@ -54,21 +38,37 @@ macro_rules! deinterleave_bench {
 macro_rules! combine_bench {
     ($name:ident, $float:ty, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            sweep_complex::<$float, _>(c, $group, LENGTHS, |g, len| {
-                g.bench_function(BenchmarkId::new(ids::COMBINE_RE_IM, len), |b| {
-                    b.iter_batched(
-                        || re_im_pair::<$float>(len),
-                        |(reals, imags)| combine_re_im::<$float>(&reals, &imags),
-                        BatchSize::SmallInput,
-                    );
-                });
-            });
+            bench_at_sizes(
+                c,
+                $group,
+                LENGTHS,
+                throughput_complex::<$float>,
+                |g, len| {
+                    g.bench_function(BenchmarkId::new(ids::COMBINE_RE_IM, len), |b| {
+                        b.iter_batched(
+                            || split_complex::<$float>(len),
+                            |(reals, imags)| combine_re_im::<$float>(&reals, &imags),
+                            BatchSize::SmallInput,
+                        );
+                    });
+                },
+            );
         }
     };
 }
 
-deinterleave_bench!(deinterleave_f32, f32, groups::KERNEL_DEINTERLEAVE_F32);
-deinterleave_bench!(deinterleave_f64, f64, groups::KERNEL_DEINTERLEAVE_F64);
+deinterleave_bench!(
+    deinterleave_f32,
+    f32,
+    deinterleave_complex32,
+    groups::KERNEL_DEINTERLEAVE_F32
+);
+deinterleave_bench!(
+    deinterleave_f64,
+    f64,
+    deinterleave_complex64,
+    groups::KERNEL_DEINTERLEAVE_F64
+);
 combine_bench!(combine_f32, f32, groups::KERNEL_COMBINE_RE_IM_F32);
 combine_bench!(combine_f64, f64, groups::KERNEL_COMBINE_RE_IM_F64);
 

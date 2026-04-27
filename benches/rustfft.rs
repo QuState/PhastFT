@@ -13,28 +13,35 @@ use utilities::rustfft::num_complex::Complex;
 use utilities::rustfft::FftPlanner;
 
 mod common;
-use common::{groups, ids, interleaved_complex, sweep_complex, LENGTHS};
+use common::{bench_at_sizes, groups, ids, interleaved_complex, throughput_complex, LENGTHS};
 
 macro_rules! rustfft_c2c {
     ($name:ident, $float:ty, $plan_method:ident, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            sweep_complex::<$float, _>(c, $group, LENGTHS, |g, len| {
-                // Plan and scratch are constructed outside iter_batched so
-                // planning cost is excluded from per-sample timings.
-                let mut planner = FftPlanner::<$float>::new();
-                let fft = planner.$plan_method(len);
-                let mut scratch = vec![Complex::<$float>::zero(); fft.get_inplace_scratch_len()];
-                g.bench_function(BenchmarkId::new(ids::RUSTFFT, len), |b| {
-                    b.iter_batched(
-                        || interleaved_complex::<$float>(len),
-                        |mut signal| {
-                            fft.process_with_scratch(&mut signal, &mut scratch);
-                            std::hint::black_box(&mut signal);
-                        },
-                        BatchSize::SmallInput,
-                    );
-                });
-            });
+            bench_at_sizes(
+                c,
+                $group,
+                LENGTHS,
+                throughput_complex::<$float>,
+                |g, len| {
+                    // Plan and scratch are constructed outside iter_batched so
+                    // planning cost is excluded from per-sample timings.
+                    let mut planner = FftPlanner::<$float>::new();
+                    let fft = planner.$plan_method(len);
+                    let mut scratch =
+                        vec![Complex::<$float>::zero(); fft.get_inplace_scratch_len()];
+                    g.bench_function(BenchmarkId::new(ids::RUSTFFT, len), |b| {
+                        b.iter_batched(
+                            || interleaved_complex::<$float>(len),
+                            |mut signal| {
+                                fft.process_with_scratch(&mut signal, &mut scratch);
+                                std::hint::black_box(&mut signal);
+                            },
+                            BatchSize::SmallInput,
+                        );
+                    });
+                },
+            );
         }
     };
 }

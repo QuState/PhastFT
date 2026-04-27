@@ -11,29 +11,43 @@ use phastft::planner::{Direction, PlannerDit32, PlannerDit64, PlannerMode};
 use phastft::{fft_32_dit_with_planner_and_opts, fft_64_dit_with_planner_and_opts};
 
 mod common;
-use common::{groups, ids, split_complex, sweep_complex, PLANNER_MODE_LENGTHS};
+use common::{
+    bench_at_sizes, groups, ids, split_complex, throughput_complex, PLANNER_MODE_LENGTHS,
+};
 
 macro_rules! planner_mode_bench {
     ($name:ident, $float:ty, $planner:ty, $fft:ident, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            sweep_complex::<$float, _>(c, $group, PLANNER_MODE_LENGTHS, |g, len| {
-                let opts = Options::guess_options(len);
-                for (id, mode) in [
-                    (ids::HEURISTIC, PlannerMode::Heuristic),
-                    (ids::TUNE, PlannerMode::Tune),
-                ] {
-                    let planner = <$planner>::with_mode(len, mode);
-                    g.bench_function(BenchmarkId::new(id, len), |b| {
-                        b.iter_batched(
-                            || split_complex::<$float>(len),
-                            |(mut reals, mut imags)| {
-                                $fft(&mut reals, &mut imags, Direction::Forward, &planner, &opts);
-                            },
-                            BatchSize::SmallInput,
-                        );
-                    });
-                }
-            });
+            bench_at_sizes(
+                c,
+                $group,
+                PLANNER_MODE_LENGTHS,
+                throughput_complex::<$float>,
+                |g, len| {
+                    let opts = Options::guess_options(len);
+                    for (id, mode) in [
+                        (ids::HEURISTIC, PlannerMode::Heuristic),
+                        (ids::TUNE, PlannerMode::Tune),
+                    ] {
+                        let planner = <$planner>::with_mode(len, mode);
+                        g.bench_function(BenchmarkId::new(id, len), |b| {
+                            b.iter_batched(
+                                || split_complex::<$float>(len),
+                                |(mut reals, mut imags)| {
+                                    $fft(
+                                        &mut reals,
+                                        &mut imags,
+                                        Direction::Forward,
+                                        &planner,
+                                        &opts,
+                                    );
+                                },
+                                BatchSize::SmallInput,
+                            );
+                        });
+                    }
+                },
+            );
         }
     };
 }
