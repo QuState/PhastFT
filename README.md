@@ -76,7 +76,7 @@ Both `fft_32_interleaved` and `fft_64_interleaved` are available for `f32` and
 
 For purely real-valued input, the R2C transform is approximately 2x faster than
 running a full complex FFT with zeroed imaginary components. The output is the
-*compact* `N/2 + 1` complex spectrum. The remaining `N/2 - 1` bins are can be
+*compact* `N/2 + 1` complex spectrum. The remaining `N/2 - 1` bins can be
 derived via the conjugate symmetry `X[N - k] = conj(X[k])`.
 
 R2C is fully in-place. That is, the output buffers double as scratch for the
