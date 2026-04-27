@@ -10,7 +10,16 @@ readme = "README.md"
 documentation = "https://docs.rs/phastft"
 keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
 categories = ["algorithms", "compression", "science"]
-exclude = ["assets", "scripts", "benches"]
+exclude = [
+	".github",
+	"assets",
+	"benches",
+	"codecov.yml",
+	"hooks",
+	"profile.sh",
+	"rust-toolchain.toml",
+	"rustfmt.toml",
+]
 
 [dependencies]
 num-traits = "0.2.19"
@@ -83,3 +92,4 @@ debug = true
 all-features = true
 
 [lints.rust]
+
