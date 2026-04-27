@@ -1,10 +1,11 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use fearless_simd::{dispatch, Level};
 use phastft::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
 use rand::distr::StandardUniform;
 use rand::prelude::*;
 
-const LENGTHS: &[usize] = &[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
+mod common;
+use common::{bench_at_sizes, groups, ids, throughput_real, BIT_REVERSAL_LENGTHS};
 
 fn random_vec<T>(n: usize) -> Vec<T>
 where
@@ -157,81 +158,56 @@ mod old_bravo {
     }
 }
 
-fn bench_bit_reversal_f64(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Bit reversal f64");
-    group.sample_size(20);
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
-
-    for &n in LENGTHS {
-        let len = 1usize << n;
-        group.throughput(Throughput::Bytes((len * size_of::<f64>()) as u64));
-
-        group.bench_function(BenchmarkId::new("COBRAVO", len), |b| {
-            let simd_level = Level::new();
-            b.iter_batched(
-                || random_vec::<f64>(n),
-                |mut data| {
-                    dispatch!(simd_level, simd => bit_rev_bravo_f64(simd, &mut data, n));
-                    data
-                },
-                criterion::BatchSize::LargeInput,
-            );
-        });
-
-        group.bench_function(BenchmarkId::new("BRAVO", len), |b| {
-            let simd_level = Level::new();
-            b.iter_batched(
-                || random_vec::<f64>(n),
-                |mut data| {
-                    dispatch!(simd_level, simd => old_bravo::bit_rev_bravo_f64(simd, &mut data, n));
-                    data
-                },
-                criterion::BatchSize::LargeInput,
-            );
-        });
-    }
-    group.finish();
+macro_rules! bit_reversal_bench {
+    ($name:ident, $float:ty, $cobravo:path, $bravo:path, $group:expr) => {
+        fn $name(c: &mut Criterion) {
+            bench_at_sizes(
+                c,
+                $group,
+                BIT_REVERSAL_LENGTHS,
+                throughput_real::<$float>,
+                |g, len| {
+                let n = len.trailing_zeros() as usize;
+                let simd_level = Level::new();
+                g.bench_function(BenchmarkId::new(ids::COBRAVO, len), |b| {
+                    b.iter_batched(
+                        || random_vec::<$float>(n),
+                        |mut data| {
+                            dispatch!(simd_level, simd => $cobravo(simd, &mut data, n));
+                            data
+                        },
+                        criterion::BatchSize::LargeInput,
+                    );
+                });
+                g.bench_function(BenchmarkId::new(ids::BRAVO, len), |b| {
+                    b.iter_batched(
+                        || random_vec::<$float>(n),
+                        |mut data| {
+                            dispatch!(simd_level, simd => $bravo(simd, &mut data, n));
+                            data
+                        },
+                        criterion::BatchSize::LargeInput,
+                    );
+                });
+            });
+        }
+    };
 }
 
-fn bench_bit_reversal_f32(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Bit reversal f32");
-    group.sample_size(20);
-    group.plot_config(
-        criterion::PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic),
-    );
+bit_reversal_bench!(
+    bit_rev_f32,
+    f32,
+    bit_rev_bravo_f32,
+    old_bravo::bit_rev_bravo_f32,
+    groups::KERNEL_BIT_REVERSAL_F32
+);
+bit_reversal_bench!(
+    bit_rev_f64,
+    f64,
+    bit_rev_bravo_f64,
+    old_bravo::bit_rev_bravo_f64,
+    groups::KERNEL_BIT_REVERSAL_F64
+);
 
-    for &n in LENGTHS {
-        let len = 1usize << n;
-        group.throughput(Throughput::Bytes((len * size_of::<f32>()) as u64));
-
-        group.bench_function(BenchmarkId::new("COBRAVO", len), |b| {
-            let simd_level = Level::new();
-            b.iter_batched(
-                || random_vec::<f32>(n),
-                |mut data| {
-                    dispatch!(simd_level, simd => bit_rev_bravo_f32(simd, &mut data, n));
-                    data
-                },
-                criterion::BatchSize::LargeInput,
-            );
-        });
-
-        group.bench_function(BenchmarkId::new("BRAVO", len), |b| {
-            let simd_level = Level::new();
-            b.iter_batched(
-                || random_vec::<f32>(n),
-                |mut data| {
-                    dispatch!(simd_level, simd => old_bravo::bit_rev_bravo_f32(simd, &mut data, n));
-                    data
-                },
-                criterion::BatchSize::LargeInput,
-            );
-        });
-    }
-    group.finish();
-}
-
-criterion_group!(benches, bench_bit_reversal_f64, bench_bit_reversal_f32);
+criterion_group!(benches, bit_rev_f32, bit_rev_f64);
 criterion_main!(benches);

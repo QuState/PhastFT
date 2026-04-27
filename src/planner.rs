@@ -3,6 +3,8 @@
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
 
+use crate::options::Options;
+
 /// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
 /// Forward is for running the regular FFT
 #[derive(Copy, Clone)]
@@ -31,13 +33,14 @@ pub enum PlannerMode {
 
 macro_rules! impl_planner_dit_for {
     ($struct_name:ident, $precision:ident, $fft_func:path) => {
-        /// DIT-specific planner that pre-computes twiddles for all stages
+        /// DIT-specific planner that pre-computes twiddles for all stages.
+        ///
+        /// The planner is direction-agnostic. Namely, the same instance can drive both forward and
+        /// inverse transforms. Direction is supplied per-call to the `fft_*_dit*` functions.
         pub struct $struct_name {
             /// Twiddles for each stage that needs them (stages with chunk_size > 64)
             /// Each element contains (twiddles_re, twiddles_im) for that stage
             pub(crate) stage_twiddles: Vec<(Vec<$precision>, Vec<$precision>)>,
-            /// The direction of the FFT
-            pub(crate) direction: Direction,
             /// The log2 of the FFT size
             pub(crate) log_n: usize,
             /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
@@ -49,8 +52,8 @@ macro_rules! impl_planner_dit_for {
             ///
             /// Uses [`PlannerMode::Heuristic`] to decide algorithm variants.
             /// For explicit control, use [`Self::with_mode`].
-            pub fn new(num_points: usize, direction: Direction) -> Self {
-                Self::with_mode(num_points, direction, PlannerMode::Heuristic)
+            pub fn new(num_points: usize) -> Self {
+                Self::with_mode(num_points, PlannerMode::Heuristic)
             }
 
             /// Create a DIT planner with explicit control over algorithm selection.
@@ -59,7 +62,7 @@ macro_rules! impl_planner_dit_for {
             ///   leave performance on the table on platforms with large L1i caches.
             /// - [`PlannerMode::Tune`]: Benchmarks both paths at plan time. Use this
             ///   when you can afford extra planning time (e.g., planner is reused).
-            pub fn with_mode(num_points: usize, direction: Direction, _mode: PlannerMode) -> Self {
+            pub fn with_mode(num_points: usize, _mode: PlannerMode) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
 
                 let simd_level = fearless_simd::Level::new();
@@ -89,14 +92,11 @@ macro_rules! impl_planner_dit_for {
                     }
                 }
 
-                let planner = Self {
+                Self {
                     stage_twiddles,
-                    direction,
                     log_n,
                     simd_level,
-                };
-
-                planner
+                }
             }
         }
     };
@@ -112,3 +112,101 @@ impl_planner_dit_for!(
     f32,
     crate::algorithms::dit::fft_32_dit_with_planner_and_opts
 );
+
+// ---------------------------------------------------------------------------
+// R2C / C2R planners
+// ---------------------------------------------------------------------------
+
+fn compute_r2c_twiddles_f64(n: usize) -> (Vec<f64>, Vec<f64>) {
+    let half = n / 2;
+    let mut w_re = vec![0.0f64; half];
+    let mut w_im = vec![0.0f64; half];
+
+    // Forward R2C twiddles 0.5 * W_N^k = 0.5 * exp(-2 * pi * i * k / N).
+    // The 0.5 factor is folded in here so the untangle / c2r-preprocess hot
+    // loops avoid one multiply per bin. C2R conjugates at use time.
+    let angle_step = -std::f64::consts::PI / half as f64;
+    let (st, ct) = angle_step.sin_cos();
+    let (mut wr, mut wi) = (1.0f64, 0.0f64);
+
+    for k in 0..half {
+        w_re[k] = 0.5 * wr;
+        w_im[k] = 0.5 * wi;
+        let tmp = wr;
+        wr = tmp * ct - wi * st;
+        wi = tmp * st + wi * ct;
+    }
+
+    (w_re, w_im)
+}
+
+fn compute_r2c_twiddles_f32(n: usize) -> (Vec<f32>, Vec<f32>) {
+    let half = n / 2;
+    let mut w_re = vec![0.0f32; half];
+    let mut w_im = vec![0.0f32; half];
+
+    // 0.5 folded in (see f64 variant). Compute in f64 to avoid recurrence drift, then cast.
+    let angle_step = -std::f64::consts::PI / half as f64;
+    let (st, ct) = angle_step.sin_cos();
+    let (mut wr, mut wi) = (1.0f64, 0.0f64);
+
+    for k in 0..half {
+        w_re[k] = (0.5 * wr) as f32;
+        w_im[k] = (0.5 * wi) as f32;
+        let tmp = wr;
+        wr = tmp * ct - wi * st;
+        wi = tmp * st + wi * ct;
+    }
+
+    (w_re, w_im)
+}
+
+macro_rules! impl_planner_r2c_for {
+    ($struct_name:ident, $precision:ident, $dit_planner:ident, $twiddle_fn:ident) => {
+        /// Planner for real-to-complex (R2C) and complex-to-real (C2R) FFTs.
+        ///
+        /// Pre-computes the inner DIT planner for the half-length complex FFT
+        /// and the untangle twiddle factors for the post-processing step.
+        ///
+        /// The planner is direction-agnostic. Namely, the same instance can drive both
+        /// R2C and C2R transforms.
+        pub struct $struct_name {
+            /// Inner DIT planner for the N/2 complex FFT
+            pub(crate) dit_planner: $dit_planner,
+            /// Pre-computed untangle twiddle factors (real parts).
+            /// 0.5 is pre-folded in so the hot loops avoid a per-bin multiply.
+            pub(crate) w_re: Vec<$precision>,
+            /// Pre-computed untangle twiddle factors (imaginary parts), 0.5 folded in.
+            pub(crate) w_im: Vec<$precision>,
+            /// Inner-FFT options. Cached at plan time so r2c/c2r entry points
+            /// don't recompute `Options::guess_options(half)` per call.
+            pub(crate) inner_opts: Options,
+            /// Full real signal length N
+            pub(crate) n: usize,
+        }
+
+        impl $struct_name {
+            /// Create a planner for real FFTs of length `n`.
+            ///
+            /// # Panics
+            ///
+            /// Panics if `n` is not a power of 2 or `n < 4`.
+            pub fn new(n: usize) -> Self {
+                assert!(n >= 4 && n.is_power_of_two(), "n must be a power of 2 >= 4");
+                let half = n / 2;
+                let (w_re, w_im) = $twiddle_fn(n);
+
+                Self {
+                    dit_planner: $dit_planner::new(half),
+                    w_re,
+                    w_im,
+                    inner_opts: Options::guess_options(half),
+                    n,
+                }
+            }
+        }
+    };
+}
+
+impl_planner_r2c_for!(PlannerR2c64, f64, PlannerDit64, compute_r2c_twiddles_f64);
+impl_planner_r2c_for!(PlannerR2c32, f32, PlannerDit32, compute_r2c_twiddles_f32);

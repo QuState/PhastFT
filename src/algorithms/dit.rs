@@ -252,6 +252,7 @@ fn execute_dit_stage_f32<S: Simd>(
 ///
 /// * `reals` - Real components of the signal (modified in-place)
 /// * `imags` - Imaginary components of the signal (modified in-place)
+/// * `direction` - Forward or inverse transform
 /// * `planner` - Pre-computed planner with twiddle factors
 /// * `opts` - Options controlling optimization strategies
 ///
@@ -262,12 +263,13 @@ fn execute_dit_stage_f32<S: Simd>(
 pub fn fft_64_dit_with_planner_and_opts(
     reals: &mut [f64],
     imags: &mut [f64],
+    direction: Direction,
     planner: &PlannerDit64,
     opts: &Options,
 ) {
     // Dynamic dispatch overhead becomes really noticeable at small FFT sizes.
     // Dispatch only once at the top of the program to
-    dispatch!(planner.simd_level, simd => fft_64_dit_with_planner_and_opts_impl(simd, reals, imags, planner, opts))
+    dispatch!(planner.simd_level, simd => fft_64_dit_with_planner_and_opts_impl(simd, reals, imags, direction, planner, opts))
 }
 
 #[inline(always)] // required by fearless_simd
@@ -275,6 +277,7 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
+    direction: Direction,
     planner: &PlannerDit64,
     opts: &Options,
 ) {
@@ -291,7 +294,7 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
     // the slices already hold IDFT(z) in the caller's slots — saving a
     // full conjugation pass over `imags`. After this rebind, `reals` and
     // `imags` are positional names, not semantic.
-    let (reals, imags) = match planner.direction {
+    let (reals, imags) = match direction {
         Direction::Forward => (reals, imags),
         Direction::Reverse => (imags, reals),
     };
@@ -319,7 +322,7 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
     );
 
     // Scaling for inverse transform
-    if let Direction::Reverse = planner.direction {
+    if let Direction::Reverse = direction {
         let scaling_factor = 1.0 / n as f64;
         for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
             *z_re *= scaling_factor;
@@ -335,18 +338,20 @@ fn fft_64_dit_with_planner_and_opts_impl<S: Simd>(
 pub fn fft_32_dit_with_planner_and_opts(
     reals: &mut [f32],
     imags: &mut [f32],
+    direction: Direction,
     planner: &PlannerDit32,
     opts: &Options,
 ) {
     // Dynamic dispatch overhead becomes really noticeable at small FFT sizes.
     // Dispatch only once at the top of the program to
-    dispatch!(planner.simd_level, simd => fft_32_dit_with_planner_and_opts_impl(simd, reals, imags, planner, opts))
+    dispatch!(planner.simd_level, simd => fft_32_dit_with_planner_and_opts_impl(simd, reals, imags, direction, planner, opts))
 }
 
 fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
+    direction: Direction,
     planner: &PlannerDit32,
     opts: &Options,
 ) {
@@ -358,7 +363,7 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
     assert_eq!(log_n, planner.log_n);
 
     // See `fft_64_dit_with_planner_and_opts_impl` for the swap-trick rationale.
-    let (reals, imags) = match planner.direction {
+    let (reals, imags) = match direction {
         Direction::Forward => (reals, imags),
         Direction::Reverse => (imags, reals),
     };
@@ -386,7 +391,7 @@ fn fft_32_dit_with_planner_and_opts_impl<S: Simd>(
     );
 
     // Scaling for inverse transform
-    if let Direction::Reverse = planner.direction {
+    if let Direction::Reverse = direction {
         let scaling_factor = 1.0 / n as f32;
         for (z_re, z_im) in reals.iter_mut().zip(imags.iter_mut()) {
             *z_re *= scaling_factor;

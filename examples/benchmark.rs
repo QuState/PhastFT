@@ -21,7 +21,7 @@ fn bench32(n: usize, iterations: usize) {
     let mut reals = vec![0.0f32; big_n];
     let mut imags = vec![0.0f32; big_n];
 
-    let planner = PlannerDit32::new(big_n, Direction::Forward);
+    let planner = PlannerDit32::new(big_n);
 
     let batch = batch_size(n).min(iterations.max(1));
     let batches = (iterations / batch).max(1);
@@ -30,7 +30,7 @@ fn bench32(n: usize, iterations: usize) {
 
         let now = std::time::Instant::now();
         for _ in 0..batch {
-            fft_32_dit_with_planner(&mut reals, &mut imags, &planner);
+            fft_32_dit_with_planner(&mut reals, &mut imags, Direction::Forward, &planner);
             std::hint::black_box(&mut reals);
             std::hint::black_box(&mut imags);
         }
@@ -44,7 +44,7 @@ fn bench64(n: usize, iterations: usize) {
     let mut reals = vec![0.0f64; big_n];
     let mut imags = vec![0.0f64; big_n];
 
-    let planner = PlannerDit64::new(big_n, Direction::Forward);
+    let planner = PlannerDit64::new(big_n);
 
     let batch = batch_size(n).min(iterations.max(1));
     let batches = (iterations / batch).max(1);
@@ -53,7 +53,7 @@ fn bench64(n: usize, iterations: usize) {
 
         let now = std::time::Instant::now();
         for _ in 0..batch {
-            fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
+            fft_64_dit_with_planner(&mut reals, &mut imags, Direction::Forward, &planner);
             std::hint::black_box(&mut reals);
             std::hint::black_box(&mut imags);
         }

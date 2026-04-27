@@ -9,27 +9,42 @@
 """
 Render one bar chart per criterion group aggregating every series on disk.
 
-Parallels benchmark_plots.py's output style: grouped bars per input size, each
-bar is a series' median runtime divided by the baseline's median at the same
-size, whiskers are the IQR in the same normalized space, and a dashed y=1.0
-line anchors the baseline. Sizes are split into a small-N and large-N half so
-the bar layout stays readable when many series are plotted together.
+Each plot is a grouped bar chart: bar height = series median runtime divided
+by the group's baseline median at that size, whiskers = IQR in the same
+normalized space, dashed `y=1.0` reference line. Sizes are split into a
+small-N and large-N half so the bar layout stays readable.
 
-This script exists because criterion regenerates `<group>/report/{lines,violin}.svg`
-at the end of each `criterion_main!` using only the IDs registered in that
-process. The PhastFT / RustFFT / FFTW modes live in separate `[[bench]]`
-binaries so the per-group report is clobbered on each run. Here we walk the
-per-ID `sample.json` files criterion keeps on disk across runs and emit a
-proper cross-binary comparison.
+This script exists because criterion regenerates `<group>/report/{lines,
+violin}.svg` at the end of each `criterion_main!` using only the IDs
+registered in that process. The PhastFT / RustFFT / FFTW modes live in
+separate `[[bench]]` binaries so the per-group report is clobbered on each
+run. Here we walk the per-ID `sample.json` files criterion keeps on disk
+across runs and emit a proper cross-binary comparison.
 
-Run from the repo root (default) or pass --criterion-dir:
+## Group naming convention
+
+Bench source files in `benches/common/mod.rs::groups` use snake_case
+(`c2c_forward_f32`, `r2c_f32`, `kernel_bit_reversal_f32`, …) so the names
+round-trip cleanly through criterion's filename sanitizer, shell args, and
+tab-completion. This script humanizes them at plot time via `GROUPS` —
+chart titles read "C2C Forward (f32)".
+
+## Per-group baseline auto-selection
+
+Without `--baseline`, each group uses its registered baseline in `GROUPS`
+(`RustFFT` for `c2c_*`, `realfft` for `r2c_*` / `c2r_*`, etc.).
+`--baseline X` overrides for every group. Groups not in the registry are
+skipped with a warning so missing entries surface immediately.
+
+## Usage
 
     uv run benches/plot_criterion_overlay.py
-    uv run benches/plot_criterion_overlay.py --groups "Forward f32,Forward f64"
+    uv run benches/plot_criterion_overlay.py --groups c2c_forward_f32,r2c_f32
     uv run benches/plot_criterion_overlay.py --baseline "PhastFT DIT"
+    uv run benches/plot_criterion_overlay.py --out-dir target/overlays
 
 Outputs: `criterion_overlay_<group>_<log2_lo>_<log2_hi>.{png,svg}` in the
-current working directory, two files per group (small/large halves).
+output directory, two files per group (small/large halves).
 """
 
 from __future__ import annotations
@@ -40,6 +55,7 @@ import math
 import re
 import sys
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib as mpl
@@ -51,28 +67,62 @@ import pandas as pd
 from utils import bytes2human
 
 
-# Okabe-Ito colorblind-safe palette. PhastFT/RustFFT assignments match
-# benchmark_plots.py; the three FFTW modes get three more Okabe-Ito entries
-# so all five series stay distinguishable when plotted together.
-PALETTE = {
-    "RustFFT":       "#0072B2",
-    "PhastFT DIT":   "#D55E00",
-    "FFTW Estimate": "#009E73",
-    "FFTW Measure":  "#E69F00",
-    "FFTW Conserve": "#CC79A7",
+@dataclass(frozen=True)
+class GroupSpec:
+    """Per-group plot config. `title` is the humanized chart title;
+    `baseline` is the series whose median normalizes the others (`None`
+    means single-series — skip ratio plot)."""
+    title: str
+    baseline: str | None
+
+
+# Single source of truth for criterion group metadata. Keys are the
+# snake_case group names declared in `benches/common/mod.rs::groups`.
+# Groups discovered on disk but absent from this table render a warning
+# and are skipped — the registry doubles as a "what groups are known"
+# list so unregistered output surfaces immediately.
+GROUPS: dict[str, GroupSpec] = {
+    "c2c_forward_f32":          GroupSpec("C2C Forward (f32)",   "RustFFT"),
+    "c2c_forward_f64":          GroupSpec("C2C Forward (f64)",   "RustFFT"),
+    "c2c_inverse_f32":          GroupSpec("C2C Inverse (f32)",   "RustFFT"),
+    "c2c_inverse_f64":          GroupSpec("C2C Inverse (f64)",   "RustFFT"),
+    "r2c_f32":                  GroupSpec("R2C (f32)",           "realfft"),
+    "r2c_f64":                  GroupSpec("R2C (f64)",           "realfft"),
+    "c2r_f32":                  GroupSpec("C2R (f32)",           "realfft"),
+    "c2r_f64":                  GroupSpec("C2R (f64)",           "realfft"),
+    "planner_f32":              GroupSpec("Planner (f32)",       "RustFFT"),
+    "planner_f64":              GroupSpec("Planner (f64)",       "RustFFT"),
+    "planner_mode_f32":         GroupSpec("Planner Mode (f32)",  "Heuristic"),
+    "planner_mode_f64":         GroupSpec("Planner Mode (f64)",  "Heuristic"),
+    "kernel_bit_reversal_f32":  GroupSpec("Bit Reversal (f32)",  "BRAVO"),
+    "kernel_bit_reversal_f64":  GroupSpec("Bit Reversal (f64)",  "BRAVO"),
+    "kernel_deinterleave_f32":  GroupSpec("Deinterleave (f32)",  None),
+    "kernel_deinterleave_f64":  GroupSpec("Deinterleave (f64)",  None),
+    "kernel_combine_re_im_f32": GroupSpec("Combine Re/Im (f32)", None),
+    "kernel_combine_re_im_f64": GroupSpec("Combine Re/Im (f64)", None),
 }
-_FALLBACK_COLORS = ["#56B4E9", "#F0E442", "#000000"]
 
-# Left-to-right bar order. The baseline floats to index 0 regardless so the
-# y=1.0 reference bar anchors the visual comparison.
-SERIES_ORDER = [
-    "RustFFT",
-    "PhastFT DIT",
-    "FFTW Estimate",
-    "FFTW Measure",
-    "FFTW Conserve",
-]
-
+# Series styling. Color is the canonical Okabe-Ito assignment per series;
+# sort_index pins left-to-right bar order (lower = leftmost). PhastFT R2C/C2R
+# reuse the PhastFT DIT orange and `realfft` reuses the RustFFT blue — they
+# live in disjoint groups so the colors never collide on a single chart.
+SERIES_REGISTRY: dict[str, tuple[str, int]] = {
+    "RustFFT":       ("#0072B2", 0),
+    "realfft":       ("#0072B2", 0),
+    "PhastFT DIT":   ("#D55E00", 1),
+    "PhastFT R2C":   ("#D55E00", 1),
+    "PhastFT C2R":   ("#D55E00", 1),
+    "FFTW Estimate": ("#009E73", 2),
+    "FFTW Measure":  ("#E69F00", 3),
+    "FFTW Conserve": ("#CC79A7", 4),
+    "Heuristic":     ("#0072B2", 0),
+    "Tune":          ("#D55E00", 1),
+    "BRAVO":         ("#0072B2", 0),
+    "COBRAVO":       ("#D55E00", 1),
+    "deinterleave":  ("#D55E00", 0),
+    "combine_re_im": ("#D55E00", 0),
+}
+_UNKNOWN_COLOR = "#7A7A7A"
 
 _PARAM_DIR_RE = re.compile(r"^\d+$")
 
@@ -111,6 +161,13 @@ def _configure_style() -> None:
         "savefig.facecolor":   "white",
         "savefig.bbox":        "tight",
     })
+
+
+def humanize(group_name: str) -> str:
+    spec = GROUPS.get(group_name)
+    if spec is None:
+        return group_name
+    return spec.title
 
 
 def discover_groups(criterion_dir: Path) -> list[Path]:
@@ -194,19 +251,25 @@ def load_series(series_dir: Path) -> dict[int, tuple[int, float, float, float]]:
 
 
 def order_series(available: list[str], baseline: str) -> list[str]:
-    """Baseline first, then known series in SERIES_ORDER, then unknown
-    series in alphabetical order."""
-    known = [s for s in SERIES_ORDER if s in available]
-    unknown = sorted(set(available) - set(SERIES_ORDER))
-    ordered = known + unknown
+    """Baseline first, then series sorted by SERIES_REGISTRY index, then
+    unknown series alphabetically."""
+    def key(s: str) -> tuple[int, str]:
+        entry = SERIES_REGISTRY.get(s)
+        # Unknown series sort after all known ones.
+        return (entry[1] if entry is not None else 999, s)
+
+    ordered = sorted(available, key=key)
     if baseline in ordered:
         ordered.remove(baseline)
         ordered.insert(0, baseline)
     return ordered
 
 
-def _color_for(series_name: str, fallback_idx: int) -> str:
-    return PALETTE.get(series_name, _FALLBACK_COLORS[fallback_idx % len(_FALLBACK_COLORS)])
+def _color_for(series_name: str) -> str:
+    entry = SERIES_REGISTRY.get(series_name)
+    if entry is not None:
+        return entry[0]
+    return _UNKNOWN_COLOR
 
 
 def plot_half(
@@ -241,14 +304,7 @@ def plot_half(
 
     df = pd.DataFrame(medians, index=index_labels)
     yerr = {s: np.vstack([err_low[s], err_high[s]]) for s in series_names}
-    fallback_idx = 0
-    colors: list[str] = []
-    for s in series_names:
-        if s in PALETTE:
-            colors.append(PALETTE[s])
-        else:
-            colors.append(_color_for(s, fallback_idx))
-            fallback_idx += 1
+    colors = [_color_for(s) for s in series_names]
 
     fig, ax = plt.subplots(figsize=(11, 5.6))
 
@@ -281,9 +337,13 @@ def plot_half(
     )
 
     # Value labels above each bar. Read ratios from the DataFrame instead of
-    # patch heights because pandas silently fills NaN with 0.0 in the plotted
-    # patches, which would otherwise show "0.00" over missing-data slots.
-    bar_containers = [c for c in ax.containers if hasattr(c, "patches") and isinstance(c, mpl.container.BarContainer)]
+    # patch heights because pandas silently fills NaN with 0.0 in the
+    # plotted patches, which would otherwise show "0.00" over missing-data
+    # slots.
+    bar_containers = [
+        c for c in ax.containers
+        if hasattr(c, "patches") and isinstance(c, mpl.container.BarContainer)
+    ]
     for i, container in enumerate(bar_containers):
         col_values = df.iloc[:, i].to_numpy()
         labels = [f"{v:.2f}" if np.isfinite(v) else "" for v in col_values]
@@ -299,7 +359,7 @@ def plot_half(
     top = float(np.nanmax(df.values + high_err_stack))
     ax.set_ylim(0, max(top * 1.16, 1.16))
 
-    ax.set_title(f"{group_name}: Runtime relative to {baseline}")
+    ax.set_title(f"{humanize(group_name)}: Runtime relative to {baseline}")
     ax.set_xlabel("Input size")
     ax.set_ylabel(
         f"Runtime relative to {baseline} median\n(median ± IQR, lower is faster)"
@@ -330,8 +390,9 @@ def plot_group(
 ) -> None:
     if baseline not in group_data or not group_data[baseline]:
         print(
-            f"warn: group '{group_name}' has no '{baseline}' data — skipping "
-            f"(nothing to normalize against; add --baseline <series> to pick a different anchor)",
+            f"warn: group '{group_name}' has no '{baseline}' data — "
+            f"skipping (nothing to normalize against; pass --baseline <s> "
+            f"to pick a different anchor)",
             file=sys.stderr,
         )
         return
@@ -345,20 +406,32 @@ def plot_group(
         halves.append(sizes[:mid])
     halves.append(sizes[mid:])
 
-    group_slug = _sanitize(group_name)
     for half in halves:
         if not half:
             continue
         n_lo = int(math.log2(half[0]))
         n_hi = int(math.log2(half[-1]))
-        out_stem = out_dir / f"criterion_overlay_{group_slug}_{n_lo}_{n_hi}"
+        out_stem = out_dir / f"criterion_overlay_{group_name}_{n_lo}_{n_hi}"
         plot_half(group_name, baseline, series_names, group_data, half, out_stem)
-        active = sum(1 for s in series_names if any(sz in group_data[s] for sz in half))
-        print(f"wrote {out_stem.with_suffix('.png')} ({len(half)} sizes, {active} series active)")
+        active = sum(
+            1 for s in series_names if any(sz in group_data[s] for sz in half)
+        )
+        print(
+            f"wrote {out_stem.with_suffix('.png')} "
+            f"({len(half)} sizes, {active} series active)"
+        )
 
 
-def _sanitize(group_name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9]+", "_", group_name).strip("_").lower()
+def resolve_baseline(group_name: str, override: str | None) -> str | None:
+    """`override` (the CLI `--baseline`) wins. Otherwise consult `GROUPS`;
+    unknown groups return `None`, which signals "skip" upstream — better
+    to fail loud than to silently normalize against the wrong baseline."""
+    if override is not None:
+        return override
+    spec = GROUPS.get(group_name)
+    if spec is None:
+        return None
+    return spec.baseline
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -373,7 +446,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         "--groups",
         type=str,
         default=None,
-        help="Comma-separated group names to plot (default: all)",
+        help="Comma-separated snake_case group names to plot (default: all)",
     )
     parser.add_argument(
         "--out-dir",
@@ -384,8 +457,13 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument(
         "--baseline",
         type=str,
-        default="RustFFT",
-        help="Series whose median normalizes every other series (default: RustFFT).",
+        default=None,
+        help=(
+            "Series whose median normalizes every other series. If unset, "
+            "each group uses its GROUP_DEFAULTS entry (RustFFT for complex, "
+            "realfft for R2C/C2R, etc.); explicit value applies to every "
+            "group."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -406,6 +484,26 @@ def main(argv: Iterable[str] | None = None) -> int:
         if wanted is not None and group_name not in wanted:
             continue
 
+        baseline = resolve_baseline(group_name, args.baseline)
+        if baseline is None:
+            if group_name in GROUPS:
+                # Registered single-series group — quiet skip.
+                print(
+                    f"info: group '{group_name}' is single-series — skipping "
+                    f"(ratio plot has no anchor)",
+                    file=sys.stderr,
+                )
+            else:
+                # Unregistered group on disk — louder warning so new benches
+                # without a registry entry get noticed.
+                print(
+                    f"warn: group '{group_name}' is not registered in "
+                    f"GROUPS — skipping (add a GroupSpec to "
+                    f"plot_criterion_overlay.py to plot it)",
+                    file=sys.stderr,
+                )
+            continue
+
         group_data: dict[str, dict[int, tuple[int, float, float, float]]] = {}
         for series_dir in discover_series(group_dir):
             points = load_series(series_dir)
@@ -416,11 +514,14 @@ def main(argv: Iterable[str] | None = None) -> int:
             print(f"warn: no measurements under {group_dir}", file=sys.stderr)
             continue
 
-        plot_group(group_name, group_data, args.baseline, args.out_dir)
+        plot_group(group_name, group_data, baseline, args.out_dir)
         any_plotted = True
 
     if wanted and not any_plotted:
-        print(f"error: none of the requested groups matched: {sorted(wanted)}", file=sys.stderr)
+        print(
+            f"error: none of the requested groups matched: {sorted(wanted)}",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

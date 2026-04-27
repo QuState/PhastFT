@@ -5,3 +5,4 @@
 /// CO-BRAVO: Cache-Optimal Bit-Reversal Algorithm using Vector permute Operations.
 pub mod bravo;
 pub mod dit;
+pub mod r2c;
