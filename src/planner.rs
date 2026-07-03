@@ -207,19 +207,29 @@ impl_planner_r2c_for!(PlannerR2c32, f32, PlannerDit32, compute_r2c_twiddles_f32)
 // Bluestein planners
 // ---------------------------------------------------------------------------
 
-/// Chirp table for a length-`n` Bluestein transform: `c[k] = exp(-i*pi*k^2/n)`.
-///
-/// The exponent has period `2n` in `k^2`, so reducing `k^2 mod 2n` before
-/// `sin_cos` keeps the angle in `[-2*pi, 0]` for any `n` and avoids the precision
-/// loss a raw `k^2` would suffer at large `n`. The modulus is carried
-/// incrementally via `(k+1)^2 = k^2 + 2k + 1`, so it never overflows.
+fn bluestein_convolution_len(n: usize) -> usize {
+    assert!(n > 0, "Bluestein FFT size must be greater than 0");
+
+    let min_len = n
+        .checked_sub(1)
+        .and_then(|n_minus_one| n_minus_one.checked_mul(2))
+        .and_then(|twice_n_minus_two| twice_n_minus_two.checked_add(1))
+        .expect("Bluestein inner FFT size overflow");
+
+    min_len
+        .checked_next_power_of_two()
+        .expect("Bluestein inner FFT size overflow")
+}
+
+/// Chirp table for `c[k] = exp(-i*pi*k^2/n)`.
 fn compute_bluestein_chirp_f64(n: usize) -> (Vec<f64>, Vec<f64>) {
     let mut c_re = vec![0.0f64; n];
     let mut c_im = vec![0.0f64; n];
 
     let two_n = 2 * n;
-    let mut sq = 0usize; // k^2 mod 2n
+    let mut sq = 0usize;
     for k in 0..n {
+        // Reduce k^2 modulo 2n before evaluating the phase.
         let angle = -core::f64::consts::PI * (sq as f64) / (n as f64);
         let (sin, cos) = angle.sin_cos();
         c_re[k] = cos;
@@ -234,8 +244,7 @@ fn compute_bluestein_chirp_f64(n: usize) -> (Vec<f64>, Vec<f64>) {
     (c_re, c_im)
 }
 
-/// `f32` chirp table: computed in `f64` then cast, as in the `f32` R2C twiddles,
-/// so the angle reduction keeps full precision.
+/// `f32` chirps are computed in `f64` and cast to reduce phase error.
 fn compute_bluestein_chirp_f32(n: usize) -> (Vec<f32>, Vec<f32>) {
     let (c_re, c_im) = compute_bluestein_chirp_f64(n);
     (
@@ -248,13 +257,9 @@ macro_rules! impl_planner_bluestein_for {
     ($struct_name:ident, $precision:ident, $dit_planner:ident, $dit_fft:path, $chirp_fn:ident) => {
         /// Planner for an arbitrary-length Bluestein (chirp-z) FFT.
         ///
-        /// Holds all size-dependent precompute: the chirp table `c[0..N]`, the
-        /// filter spectrum `B = FFT(b)` of length `M = next_pow2(2N-1)`, and the
-        /// inner power-of-2 DIT planner. This is O(N) memory, since `M < 4N`.
+        /// Holds the chirp table, the filter spectrum, and the inner DIT planner.
         ///
-        /// The planner is direction-agnostic. Namely, the same instance can drive
-        /// both forward and inverse transforms, supplied per-call to the
-        /// `fft_*_bluestein*` functions.
+        /// The same planner can be used for forward and inverse transforms.
         #[derive(Clone)]
         pub struct $struct_name {
             /// Inner DIT planner for the size-`M` convolution FFT.
@@ -267,9 +272,9 @@ macro_rules! impl_planner_bluestein_for {
             pub(crate) b_re: Vec<$precision>,
             /// Precomputed filter spectrum (imaginary parts), length `M`.
             pub(crate) b_im: Vec<$precision>,
-            /// Real transform length `N`.
+            /// Transform length `N`.
             pub(crate) n: usize,
-            /// Inner convolution length `M = next_pow2(2N-1)`.
+            /// Inner convolution length `M = next_power_of_two(2N - 1)`.
             pub(crate) m: usize,
         }
 
@@ -279,17 +284,14 @@ macro_rules! impl_planner_bluestein_for {
             ///
             /// # Panics
             ///
-            /// Panics if `num_points` is 0.
+            /// Panics if `num_points` is 0, or if the required inner FFT length
+            /// does not fit in `usize`.
             #[must_use]
             pub fn new(num_points: usize) -> Self {
                 let n = num_points;
-                assert!(n > 0, "Bluestein FFT size must be greater than 0");
-
-                let m = (2 * n - 1).next_power_of_two();
+                let m = bluestein_convolution_len(n);
                 let (c_re, c_im) = $chirp_fn(n);
 
-                // Filter b (length M): b[j] = conj(c[j]) for 0 <= j < N, with the
-                // symmetric wrap b[M-j] = conj(c[j]) for 1 <= j < N. Middle band 0.
                 let mut b_re = vec![0.0; m];
                 let mut b_im = vec![0.0; m];
                 for j in 0..n {
@@ -301,8 +303,6 @@ macro_rules! impl_planner_bluestein_for {
                     b_im[m - j] = -c_im[j];
                 }
 
-                // B = FFT(b), once at plan time, so the public dispatched entry
-                // point is fine here.
                 let dit_planner = $dit_planner::new(m);
                 let opts = Options::guess_options(m);
                 $dit_fft(
@@ -324,7 +324,7 @@ macro_rules! impl_planner_bluestein_for {
                 }
             }
 
-            /// The inner power-of-2 convolution length `M = next_pow2(2N-1)`.
+            /// The inner power-of-2 convolution length `M = next_power_of_two(2N - 1)`.
             ///
             /// The `_with_planner_and_opts` tier needs `scratch_re` / `scratch_im`
             /// of this length, and its `Options` should be tuned for `M`.
@@ -409,5 +409,11 @@ mod bluestein_planner_tests {
     #[should_panic]
     fn rejects_zero_32() {
         let _ = PlannerBluestein32::new(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Bluestein inner FFT size overflow")]
+    fn rejects_inner_fft_len_overflow() {
+        let _ = PlannerBluestein64::new(usize::MAX / 2 + 1);
     }
 }
