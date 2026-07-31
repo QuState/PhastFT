@@ -7,7 +7,7 @@
     clippy::correctness,
     clippy::suspicious
 )]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 #[cfg(feature = "complex-nums")]
 use num_complex::Complex;

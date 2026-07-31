@@ -800,6 +800,7 @@ dependencies = [
  "num-complex",
  "num-traits",
  "rand",
+ "rav1d-disjoint-mut",
  "rayon",
  "realfft",
  "utilities",
@@ -916,6 +917,11 @@ name = "rand_core"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
+
+[[package]]
+name = "rav1d-disjoint-mut"
+version = "0.3.1"
+source = "git+https://github.com/imazen/rav1d-safe.git#e6026310c43f2cfebdb9f33da631e366e09442cf"
 
 [[package]]
 name = "rawpointer"

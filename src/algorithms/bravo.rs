@@ -28,6 +28,7 @@ const MIN_TILES: usize = 16;
 ///
 /// Tile layout: strip `u` of tile `tile` is `data[u * strip_stride + tile]`,
 /// and maps to `buf[u]`.
+#[cfg(not(feature = "parallel"))]
 #[inline(always)]
 fn stage_in<T: Copy, const TILE_SIDE: usize>(
     data: &[[T; TILE_SIDE]],
@@ -41,6 +42,7 @@ fn stage_in<T: Copy, const TILE_SIDE: usize>(
 }
 
 /// Copy `buf` back into TILE_SIDE strips in `data`.
+#[cfg(not(feature = "parallel"))]
 #[inline(always)]
 fn stage_out<T: Copy, const TILE_SIDE: usize>(
     buf: &[[T; TILE_SIDE]; TILE_SIDE],
@@ -54,6 +56,7 @@ fn stage_out<T: Copy, const TILE_SIDE: usize>(
 }
 
 /// Swap `buf` contents with tile `tile_rev`'s strips in `data`.
+#[cfg(not(feature = "parallel"))]
 #[inline(always)]
 fn stage_swap<T: Copy, const TILE_SIDE: usize>(
     data: &mut [[T; TILE_SIDE]],
@@ -76,7 +79,7 @@ fn stage_swap<T: Copy, const TILE_SIDE: usize>(
 /// Macro to generate bit_rev_bravo implementations for concrete types.
 /// Used instead of generics because `fearless_simd` doesn't let us be generic over the exact float type.
 macro_rules! impl_bit_rev_bravo {
-    ($fn_name:ident, $buf_fn_name:ident, $cobravo_fn_name:ident, $elem_ty:ty, $vec_ty:ty, $lanes:expr, $tile_side:expr) => {
+    ($fn_name:ident, $buf_fn_name:ident, $cobravo_fn_name:ident, $cobravo_parallel_fn_name:ident, $elem_ty:ty, $vec_ty:ty, $lanes:expr, $tile_side:expr) => {
         /// Inner helper: runs the BRAVO class loop on a contiguous slice.
         /// The slice must have length 2^n and at least LANES^2 elements.
         #[inline(always)]
@@ -186,6 +189,7 @@ macro_rules! impl_bit_rev_bravo {
         /// then operate on it for better cache locality.
         /// Each tile is TILE_SIDE strips of TILE_SIDE contiguous elements.
         /// The buffer fits in L1d, so the strided BRAVO loads stay in cache.
+        #[cfg(not(feature = "parallel"))]
         #[inline(always)]
         fn $cobravo_fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
             const TILE_SIDE: usize = $tile_side;
@@ -217,6 +221,69 @@ macro_rules! impl_bit_rev_bravo {
             }
         }
 
+        /// Parallel COBRAVO tile loop using runtime-checked disjoint mutable access.
+        #[cfg(feature = "parallel")]
+        #[inline(always)]
+        fn $cobravo_parallel_fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
+            use rav1d_disjoint_mut::DisjointMut;
+            use rayon::prelude::*;
+
+            const TILE_SIDE: usize = $tile_side;
+            const N_BUF: usize = 2 * TILE_SIDE.ilog2() as usize; // log2(TILE_SIDE²)
+            let tile_bits = n - N_BUF;
+            let num_tiles = 1usize << tile_bits;
+
+            let (data_tiles, _) = data.as_chunks_mut::<TILE_SIDE>();
+            let data_tiles = DisjointMut::new(data_tiles);
+
+            // Each (tile, tile_rev) pair accesses disjoint strips of data.
+            // The tile loop skips tile > tile_rev, so each strip index appears
+            // in exactly one work item.
+            (0..num_tiles).into_par_iter().for_each_init(
+                || [[<$elem_ty>::default(); TILE_SIDE]; TILE_SIDE],
+                |buf, tile| {
+                    let tile_rev = reverse_bits_scalar(tile, tile_bits as u32);
+                    if tile > tile_rev {
+                        return;
+                    }
+
+                    // inlined copy of COBRAVO stage_in
+                    let strip_stride = data_tiles.len() / TILE_SIDE;
+                    for u in 0..TILE_SIDE {
+                        buf[u] = *data_tiles.index(u * strip_stride + tile);
+                    }
+                    $buf_fn_name(simd, buf.as_flattened_mut(), N_BUF);
+
+                    if tile == tile_rev {
+                        // inlined copy of COBRAVO stage_out
+                        let strip_stride = data_tiles.len() / TILE_SIDE;
+                        for u in 0..TILE_SIDE {
+                            *data_tiles.index_mut(u * strip_stride + tile) = buf[u];
+                        }
+                    } else {
+                        // inlined copy of COBRAVO stage_swap
+                        let strip_stride = data_tiles.len() / TILE_SIDE;
+                        #[allow(clippy::needless_range_loop)]
+                        for u in 0..TILE_SIDE {
+                            let data_idx = u * strip_stride + tile_rev;
+                            let mut data_strip = data_tiles.index_mut(data_idx);
+                            let tmp = buf[u];
+                            buf[u] = *data_strip;
+                            *data_strip = tmp;
+                        }
+
+                        $buf_fn_name(simd, buf.as_flattened_mut(), N_BUF);
+
+                        // inlined copy of COBRAVO stage_out
+                        let strip_stride = data_tiles.len() / TILE_SIDE;
+                        for u in 0..TILE_SIDE {
+                            *data_tiles.index_mut(u * strip_stride + tile) = buf[u];
+                        }
+                    }
+                },
+            );
+        }
+
         /// Selects the best algorithm automatically:
         /// COBRAVO tile loop for large arrays, direct BRAVO for
         /// medium arrays, scalar fallback for tiny arrays.
@@ -243,9 +310,16 @@ macro_rules! impl_bit_rev_bravo {
                 return;
             }
 
+            #[cfg(not(feature = "parallel"))]
             simd.vectorize(
                 #[inline(always)]
                 || $cobravo_fn_name(simd, data, n),
+            );
+
+            #[cfg(feature = "parallel")]
+            simd.vectorize(
+                #[inline(always)]
+                || $cobravo_parallel_fn_name(simd, data, n),
             );
         }
     };
@@ -260,6 +334,7 @@ impl_bit_rev_bravo!(
     bit_rev_bravo_chunk_4_f32,
     bravo_on_buf_chunk_4_f32,
     cobravo_chunk_4_f32,
+    cobravo_parallel_chunk_4_f32,
     f32,
     f32x4<S>,
     4,
@@ -269,6 +344,7 @@ impl_bit_rev_bravo!(
     bit_rev_bravo_chunk_8_f32,
     bravo_on_buf_chunk_8_f32,
     cobravo_chunk_8_f32,
+    cobravo_parallel_chunk_8_f32,
     f32,
     f32x8<S>,
     8,
@@ -278,6 +354,7 @@ impl_bit_rev_bravo!(
     bit_rev_bravo_chunk_4_f64,
     bravo_on_buf_chunk_4_f64,
     cobravo_chunk_4_f64,
+    cobravo_parallel_chunk_4_f64,
     f64,
     f64x4<S>,
     4,
@@ -287,6 +364,7 @@ impl_bit_rev_bravo!(
     bit_rev_bravo_chunk_8_f64,
     bravo_on_buf_chunk_8_f64,
     cobravo_chunk_8_f64,
+    cobravo_parallel_chunk_8_f64,
     f64,
     f64x8<S>,
     8,
