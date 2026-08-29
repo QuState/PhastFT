@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-07-28
+
+### Bug Fixes
+
+- Make `fft_f32_dit_with_planner_and_opts_impl` inline.
+
+### Changed
+
+- Enable the `parallel` feature by default
+  ([#123](https://github.com/smu160/PhastFT/pull/123)).
+- Upgrade to `fearless_simd` v0.5.0
+  ([#124](https://github.com/smu160/PhastFT/pull/124)).
+- Trim `scalar_bit_reversal` trait bounds and derive the bit width from the
+  input length.
+- Relax `combine_re_im` from `Float` to `Copy`.
+
+### Documentation
+
+- Add bit-reversal benchmark results, plots, and benchmark machine details.
+
 ## [0.4.0] - 2026-06-04
 
 The largest release since the initial publish: a SIMD backend with runtime CPU
