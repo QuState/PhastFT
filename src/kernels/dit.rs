@@ -10,8 +10,10 @@ use num_traits::Float;
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut [T]) {
     reals
-        .chunks_exact_mut(2)
-        .zip(imags.chunks_exact_mut(2))
+        .as_chunks_mut::<2>()
+        .0
+        .iter_mut()
+        .zip(imags.as_chunks_mut::<2>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let z0_re = reals_chunk[0];
             let z0_im = imags_chunk[0];

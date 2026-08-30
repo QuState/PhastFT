@@ -30,7 +30,12 @@ fn fft_dit_codelet_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
 
     let two = f64x4::splat(simd, 2.0);
 
-    for (re, im) in reals.chunks_exact_mut(16).zip(imags.chunks_exact_mut(16)) {
+    for (re, im) in reals
+        .as_chunks_mut::<16>()
+        .0
+        .iter_mut()
+        .zip(imags.as_chunks_mut::<16>().0.iter_mut())
+    {
         macro_rules! transpose4x4_f64 {
             ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
                 let (t0, t1) = $g0.interleave($g2);
@@ -216,7 +221,12 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
 
     let two = f32x8::splat(simd, 2.0);
 
-    for (re, im) in reals.chunks_exact_mut(32).zip(imags.chunks_exact_mut(32)) {
+    for (re, im) in reals
+        .as_chunks_mut::<32>()
+        .0
+        .iter_mut()
+        .zip(imags.as_chunks_mut::<32>().0.iter_mut())
+    {
         // ---- Load into 4 f32x8 register pairs (re + im) ----
         // v_k holds elements [8k .. 8k+7]
         let mut v0_re = f32x8::from_slice(simd, &re[0..8]);

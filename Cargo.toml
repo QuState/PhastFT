@@ -80,6 +80,10 @@ harness = false
 name = "realfft"
 harness = false
 
+[[bench]]
+name = "bluestein"
+harness = false
+
 [profile.profiling]
 inherits = "release"
 debug = true
