@@ -1,8 +1,11 @@
-//! Bluestein FFT for arbitrary-length complex signals.
+//! Complex FFTs of arbitrary length using Bluestein's algorithm.
 //!
-//! The transform is reduced to a length-`M` convolution, where
-//! `M = next_power_of_two(2N - 1)`, and the convolution is evaluated with the
-//! existing power-of-two DIT FFT.
+//! Bluestein's identity rewrites an `N`-point DFT as a convolution. The
+//! convolution is zero-padded to `M = (2N - 1).next_power_of_two()` and
+//! evaluated with PhastFT's power-of-two DIT transform.
+//!
+//! Forward transforms are unnormalized. Inverse transforms include the usual
+//! `1 / N` normalization, matching the rest of this crate.
 
 use fearless_simd::{dispatch, f32x8, f64x4, Simd, SimdBase};
 
@@ -12,7 +15,7 @@ use crate::algorithms::dit::{
 use crate::options::Options;
 use crate::planner::{Direction, PlannerBluestein32, PlannerBluestein64};
 
-// Pre-multiply by the chirp and zero-pad to the convolution length.
+// Multiply by the chirp and zero-pad to the convolution length.
 macro_rules! impl_simd_bluestein_premul {
     ($name:ident, $T:ty, $V:ident, $lanes:expr) => {
         #[allow(clippy::too_many_arguments)]
@@ -25,18 +28,18 @@ macro_rules! impl_simd_bluestein_premul {
             c_im: &[$T],
             out_re: &mut [$T],
             out_im: &mut [$T],
-            conj_sign: $T,
+            imag_sign: $T,
         ) {
             const LANES: usize = $lanes;
             let n = signal_re.len();
             let m = out_re.len();
-            let sign_v = $V::splat(simd, conj_sign);
+            let imag_sign_v = $V::splat(simd, imag_sign);
 
             let n_blocks = n / LANES;
             for blk in 0..n_blocks {
                 let off = blk * LANES;
                 let xr = $V::from_slice(simd, &signal_re[off..off + LANES]);
-                let xi = sign_v * $V::from_slice(simd, &signal_im[off..off + LANES]);
+                let xi = imag_sign_v * $V::from_slice(simd, &signal_im[off..off + LANES]);
                 let cr = $V::from_slice(simd, &c_re[off..off + LANES]);
                 let ci = $V::from_slice(simd, &c_im[off..off + LANES]);
                 (xr * cr - xi * ci).store_slice(&mut out_re[off..off + LANES]);
@@ -44,7 +47,7 @@ macro_rules! impl_simd_bluestein_premul {
             }
             for k in (n_blocks * LANES)..n {
                 let xr = signal_re[k];
-                let xi = conj_sign * signal_im[k];
+                let xi = imag_sign * signal_im[k];
                 let cr = c_re[k];
                 let ci = c_im[k];
                 out_re[k] = xr * cr - xi * ci;
@@ -56,7 +59,7 @@ macro_rules! impl_simd_bluestein_premul {
     };
 }
 
-// Pointwise multiply in place by the filter spectrum.
+// Pointwise multiply by the precomputed convolution-kernel spectrum.
 macro_rules! impl_simd_bluestein_pointwise {
     ($name:ident, $T:ty, $V:ident, $lanes:expr) => {
         #[inline(always)]
@@ -86,7 +89,7 @@ macro_rules! impl_simd_bluestein_pointwise {
     };
 }
 
-// Post-multiply by the chirp and copy the first N samples back to the signal.
+// Apply the second chirp and copy the first N samples back to the signal.
 macro_rules! impl_simd_bluestein_postmul {
     ($name:ident, $T:ty, $V:ident, $lanes:expr) => {
         #[allow(clippy::too_many_arguments)]
@@ -99,13 +102,13 @@ macro_rules! impl_simd_bluestein_postmul {
             c_im: &[$T],
             out_re: &mut [$T],
             out_im: &mut [$T],
-            scale_re: $T,
-            scale_im: $T,
+            imag_sign: $T,
+            scale: $T,
         ) {
             const LANES: usize = $lanes;
             let n = out_re.len();
-            let sre = $V::splat(simd, scale_re);
-            let sim = $V::splat(simd, scale_im);
+            let scale_v = $V::splat(simd, scale);
+            let imag_scale_v = $V::splat(simd, imag_sign) * scale_v;
 
             let n_blocks = n / LANES;
             for blk in 0..n_blocks {
@@ -116,8 +119,8 @@ macro_rules! impl_simd_bluestein_postmul {
                 let ci = $V::from_slice(simd, &c_im[off..off + LANES]);
                 let pr = cr * vr - ci * vi;
                 let pi = cr * vi + ci * vr;
-                (sre * pr).store_slice(&mut out_re[off..off + LANES]);
-                (sim * pi).store_slice(&mut out_im[off..off + LANES]);
+                (scale_v * pr).store_slice(&mut out_re[off..off + LANES]);
+                (imag_scale_v * pi).store_slice(&mut out_im[off..off + LANES]);
             }
             for k in (n_blocks * LANES)..n {
                 let vr = conv_re[k];
@@ -126,8 +129,8 @@ macro_rules! impl_simd_bluestein_postmul {
                 let ci = c_im[k];
                 let pr = cr * vr - ci * vi;
                 let pi = cr * vi + ci * vr;
-                out_re[k] = scale_re * pr;
-                out_im[k] = scale_im * pi;
+                out_re[k] = scale * pr;
+                out_im[k] = imag_sign * scale * pi;
             }
         }
     };
@@ -142,39 +145,36 @@ impl_simd_bluestein_pointwise!(simd_bluestein_pointwise_f32, f32, f32x8, 8);
 impl_simd_bluestein_postmul!(simd_bluestein_postmul_f32, f32, f32x8, 8);
 
 #[inline]
-fn direction_params_f64(direction: Direction, n: usize) -> (f64, f64, f64) {
+fn direction_params_f64(direction: Direction, len: usize) -> (f64, f64) {
     match direction {
-        Direction::Forward => (1.0, 1.0, 1.0),
-        Direction::Inverse => {
-            let inv = 1.0 / n as f64;
-            (-1.0, inv, -inv)
-        }
+        Direction::Forward => (1.0, 1.0),
+        Direction::Inverse => (-1.0, 1.0 / len as f64),
     }
 }
 
 #[inline]
-fn direction_params_f32(direction: Direction, n: usize) -> (f32, f32, f32) {
+fn direction_params_f32(direction: Direction, len: usize) -> (f32, f32) {
     match direction {
-        Direction::Forward => (1.0, 1.0, 1.0),
-        Direction::Inverse => {
-            let inv = 1.0 / n as f32;
-            (-1.0, inv, -inv)
-        }
+        Direction::Forward => (1.0, 1.0),
+        Direction::Inverse => (-1.0, 1.0 / len as f32),
     }
 }
 
-/// Bluestein FFT for `f64`, arbitrary length `N`, reusing a precomputed planner
-/// and caller-owned scratch.
+/// Computes an arbitrary-length complex FFT with a reusable plan and scratch.
 ///
-/// In-place over the length-`N` `reals` / `imags`. `scratch_re` and `scratch_im`
-/// must each be length `M = planner.inner_fft_len()`. Their contents on entry are
-/// ignored and on exit unspecified, so reuse them across calls. `opts` govern the
-/// inner size-`M` FFT, so a hand-built `Options` must be sized for `M`, not `N`.
+/// The transform is performed in place over separate real and imaginary
+/// arrays. `scratch_re` and `scratch_im` must each contain at least
+/// [`PlannerBluestein64::scratch_len`] elements. Their contents are ignored on
+/// entry and unspecified on return.
+///
+/// `opts` controls the inner power-of-two FFT. When using
+/// [`Options::guess_options`], pass `planner.scratch_len()` rather than the
+/// input length.
 ///
 /// # Panics
 ///
-/// Panics if `reals`/`imags` are not length `N`, or if either scratch slice is
-/// not length `M`.
+/// Panics if the input lengths differ from `planner.fft_len()`, or if either
+/// scratch slice is shorter than `planner.scratch_len()`.
 ///
 /// # Example
 ///
@@ -184,13 +184,13 @@ fn direction_params_f32(direction: Direction, n: usize) -> (f32, f32, f32) {
 ///
 /// let n = 6; // not a power of two
 /// let planner = PlannerBluestein64::new(n);
-/// let m = planner.inner_fft_len();
-/// let opts = Options::guess_options(m);
+/// let scratch_len = planner.scratch_len();
+/// let opts = Options::guess_options(scratch_len);
 ///
 /// let mut reals: Vec<f64> = (1..=n).map(|i| i as f64).collect();
 /// let mut imags = vec![0.0; n];
-/// let mut scratch_re = vec![0.0; m];
-/// let mut scratch_im = vec![0.0; m];
+/// let mut scratch_re = vec![0.0; scratch_len];
+/// let mut scratch_im = vec![0.0; scratch_len];
 /// fft_f64_bluestein_with_planner_and_opts(
 ///     &mut reals, &mut imags, Direction::Forward, &planner, &opts,
 ///     &mut scratch_re, &mut scratch_im,
@@ -205,31 +205,41 @@ pub fn fft_f64_bluestein_with_planner_and_opts(
     scratch_re: &mut [f64],
     scratch_im: &mut [f64],
 ) {
-    let n = planner.n;
-    let m = planner.m;
-    assert_eq!(reals.len(), n, "reals length must match planner size N");
-    assert_eq!(imags.len(), n, "imags length must match planner size N");
+    let len = planner.len;
+    let inner_len = planner.inner_len;
     assert_eq!(
-        scratch_re.len(),
-        m,
-        "scratch_re must have length inner_fft_len()"
+        reals.len(),
+        len,
+        "reals length must match planner.fft_len()"
     );
     assert_eq!(
-        scratch_im.len(),
-        m,
-        "scratch_im must have length inner_fft_len()"
+        imags.len(),
+        len,
+        "imags length must match planner.fft_len()"
     );
+    assert!(
+        scratch_re.len() >= inner_len,
+        "scratch_re is too short: need at least {inner_len} elements, got {}",
+        scratch_re.len()
+    );
+    assert!(
+        scratch_im.len() >= inner_len,
+        "scratch_im is too short: need at least {inner_len} elements, got {}",
+        scratch_im.len()
+    );
+    let scratch_re = &mut scratch_re[..inner_len];
+    let scratch_im = &mut scratch_im[..inner_len];
 
-    // Inverse transforms use (1/N) * conj(DFT(conj(x))) so the planner's
-    // forward filter spectrum can be reused.
-    let (conj_sign, scale_re, scale_im) = direction_params_f64(direction, n);
+    // The inverse is (1/N) * conj(DFT(conj(x))), so both directions can share
+    // the same chirp and convolution-kernel spectrum.
+    let (imag_sign, scale) = direction_params_f64(direction, len);
 
     dispatch!(planner.dit_planner.simd_level, simd => {
         simd.vectorize(
             #[inline(always)]
             || simd_bluestein_premul_f64(
-                simd, reals, imags, &planner.c_re, &planner.c_im,
-                scratch_re, scratch_im, conj_sign,
+                simd, reals, imags, &planner.chirp_re, &planner.chirp_im,
+                scratch_re, scratch_im, imag_sign,
             ),
         );
         fft_f64_dit_with_planner_and_opts_impl(
@@ -238,37 +248,43 @@ pub fn fft_f64_bluestein_with_planner_and_opts(
         simd.vectorize(
             #[inline(always)]
             || simd_bluestein_pointwise_f64(
-                simd, scratch_re, scratch_im, &planner.b_re, &planner.b_im,
+                simd, scratch_re, scratch_im,
+                &planner.kernel_fft_re, &planner.kernel_fft_im,
             ),
         );
+        // Swapping real and imaginary components turns the forward transform
+        // into an unscaled inverse. The kernel's 1/M factor, applied while
+        // planning, supplies the convolution normalization.
         fft_f64_dit_with_planner_and_opts_impl(
-            simd, scratch_re, scratch_im, Direction::Inverse, &planner.dit_planner, opts,
+            simd, scratch_im, scratch_re, Direction::Forward, &planner.dit_planner, opts,
         );
         simd.vectorize(
             #[inline(always)]
             || simd_bluestein_postmul_f64(
-                simd, scratch_re, scratch_im, &planner.c_re, &planner.c_im,
-                reals, imags, scale_re, scale_im,
+                simd, scratch_re, scratch_im, &planner.chirp_re, &planner.chirp_im,
+                reals, imags, imag_sign, scale,
             ),
         );
     });
 }
 
-/// Bluestein FFT for `f64` reusing a planner. Allocates scratch and guesses
-/// `Options` for the inner FFT.
+/// Computes a complex FFT with a reusable plan.
+///
+/// This convenience function allocates scratch and chooses options for the
+/// inner FFT. Use [`fft_f64_bluestein_with_planner_and_opts`] to reuse scratch.
 ///
 /// # Panics
 ///
-/// Panics if `reals`/`imags` are not length `N` (the planner size).
+/// Panics if either input length differs from `planner.fft_len()`.
 pub fn fft_f64_bluestein_with_planner(
     reals: &mut [f64],
     imags: &mut [f64],
     direction: Direction,
     planner: &PlannerBluestein64,
 ) {
-    let opts = Options::guess_options(planner.m);
-    let mut scratch_re = vec![0.0; planner.m];
-    let mut scratch_im = vec![0.0; planner.m];
+    let opts = Options::guess_options(planner.scratch_len());
+    let mut scratch_re = vec![0.0; planner.scratch_len()];
+    let mut scratch_im = vec![0.0; planner.scratch_len()];
     fft_f64_bluestein_with_planner_and_opts(
         reals,
         imags,
@@ -280,8 +296,9 @@ pub fn fft_f64_bluestein_with_planner(
     );
 }
 
-/// Bluestein FFT for `f64`, arbitrary length, building a planner per call. For
-/// repeated transforms of the same size, reuse a
+/// Computes an arbitrary-length complex FFT, building a plan for this call.
+///
+/// For repeated transforms of the same length, reuse a
 /// [`PlannerBluestein64`] via [`fft_f64_bluestein_with_planner`].
 ///
 /// # Panics
@@ -307,17 +324,15 @@ pub fn fft_f64_bluestein(reals: &mut [f64], imags: &mut [f64], direction: Direct
     fft_f64_bluestein_with_planner(reals, imags, direction, &planner);
 }
 
-/// Bluestein FFT for `f32`, arbitrary length `N`, reusing a precomputed planner
-/// and caller-owned scratch.
+/// Computes an arbitrary-length `f32` complex FFT with a reusable plan and scratch.
 ///
 /// Single-precision variant of [`fft_f64_bluestein_with_planner_and_opts`]. See
-/// that function for the scratch/`Options` contract. `scratch_re` / `scratch_im`
-/// must each be length `M = planner.inner_fft_len()`.
+/// that function for the scratch and `Options` contract.
 ///
 /// # Panics
 ///
-/// Panics if `reals`/`imags` are not length `N`, or if either scratch slice is
-/// not length `M`.
+/// Panics if the input lengths differ from `planner.fft_len()`, or if either
+/// scratch slice is shorter than `planner.scratch_len()`.
 pub fn fft_f32_bluestein_with_planner_and_opts(
     reals: &mut [f32],
     imags: &mut [f32],
@@ -327,29 +342,39 @@ pub fn fft_f32_bluestein_with_planner_and_opts(
     scratch_re: &mut [f32],
     scratch_im: &mut [f32],
 ) {
-    let n = planner.n;
-    let m = planner.m;
-    assert_eq!(reals.len(), n, "reals length must match planner size N");
-    assert_eq!(imags.len(), n, "imags length must match planner size N");
+    let len = planner.len;
+    let inner_len = planner.inner_len;
     assert_eq!(
-        scratch_re.len(),
-        m,
-        "scratch_re must have length inner_fft_len()"
+        reals.len(),
+        len,
+        "reals length must match planner.fft_len()"
     );
     assert_eq!(
-        scratch_im.len(),
-        m,
-        "scratch_im must have length inner_fft_len()"
+        imags.len(),
+        len,
+        "imags length must match planner.fft_len()"
     );
+    assert!(
+        scratch_re.len() >= inner_len,
+        "scratch_re is too short: need at least {inner_len} elements, got {}",
+        scratch_re.len()
+    );
+    assert!(
+        scratch_im.len() >= inner_len,
+        "scratch_im is too short: need at least {inner_len} elements, got {}",
+        scratch_im.len()
+    );
+    let scratch_re = &mut scratch_re[..inner_len];
+    let scratch_im = &mut scratch_im[..inner_len];
 
-    let (conj_sign, scale_re, scale_im) = direction_params_f32(direction, n);
+    let (imag_sign, scale) = direction_params_f32(direction, len);
 
     dispatch!(planner.dit_planner.simd_level, simd => {
         simd.vectorize(
             #[inline(always)]
             || simd_bluestein_premul_f32(
-                simd, reals, imags, &planner.c_re, &planner.c_im,
-                scratch_re, scratch_im, conj_sign,
+                simd, reals, imags, &planner.chirp_re, &planner.chirp_im,
+                scratch_re, scratch_im, imag_sign,
             ),
         );
         fft_f32_dit_with_planner_and_opts_impl(
@@ -358,37 +383,40 @@ pub fn fft_f32_bluestein_with_planner_and_opts(
         simd.vectorize(
             #[inline(always)]
             || simd_bluestein_pointwise_f32(
-                simd, scratch_re, scratch_im, &planner.b_re, &planner.b_im,
+                simd, scratch_re, scratch_im,
+                &planner.kernel_fft_re, &planner.kernel_fft_im,
             ),
         );
         fft_f32_dit_with_planner_and_opts_impl(
-            simd, scratch_re, scratch_im, Direction::Inverse, &planner.dit_planner, opts,
+            simd, scratch_im, scratch_re, Direction::Forward, &planner.dit_planner, opts,
         );
         simd.vectorize(
             #[inline(always)]
             || simd_bluestein_postmul_f32(
-                simd, scratch_re, scratch_im, &planner.c_re, &planner.c_im,
-                reals, imags, scale_re, scale_im,
+                simd, scratch_re, scratch_im, &planner.chirp_re, &planner.chirp_im,
+                reals, imags, imag_sign, scale,
             ),
         );
     });
 }
 
-/// Bluestein FFT for `f32` reusing a planner. Allocates scratch and guesses
-/// `Options` for the inner FFT.
+/// Computes an `f32` complex FFT with a reusable plan.
+///
+/// This convenience function allocates scratch and chooses options for the
+/// inner FFT. Use [`fft_f32_bluestein_with_planner_and_opts`] to reuse scratch.
 ///
 /// # Panics
 ///
-/// Panics if `reals`/`imags` are not length `N` (the planner size).
+/// Panics if either input length differs from `planner.fft_len()`.
 pub fn fft_f32_bluestein_with_planner(
     reals: &mut [f32],
     imags: &mut [f32],
     direction: Direction,
     planner: &PlannerBluestein32,
 ) {
-    let opts = Options::guess_options(planner.m);
-    let mut scratch_re = vec![0.0; planner.m];
-    let mut scratch_im = vec![0.0; planner.m];
+    let opts = Options::guess_options(planner.scratch_len());
+    let mut scratch_re = vec![0.0; planner.scratch_len()];
+    let mut scratch_im = vec![0.0; planner.scratch_len()];
     fft_f32_bluestein_with_planner_and_opts(
         reals,
         imags,
@@ -400,7 +428,8 @@ pub fn fft_f32_bluestein_with_planner(
     );
 }
 
-/// Bluestein FFT for `f32`, arbitrary length, building a planner per call.
+/// Computes an arbitrary-length `f32` complex FFT, building a plan for this call.
+///
 /// Single-precision variant of [`fft_f64_bluestein`].
 ///
 /// # Panics
@@ -421,7 +450,6 @@ mod tests {
     use utilities::{assert_float_closeness, gen_random_signal_f64};
 
     use super::*;
-    use crate::planner::{Direction, PlannerBluestein64};
 
     fn assert_close_f64(actual: f64, expected: f64, rel: f64) {
         let denom = expected.abs().max(1.0);
@@ -432,9 +460,7 @@ mod tests {
         );
     }
 
-    /// Reference DFT via rustfft. `inverse` selects the normalized (1/N) inverse,
-    /// matching PhastFT's convention. Forward is unnormalized.
-    fn rustfft_reference_f64(re: &[f64], im: &[f64], inverse: bool) -> (Vec<f64>, Vec<f64>) {
+    fn rustfft_reference_f64(re: &[f64], im: &[f64], direction: Direction) -> (Vec<f64>, Vec<f64>) {
         use utilities::rustfft::num_complex::Complex;
         use utilities::rustfft::FftPlanner;
 
@@ -445,23 +471,22 @@ mod tests {
             .map(|(&r, &i)| Complex::new(r, i))
             .collect();
         let mut planner = FftPlanner::new();
-        let fft = if inverse {
-            planner.plan_fft_inverse(n)
-        } else {
-            planner.plan_fft_forward(n)
+        let (fft, scale) = match direction {
+            Direction::Forward => (planner.plan_fft_forward(n), 1.0),
+            Direction::Inverse => (planner.plan_fft_inverse(n), 1.0 / n as f64),
         };
         fft.process(&mut buf);
-        let scale = if inverse { 1.0 / n as f64 } else { 1.0 };
         (
             buf.iter().map(|c| c.re * scale).collect(),
             buf.iter().map(|c| c.im * scale).collect(),
         )
     }
 
-    // Sizes: primes (worst case), composites, powers of two, and small edge
-    // sizes that exercise the scalar SIMD tails.
+    // Cover scalar tails and convolution-length transitions as well as prime,
+    // composite, and power-of-two transform lengths.
     const SIZES: &[usize] = &[
-        1, 2, 3, 5, 6, 7, 9, 10, 11, 12, 13, 17, 31, 64, 100, 127, 1000, 1024,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 31, 32, 63, 64, 65, 100, 127, 128,
+        129, 257, 1000, 1024,
     ];
 
     #[test]
@@ -469,7 +494,7 @@ mod tests {
         for &n in SIZES {
             let re: Vec<f64> = (1..=n).map(|i| i as f64).collect();
             let im: Vec<f64> = (1..=n).map(|i| (i as f64) * 0.5 - 1.0).collect();
-            let (exp_re, exp_im) = rustfft_reference_f64(&re, &im, false);
+            let (exp_re, exp_im) = rustfft_reference_f64(&re, &im, Direction::Forward);
 
             let mut got_re = re.clone();
             let mut got_im = im.clone();
@@ -487,7 +512,7 @@ mod tests {
         for &n in SIZES {
             let re: Vec<f64> = (1..=n).map(|i| (i as f64) * 0.25).collect();
             let im: Vec<f64> = (1..=n).map(|i| 2.0 - i as f64).collect();
-            let (exp_re, exp_im) = rustfft_reference_f64(&re, &im, true);
+            let (exp_re, exp_im) = rustfft_reference_f64(&re, &im, Direction::Inverse);
 
             let mut got_re = re.clone();
             let mut got_im = im.clone();
@@ -531,42 +556,76 @@ mod tests {
     #[should_panic]
     fn signal_length_mismatch_panics_f64() {
         let planner = PlannerBluestein64::new(7);
-        let opts = crate::options::Options::guess_options(planner.inner_fft_len());
-        let m = planner.inner_fft_len();
+        let opts = crate::options::Options::guess_options(planner.scratch_len());
+        let m = planner.scratch_len();
         let mut re = vec![0.0f64; 8];
         let mut im = vec![0.0f64; 8];
-        let mut sr = vec![0.0f64; m];
-        let mut si = vec![0.0f64; m];
+        let mut scratch_re = vec![0.0f64; m];
+        let mut scratch_im = vec![0.0f64; m];
         fft_f64_bluestein_with_planner_and_opts(
             &mut re,
             &mut im,
             Direction::Forward,
             &planner,
             &opts,
-            &mut sr,
-            &mut si,
+            &mut scratch_re,
+            &mut scratch_im,
         );
     }
 
     #[test]
-    #[should_panic(expected = "scratch_re must have length inner_fft_len()")]
-    fn scratch_length_mismatch_panics_f64() {
+    #[should_panic(expected = "scratch_re is too short")]
+    fn short_scratch_panics_f64() {
         let planner = PlannerBluestein64::new(7);
-        let opts = crate::options::Options::guess_options(planner.inner_fft_len());
-        let m = planner.inner_fft_len();
+        let opts = crate::options::Options::guess_options(planner.scratch_len());
+        let m = planner.scratch_len();
         let mut re = vec![0.0f64; 7];
         let mut im = vec![0.0f64; 7];
-        let mut sr = vec![0.0f64; m - 1];
-        let mut si = vec![0.0f64; m];
+        let mut scratch_re = vec![0.0f64; m - 1];
+        let mut scratch_im = vec![0.0f64; m];
         fft_f64_bluestein_with_planner_and_opts(
             &mut re,
             &mut im,
             Direction::Forward,
             &planner,
             &opts,
-            &mut sr,
-            &mut si,
+            &mut scratch_re,
+            &mut scratch_im,
         );
+    }
+
+    #[test]
+    fn oversized_scratch_is_accepted_f64() {
+        let len = 17;
+        let planner = PlannerBluestein64::new(len);
+        let opts = Options::guess_options(planner.scratch_len());
+        let mut re: Vec<f64> = (0..len).map(|i| (i as f64).sin()).collect();
+        let mut im: Vec<f64> = (0..len).map(|i| (i as f64).cos()).collect();
+        let (expected_re, expected_im) = rustfft_reference_f64(&re, &im, Direction::Forward);
+
+        let extra = 7;
+        let mut scratch_re = vec![f64::NAN; planner.scratch_len() + extra];
+        let mut scratch_im = vec![f64::NAN; planner.scratch_len() + extra];
+        fft_f64_bluestein_with_planner_and_opts(
+            &mut re,
+            &mut im,
+            Direction::Forward,
+            &planner,
+            &opts,
+            &mut scratch_re,
+            &mut scratch_im,
+        );
+
+        for k in 0..len {
+            assert_close_f64(re[k], expected_re[k], 1e-8);
+            assert_close_f64(im[k], expected_im[k], 1e-8);
+        }
+        assert!(scratch_re[planner.scratch_len()..]
+            .iter()
+            .all(|value| value.is_nan()));
+        assert!(scratch_im[planner.scratch_len()..]
+            .iter()
+            .all(|value| value.is_nan()));
     }
 
     fn assert_close_f32(actual: f32, expected: f32, rel: f32) {
@@ -578,7 +637,7 @@ mod tests {
         );
     }
 
-    fn rustfft_reference_f32(re: &[f32], im: &[f32], inverse: bool) -> (Vec<f32>, Vec<f32>) {
+    fn rustfft_reference_f32(re: &[f32], im: &[f32], direction: Direction) -> (Vec<f32>, Vec<f32>) {
         use utilities::rustfft::num_complex::Complex;
         use utilities::rustfft::FftPlanner;
 
@@ -589,35 +648,36 @@ mod tests {
             .map(|(&r, &i)| Complex::new(r, i))
             .collect();
         let mut planner = FftPlanner::new();
-        let fft = if inverse {
-            planner.plan_fft_inverse(n)
-        } else {
-            planner.plan_fft_forward(n)
+        let (fft, scale) = match direction {
+            Direction::Forward => (planner.plan_fft_forward(n), 1.0),
+            Direction::Inverse => (planner.plan_fft_inverse(n), 1.0 / n as f32),
         };
         fft.process(&mut buf);
-        let scale = if inverse { 1.0 / n as f32 } else { 1.0 };
         (
             buf.iter().map(|c| c.re * scale).collect(),
             buf.iter().map(|c| c.im * scale).collect(),
         )
     }
 
-    const SIZES_F32: &[usize] = &[1, 2, 3, 5, 7, 9, 11, 13, 17, 31, 64, 127, 256];
+    const SIZES_F32: &[usize] = &[
+        1, 2, 3, 4, 5, 7, 8, 9, 13, 15, 16, 17, 31, 32, 63, 64, 65, 100, 127, 128, 129, 256, 257,
+        1000,
+    ];
 
     #[test]
     fn forward_vs_rustfft_f32() {
         for &n in SIZES_F32 {
-            let re: Vec<f32> = (1..=n).map(|i| i as f32 * 0.1).collect();
-            let im: Vec<f32> = (1..=n).map(|i| 0.5 - i as f32 * 0.05).collect();
-            let (exp_re, exp_im) = rustfft_reference_f32(&re, &im, false);
+            let re: Vec<f32> = (1..=n).map(|i| (i as f32 * 0.1).sin()).collect();
+            let im: Vec<f32> = (1..=n).map(|i| (i as f32 * 0.05).cos()).collect();
+            let (exp_re, exp_im) = rustfft_reference_f32(&re, &im, Direction::Forward);
 
             let mut got_re = re.clone();
             let mut got_im = im.clone();
             fft_f32_bluestein(&mut got_re, &mut got_im, Direction::Forward);
 
             for k in 0..n {
-                assert_close_f32(got_re[k], exp_re[k], 1e-3);
-                assert_close_f32(got_im[k], exp_im[k], 1e-3);
+                assert_close_f32(got_re[k], exp_re[k], 2e-4);
+                assert_close_f32(got_im[k], exp_im[k], 2e-4);
             }
         }
     }
@@ -627,15 +687,15 @@ mod tests {
         for &n in SIZES_F32 {
             let re: Vec<f32> = (1..=n).map(|i| (i as f32) * 0.25).collect();
             let im: Vec<f32> = (1..=n).map(|i| 1.0 - i as f32 * 0.125).collect();
-            let (exp_re, exp_im) = rustfft_reference_f32(&re, &im, true);
+            let (exp_re, exp_im) = rustfft_reference_f32(&re, &im, Direction::Inverse);
 
             let mut got_re = re.clone();
             let mut got_im = im.clone();
             fft_f32_bluestein(&mut got_re, &mut got_im, Direction::Inverse);
 
             for k in 0..n {
-                assert_close_f32(got_re[k], exp_re[k], 1e-3);
-                assert_close_f32(got_im[k], exp_im[k], 1e-3);
+                assert_close_f32(got_re[k], exp_re[k], 2e-4);
+                assert_close_f32(got_im[k], exp_im[k], 2e-4);
             }
         }
     }
@@ -653,17 +713,14 @@ mod tests {
             fft_f32_bluestein(&mut got_re, &mut got_im, Direction::Inverse);
 
             for k in 0..n {
-                assert_close_f32(got_re[k], orig_re[k], 1e-3);
-                assert_close_f32(got_im[k], orig_im[k], 1e-3);
+                assert_close_f32(got_re[k], orig_re[k], 2e-4);
+                assert_close_f32(got_im[k], orig_im[k], 2e-4);
             }
         }
     }
 
     #[test]
     fn tiers_agree_f64() {
-        use crate::options::Options;
-        use crate::planner::{Direction, PlannerBluestein64};
-
         let n = 100;
         let re: Vec<f64> = (1..=n).map(|i| i as f64).collect();
         let im: Vec<f64> = (1..=n).map(|i| -(i as f64)).collect();
@@ -673,46 +730,48 @@ mod tests {
         fft_f64_bluestein(&mut bare_re, &mut bare_im, Direction::Forward);
 
         let planner = PlannerBluestein64::new(n);
-        let mut wp_re = re.clone();
-        let mut wp_im = im.clone();
-        fft_f64_bluestein_with_planner(&mut wp_re, &mut wp_im, Direction::Forward, &planner);
+        let mut planned_re = re.clone();
+        let mut planned_im = im.clone();
+        fft_f64_bluestein_with_planner(
+            &mut planned_re,
+            &mut planned_im,
+            Direction::Forward,
+            &planner,
+        );
 
-        let opts = Options::guess_options(planner.inner_fft_len());
-        let m = planner.inner_fft_len();
+        let opts = Options::guess_options(planner.scratch_len());
+        let m = planner.scratch_len();
         let mut full_re = re.clone();
         let mut full_im = im.clone();
-        let mut sr = vec![0.0; m];
-        let mut si = vec![0.0; m];
+        let mut scratch_re = vec![0.0; m];
+        let mut scratch_im = vec![0.0; m];
         fft_f64_bluestein_with_planner_and_opts(
             &mut full_re,
             &mut full_im,
             Direction::Forward,
             &planner,
             &opts,
-            &mut sr,
-            &mut si,
+            &mut scratch_re,
+            &mut scratch_im,
         );
 
-        assert_eq!((bare_re, bare_im), (wp_re.clone(), wp_im.clone()));
-        assert_eq!((wp_re, wp_im), (full_re, full_im));
+        assert_eq!((bare_re, bare_im), (planned_re.clone(), planned_im.clone()));
+        assert_eq!((planned_re, planned_im), (full_re, full_im));
     }
 
     #[test]
     fn scratch_reuse_across_calls_f64() {
-        use crate::options::Options;
-        use crate::planner::{Direction, PlannerBluestein64};
-
         let n = 127;
         let planner = PlannerBluestein64::new(n);
-        let opts = Options::guess_options(planner.inner_fft_len());
-        let m = planner.inner_fft_len();
-        let mut sr = vec![0.0; m];
-        let mut si = vec![0.0; m];
+        let opts = Options::guess_options(planner.scratch_len());
+        let m = planner.scratch_len();
+        let mut scratch_re = vec![0.0; m];
+        let mut scratch_im = vec![0.0; m];
 
         for seed in 0..4u64 {
             let re: Vec<f64> = (0..n).map(|i| ((i as u64 + seed) as f64).sin()).collect();
             let im: Vec<f64> = (0..n).map(|i| ((i as u64 + seed) as f64).cos()).collect();
-            let (exp_re, exp_im) = rustfft_reference_f64(&re, &im, false);
+            let (exp_re, exp_im) = rustfft_reference_f64(&re, &im, Direction::Forward);
 
             let mut got_re = re.clone();
             let mut got_im = im.clone();
@@ -722,8 +781,8 @@ mod tests {
                 Direction::Forward,
                 &planner,
                 &opts,
-                &mut sr,
-                &mut si,
+                &mut scratch_re,
+                &mut scratch_im,
             );
 
             for k in 0..n {

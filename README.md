@@ -24,7 +24,10 @@ Designed for large FFTs (gigabytes of data) common in scientific workloads, e.g.
 
 ## Limitations
 
-- The fastest path (`fft_*_dit`) requires a power-of-2 length `2^n`. For arbitrary lengths, the `fft_*_bluestein` family computes the exact DFT via Bluestein's algorithm (chirp-z transform). No signal zero-padding is needed, though it is slower than the power-of-2 path.
+- The fastest path (`fft_*_dit`) requires a power-of-two length. For other
+  lengths, the `fft_*_bluestein` family computes the same DFT with Bluestein's
+  algorithm. Callers do not need to pad their input, but the transform is slower
+  and uses an internal convolution buffer.
 
 ## Planned features
 
@@ -47,16 +50,20 @@ let planner = PlannerDit64::new(big_n);
 fft_f64_dit_with_planner(&mut reals, &mut imags, Direction::Forward, &planner);
 ```
 
-#### Arbitrary-Size FFT (Bluestein)
+### Arbitrary-size FFT (Bluestein)
 
 For lengths that are not a power of two, use the `fft_*_bluestein` family. It has
 the same three tiers and `Direction` semantics as `fft_*_dit`. A reusable
-`PlannerBluestein64` amortizes the chirp table and filter precompute.
+`PlannerBluestein64` amortizes the chirp table and convolution-kernel precompute.
 
 ```rust,no_run
-use phastft::{fft_f64_bluestein, fft_f64_bluestein_with_planner, planner::{Direction, PlannerBluestein64}};
+use phastft::{
+    fft_f64_bluestein,
+    fft_f64_bluestein_with_planner,
+    planner::{Direction, PlannerBluestein64},
+};
 
-let n = 1_000_003; // a large prime, no power-of-2 padding needed
+let n = 1_003; // prime; no caller-side padding needed
 let mut reals: Vec<f64> = (1..=n).map(|i| i as f64).collect();
 let mut imags: Vec<f64> = vec![0.0; n];
 
@@ -68,7 +75,12 @@ let planner = PlannerBluestein64::new(n);
 fft_f64_bluestein_with_planner(&mut reals, &mut imags, Direction::Inverse, &planner);
 ```
 
-#### Complex Number Support (Interleaved Format)
+For an allocation-free hot path, use
+`fft_f64_bluestein_with_planner_and_opts` and keep two scratch buffers of at
+least `planner.scratch_len()` elements each. Choose `Options` for that scratch
+length, which is also the size of the internal power-of-two FFT.
+
+### Complex number support (interleaved format)
 
 When the `complex-nums` feature is enabled, you can also use the interleaved
 format with the `num_complex::Complex` type:
@@ -90,7 +102,7 @@ fft_f64_dit_interleaved(&mut signal, Direction::Forward);
 Both `fft_f32_dit_interleaved` and `fft_f64_dit_interleaved` are available for `f32` and
 `f64` precision respectively.
 
-#### Real-Valued FFT (R2C)
+### Real-valued FFT (R2C)
 
 For purely real-valued input, the R2C transform is approximately 2x faster than
 running a full complex FFT with zeroed imaginary components. The output is the

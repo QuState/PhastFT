@@ -49,6 +49,23 @@ where
         .collect()
 }
 
+/// Writes separate real and imaginary components into an interleaved complex slice.
+///
+/// # Panics
+///
+/// Panics unless all three slices have the same length.
+pub fn interleave_complex<T>(reals: &[T], imags: &[T], output: &mut [Complex<T>])
+where
+    T: Copy,
+{
+    assert_eq!(reals.len(), imags.len());
+    assert_eq!(reals.len(), output.len());
+
+    for ((output, &re), &im) in output.iter_mut().zip(reals).zip(imags) {
+        *output = Complex::new(re, im);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rand::distr::StandardUniform;
@@ -101,5 +118,10 @@ mod tests {
 
         let recombined_flat: &[f32] = cast_slice(recombined_vec.as_slice());
         assert_eq!(complex_vec, recombined_flat);
+
+        let mut output = vec![Complex::new(0.0, 0.0); reals.len()];
+        interleave_complex(&reals, &imags, &mut output);
+        let output_flat: &[f32] = cast_slice(&output);
+        assert_eq!(complex_vec, output_flat);
     }
 }

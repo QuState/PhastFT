@@ -1,9 +1,8 @@
-//! PhastFT Bluestein vs rustfft Bluestein at a matched power-of-2 inner size.
+//! Compare PhastFT and RustFFT's Bluestein implementations.
 //!
-//! rustfft's `BluesteinsAlgorithm` accepts any inner `M >= 2N-1`. We give it the
-//! same `M = next_pow2(2N-1)` PhastFT is constrained to, so the convolution size
-//! is fixed across both implementations.
-//!
+//! RustFFT accepts any inner length `M >= 2N - 1`. This benchmark gives both
+//! implementations the same power-of-two `M`, so they perform equivalent
+//! convolution work. Plans and scratch buffers are reused in both cases.
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use num_traits::Zero;
 use phastft::options::Options;
@@ -26,24 +25,30 @@ macro_rules! bluestein_compare {
             for &len in BLUESTEIN_LENGTHS {
                 group.throughput(throughput_complex::<$T>(len));
 
-                // --- PhastFT Bluestein (planner + scratch reused) ---
                 let planner = <$planner>::new(len);
-                let m = planner.inner_fft_len();
+                let m = planner.scratch_len();
                 let opts = Options::guess_options(m);
-                let mut sr = vec![0.0; m];
-                let mut si = vec![0.0; m];
+                let mut scratch_re = vec![0.0; m];
+                let mut scratch_im = vec![0.0; m];
                 group.bench_function(BenchmarkId::new(ids::PHASTFT_BLUESTEIN, len), |b| {
                     b.iter_batched(
                         || split_complex::<$T>(len),
                         |(mut re, mut im)| {
-                            $phastft_fn(&mut re, &mut im, $dir, &planner, &opts, &mut sr, &mut si);
+                            $phastft_fn(
+                                &mut re,
+                                &mut im,
+                                $dir,
+                                &planner,
+                                &opts,
+                                &mut scratch_re,
+                                &mut scratch_im,
+                            );
                             std::hint::black_box((&mut re, &mut im));
                         },
                         BatchSize::SmallInput,
                     );
                 });
 
-                // --- rustfft Bluestein, matched M (algorithm + scratch reused) ---
                 let inner = FftPlanner::<$T>::new().$rustfft_plan(m);
                 let fft = BluesteinsAlgorithm::new(len, inner);
                 let mut scratch = vec![Complex::<$T>::zero(); fft.get_inplace_scratch_len()];
@@ -52,6 +57,15 @@ macro_rules! bluestein_compare {
                         || interleaved_complex::<$T>(len),
                         |mut signal| {
                             fft.process_with_scratch(&mut signal, &mut scratch);
+                            // RustFFT leaves inverse transforms unnormalized;
+                            // PhastFT applies 1/N, so include the same work here.
+                            if matches!($dir, Direction::Inverse) {
+                                let scale = 1.0 as $T / len as $T;
+                                for value in &mut signal {
+                                    value.re *= scale;
+                                    value.im *= scale;
+                                }
+                            }
                             std::hint::black_box(&mut signal);
                         },
                         BatchSize::SmallInput,
