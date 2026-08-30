@@ -11,7 +11,12 @@ pub fn deinterleave<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
     // because we don't need to initialize the output Vecs.
     // The Vecs are also allocated up front without intermediate reallocations.
     // This is faster than any implementation we could write without `unsafe`.
-    input.chunks_exact(2).map(|c| (c[0], c[1])).unzip()
+    input
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| (c[0], c[1]))
+        .unzip()
 }
 
 /// Splits a slice of [`Complex<f64>`] into separate real and imaginary vectors.

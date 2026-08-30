@@ -126,7 +126,7 @@ where
     for ((z_re, z_im), chunk) in reals
         .iter_mut()
         .zip(imags.iter_mut())
-        .zip(samples.chunks_exact(2))
+        .zip(samples.as_chunks::<2>().0.iter())
     {
         *z_re = chunk[0];
         *z_im = chunk[1];
@@ -147,7 +147,7 @@ where
         .collect();
 
     let mut signal = vec![Complex::new(T::zero(), T::zero()); n];
-    for (z, chunk) in signal.iter_mut().zip(samples.chunks_exact(2)) {
+    for (z, chunk) in signal.iter_mut().zip(samples.as_chunks::<2>().0.iter()) {
         z.re = chunk[0];
         z.im = chunk[1];
     }
@@ -186,7 +186,7 @@ where
     for ((r, i), c) in re
         .iter_mut()
         .zip(im.iter_mut())
-        .zip(samples.chunks_exact(2))
+        .zip(samples.as_chunks::<2>().0.iter())
     {
         *r = c[0];
         *i = c[1];
@@ -209,7 +209,7 @@ where
         .take(2 * len)
         .collect();
     let mut signal = vec![Complex::new(T::zero(), T::zero()); len];
-    for (z, c) in signal.iter_mut().zip(samples.chunks_exact(2)) {
+    for (z, c) in signal.iter_mut().zip(samples.as_chunks::<2>().0.iter()) {
         z.re = c[0];
         z.im = c[1];
     }
