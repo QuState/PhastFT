@@ -1,0 +1,53 @@
+[package]
+name = "benchmark-criterion"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bench]]
+harness = false
+name = "c2c_forward"
+
+[[bench]]
+harness = false
+name = "c2c_inverse"
+
+[[bench]]
+harness = false
+name = "r2c"
+
+[[bench]]
+harness = false
+name = "c2r"
+
+[[bench]]
+harness = false
+name = "planner"
+
+[[bench]]
+harness = false
+name = "interleave"
+
+[[bench]]
+harness = false
+name = "bit_reversal"
+
+[dependencies]
+criterion.workspace = true
+fftw = { workspace = true, optional = true }
+fftw-sys = { workspace = true, optional = true }
+num-traits.workspace = true
+phastft = { workspace = true, default-features = false, features = ["bench-internals", "complex-nums"] }
+rand.workspace = true
+realfft = { workspace = true, optional = true }
+rustfft = { workspace = true, optional = true }
+utilities.workspace = true
+fearless_simd.workspace = true
+
+[features]
+default = ["fftw", "parallel", "realfft", "rustfft"]
+fftw = ["dep:fftw", "dep:fftw-sys"]
+parallel = ["phastft/parallel"]
+realfft = ["dep:realfft"]
+rustfft = ["dep:rustfft"]

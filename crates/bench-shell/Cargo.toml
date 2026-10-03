@@ -1,0 +1,32 @@
+[package]
+name = "bench-shell"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "benchmark"
+path = "src/benchmark.rs"
+
+[[bin]]
+name = "benchmark_dit_planner"
+path = "src/benchmark_dit_planner.rs"
+
+[[bin]]
+name = "fftwrb"
+path = "src/fftwrb.rs"
+
+[[bin]]
+name = "rustfft"
+path = "src/rustfft.rs"
+
+[dependencies]
+fftw.workspace = true
+phastft = { workspace = true, default-features = false, features = ["bench-internals", "complex-nums"] }
+rustfft.workspace = true
+utilities.workspace = true
+
+[features]
+default = ["parallel"]
+parallel = ["phastft/parallel"]

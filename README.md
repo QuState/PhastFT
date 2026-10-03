@@ -127,7 +127,7 @@ PhastFT is benchmarked against several other FFT libraries. The plots below show
 PhastFT with the `parallel` feature enabled (multi-threaded) against RustFFT and
 FFTW3. The single-threaded comparison, along with the scripts and instructions to
 reproduce every result, lives in the [benchmarks
-README](https://github.com/smu160/PhastFT/tree/main/benches#readme).
+README](https://github.com/smu160/PhastFT/tree/main/crates/bench-criterion#readme).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/smu160/PhastFT/main/assets/criterion_overlay_phastft_parallel_c2c_forward_f32_6_14.svg" width="400" title="C2C Forward (f32), small-N — multi-threaded" alt="C2C Forward (f32), small-N: PhastFT (multi-threaded) vs. RustFFT vs. FFTW3">

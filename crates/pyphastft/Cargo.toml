@@ -1,0 +1,16 @@
+[package]
+name = "pyphastft"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib"]
+name = "pyphastft"
+
+[dependencies]
+numpy = "0.26.0"
+phastft.workspace = true
+pyo3 = { version = "0.26.0" }

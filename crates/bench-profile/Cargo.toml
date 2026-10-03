@@ -1,0 +1,10 @@
+[package]
+name = "bench-profile"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+phastft.workspace = true
+utilities.workspace = true

@@ -1,0 +1,33 @@
+[package]
+name = "phastft"
+version.workspace = true
+rust-version.workspace = true
+edition .workspace = true
+authors.workspace = true
+license .workspace = true
+description.workspace = true
+repository.workspace = true
+readme="../../README.md"
+documentation = "https://docs.rs/phastft"
+keywords.workspace = true
+categories.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+bytemuck = { workspace = true, optional = true }
+fearless_simd .workspace = true
+num-complex = {workspace = true, optional = true }
+num-traits. workspace = true
+rayon = {workspace = true, optional = true }
+rand.workspace = true
+
+[dev-dependencies]
+utilities.workspace = true
+
+[features]
+default = ["parallel"]
+bench-internals = ["complex-nums"]
+complex-nums = ["dep:bytemuck", "dep:num-complex"]
+parallel = ["dep:rayon"]

@@ -22,7 +22,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run cargo clippy
-        run: cargo clippy --all-targets --all-features --tests -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --tests --benches -- -D warnings
 
   rustfmt:
     name: Format
@@ -95,7 +95,7 @@ jobs:
       - name: Build docs
         env:
           RUSTDOCFLAGS: "-D warnings"
-        run: cargo doc --all-features --no-deps
+        run: cargo doc -p phastft --all-features --no-deps
 
   coverage:
     runs-on: ubuntu-latest

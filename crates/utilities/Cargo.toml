@@ -1,0 +1,8 @@
+[package]
+name = "utilities"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rand.workspace = true
+rustfft.workspace = true

@@ -6,3 +6,6 @@ coverage:
 
     patch: false
     changes: false
+
+ignore:
+  - "crates/bench*" # ignore benchmark
