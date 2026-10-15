@@ -306,10 +306,12 @@ fn execute_dit_stages_f64<S: Simd>(
                     simd,
                     reals,
                     imags,
-                    twiddles_re,
-                    twiddles_im,
-                    twiddles_re2,
-                    twiddles_im2,
+                    FusedTwiddles {
+                        stage_re: twiddles_re,
+                        stage_im: twiddles_im,
+                        next_stage_re: twiddles_re2,
+                        next_stage_im: twiddles_im2,
+                    },
                     dist,
                 );
                 (stage_twiddle_idx + 2, 2)
@@ -321,10 +323,12 @@ fn execute_dit_stages_f64<S: Simd>(
                     simd,
                     reals,
                     imags,
-                    twiddles_re,
-                    twiddles_im,
-                    twiddles_re2,
-                    twiddles_im2,
+                    FusedTwiddles {
+                        stage_re: twiddles_re,
+                        stage_im: twiddles_im,
+                        next_stage_re: twiddles_re2,
+                        next_stage_im: twiddles_im2,
+                    },
                     dist,
                 );
                 (stage_twiddle_idx + 2, 2)
@@ -378,10 +382,12 @@ fn execute_dit_stages_f32<S: Simd>(
                     simd,
                     reals,
                     imags,
-                    twiddles_re,
-                    twiddles_im,
-                    twiddles_re2,
-                    twiddles_im2,
+                    FusedTwiddles {
+                        stage_re: twiddles_re,
+                        stage_im: twiddles_im,
+                        next_stage_re: twiddles_re2,
+                        next_stage_im: twiddles_im2,
+                    },
                     dist,
                 );
                 (stage_twiddle_idx + 2, 2)
@@ -393,10 +399,12 @@ fn execute_dit_stages_f32<S: Simd>(
                     simd,
                     reals,
                     imags,
-                    twiddles_re,
-                    twiddles_im,
-                    twiddles_re2,
-                    twiddles_im2,
+                    FusedTwiddles {
+                        stage_re: twiddles_re,
+                        stage_im: twiddles_im,
+                        next_stage_re: twiddles_re2,
+                        next_stage_im: twiddles_im2,
+                    },
                     dist,
                 );
                 (stage_twiddle_idx + 2, 2)

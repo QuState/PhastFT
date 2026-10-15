@@ -10,8 +10,10 @@ use num_traits::Float;
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut [T]) {
     reals
-        .chunks_exact_mut(2)
-        .zip(imags.chunks_exact_mut(2))
+        .as_chunks_mut::<2>()
+        .0
+        .iter_mut()
+        .zip(imags.as_chunks_mut::<2>().0.iter_mut())
         .for_each(|(reals_chunk, imags_chunk)| {
             let z0_re = reals_chunk[0];
             let z0_im = imags_chunk[0];
@@ -1041,79 +1043,6 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     }
 }
 
-/// General DIT butterfly for f64 (narrow SIMD: f64x4)
-///
-/// Uses 4-lane SIMD instead of 8-lane to reduce register pressure.
-#[inline(never)] // otherwise every kernel gets inlined into the parent
-pub fn fft_dit_chunk_n_f64_narrow<S: Simd>(
-    simd: S,
-    reals: &mut [f64],
-    imags: &mut [f64],
-    twiddles_re: &[f64],
-    twiddles_im: &[f64],
-    dist: usize,
-) {
-    simd.vectorize(
-        #[inline(always)]
-        || fft_dit_chunk_n_simd_f64_narrow(simd, reals, imags, twiddles_re, twiddles_im, dist),
-    )
-}
-
-/// General DIT butterfly for f64 (narrow SIMD: f64x4)
-#[inline(always)] // required by fearless_simd
-fn fft_dit_chunk_n_simd_f64_narrow<S: Simd>(
-    simd: S,
-    reals: &mut [f64],
-    imags: &mut [f64],
-    twiddles_re: &[f64],
-    twiddles_im: &[f64],
-    dist: usize,
-) {
-    const LANES: usize = 4;
-    let chunk_size = dist * 2;
-    assert!(chunk_size >= LANES * 2);
-
-    // see fft_dit_chunk_n_simd_f64 for an explanation of this structure
-    for (reals_chunk, imags_chunk) in reals
-        .chunks_exact_mut(chunk_size)
-        .zip(imags.chunks_exact_mut(chunk_size))
-    {
-        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
-
-        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                let two = f64x4::splat(simd, 2.0);
-                let in0_re = f64x4::simd_from(simd, *re_s0);
-                let in1_re = f64x4::simd_from(simd, *re_s1);
-                let in0_im = f64x4::simd_from(simd, *im_s0);
-                let in1_im = f64x4::simd_from(simd, *im_s1);
-
-                let tw_re = f64x4::simd_from(simd, *tw_re);
-                let tw_im = f64x4::simd_from(simd, *tw_im);
-
-                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
-
-                // Use FMA for out1 = 2*in0 - out0
-                let out1_re = two.mul_sub(in0_re, out0_re);
-                let out1_im = two.mul_sub(in0_im, out0_im);
-
-                out0_re.store_slice(re_s0);
-                out0_im.store_slice(im_s0);
-                out1_re.store_slice(re_s1);
-                out1_im.store_slice(im_s1);
-            });
-    }
-}
-
 /// General DIT butterfly for f32
 #[inline(never)] // otherwise every kernel gets inlined into the parent
 pub fn fft_dit_chunk_n_f32<S: Simd>(
@@ -1185,77 +1114,86 @@ fn fft_dit_chunk_n_simd_f32<S: Simd>(
     }
 }
 
-/// General DIT butterfly for f32 (narrow SIMD: f32x8)
-///
-/// Uses 8-lane SIMD instead of 16-lane to reduce register pressure.
-#[inline(never)] // otherwise every kernel gets inlined into the parent
-pub fn fft_dit_chunk_n_f32_narrow<S: Simd>(
-    simd: S,
-    reals: &mut [f32],
-    imags: &mut [f32],
-    twiddles_re: &[f32],
-    twiddles_im: &[f32],
-    dist: usize,
-) {
-    simd.vectorize(
-        #[inline(always)]
-        || fft_dit_chunk_n_simd_f32_narrow(simd, reals, imags, twiddles_re, twiddles_im, dist),
-    )
+/// Twiddle slices for two consecutive stages. The next stage only needs its
+/// first `dist_s` entries; the second half is derived with a -j rotation.
+#[derive(Clone, Copy)]
+pub(crate) struct FusedTwiddles<'a, T> {
+    pub stage_re: &'a [T],
+    pub stage_im: &'a [T],
+    pub next_stage_re: &'a [T],
+    pub next_stage_im: &'a [T],
 }
 
-/// General DIT butterfly for f32 (narrow SIMD: f32x8)
-#[inline(always)] // required by fearless_simd
-fn fft_dit_chunk_n_simd_f32_narrow<S: Simd>(
-    simd: S,
-    reals: &mut [f32],
-    imags: &mut [f32],
-    twiddles_re: &[f32],
-    twiddles_im: &[f32],
-    dist: usize,
-) {
-    const LANES: usize = 8;
-    let chunk_size = dist * 2;
-    assert!(chunk_size >= LANES * 2);
+// Expand the same butterfly for both precisions and traversals. A macro keeps
+// every operation inside the caller's SIMD target-feature boundary without
+// introducing helper calls or relying on the optimizer's inlining heuristics.
+macro_rules! fused_butterfly {
+    ($vector:ident, $simd:expr,
+     [$ra:expr, $rb:expr, $rc:expr, $rd:expr],
+     [$ia:expr, $ib:expr, $ic:expr, $id:expr],
+     [$tw_s_re:expr, $tw_s_im:expr, $tw1_re:expr, $tw1_im:expr]) => {{
+        let two = $vector::splat($simd, 2.0);
 
-    // see fft_dit_chunk_n_simd_f64 for an explanation of this structure
-    for (reals_chunk, imags_chunk) in reals
-        .chunks_exact_mut(chunk_size)
-        .zip(imags.chunks_exact_mut(chunk_size))
-    {
-        let (reals_s0, reals_s1) = reals_chunk.split_at_mut(dist);
-        let (imags_s0, imags_s1) = imags_chunk.split_at_mut(dist);
+        // Load 4 data sub-blocks
+        let a_re = $vector::simd_from($simd, *$ra);
+        let a_im = $vector::simd_from($simd, *$ia);
+        let b_re = $vector::simd_from($simd, *$rb);
+        let b_im = $vector::simd_from($simd, *$ib);
+        let c_re = $vector::simd_from($simd, *$rc);
+        let c_im = $vector::simd_from($simd, *$ic);
+        let d_re = $vector::simd_from($simd, *$rd);
+        let d_im = $vector::simd_from($simd, *$id);
 
-        (reals_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(reals_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s0.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(imags_s1.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_im.as_chunks::<LANES>().0.iter())
-            .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                let two = f32x8::splat(simd, 2.0);
-                let in0_re = f32x8::simd_from(simd, *re_s0);
-                let in1_re = f32x8::simd_from(simd, *re_s1);
-                let in0_im = f32x8::simd_from(simd, *im_s0);
-                let in1_im = f32x8::simd_from(simd, *im_s1);
+        // Load stage-s twiddles
+        let tws_re = $vector::simd_from($simd, *$tw_s_re);
+        let tws_im = $vector::simd_from($simd, *$tw_s_im);
 
-                let tw_re = f32x8::simd_from(simd, *tw_re);
-                let tw_im = f32x8::simd_from(simd, *tw_im);
+        // Stage s butterfly: (A,B) pair
+        // A' = A + tw_s * B,  B' = A - tw_s * B
+        let ap_re = tws_im.mul_add(-b_im, tws_re.mul_add(b_re, a_re));
+        let ap_im = tws_im.mul_add(b_re, tws_re.mul_add(b_im, a_im));
+        let bp_re = two.mul_sub(a_re, ap_re);
+        let bp_im = two.mul_sub(a_im, ap_im);
 
-                // out0.re = (in0.re + tw_re * in1.re) - tw_im * in1.im
-                let out0_re = tw_im.mul_add(-in1_im, tw_re.mul_add(in1_re, in0_re));
-                // out0.im = (in0.im + tw_re * in1.im) + tw_im * in1.re
-                let out0_im = tw_im.mul_add(in1_re, tw_re.mul_add(in1_im, in0_im));
+        // Stage s butterfly: (C,D) pair
+        // C' = C + tw_s * D,  D' = C - tw_s * D
+        let cp_re = tws_im.mul_add(-d_im, tws_re.mul_add(d_re, c_re));
+        let cp_im = tws_im.mul_add(d_re, tws_re.mul_add(d_im, c_im));
+        let dp_re = two.mul_sub(c_re, cp_re);
+        let dp_im = two.mul_sub(c_im, cp_im);
 
-                // Use FMA for out1 = 2*in0 - out0
-                let out1_re = two.mul_sub(in0_re, out0_re);
-                let out1_im = two.mul_sub(in0_im, out0_im);
+        // Load stage-(s+1) twiddles (first half only)
+        let tw1r = $vector::simd_from($simd, *$tw1_re);
+        let tw1i = $vector::simd_from($simd, *$tw1_im);
 
-                out0_re.store_slice(re_s0);
-                out0_im.store_slice(im_s0);
-                out1_re.store_slice(re_s1);
-                out1_im.store_slice(im_s1);
-            });
-    }
+        // Stage s+1 butterfly: (A', C') pair with tw_{s+1}[k]
+        // out_A = A' + tw1 * C',  out_C = A' - tw1 * C'
+        let out_a_re = tw1i.mul_add(-cp_im, tw1r.mul_add(cp_re, ap_re));
+        let out_a_im = tw1i.mul_add(cp_re, tw1r.mul_add(cp_im, ap_im));
+        let out_c_re = two.mul_sub(ap_re, out_a_re);
+        let out_c_im = two.mul_sub(ap_im, out_a_im);
+
+        // Derive -j * tw1: (-j)(w_re + i*w_im) = w_im - i*w_re
+        let nj_tw1r = tw1i;
+        let nj_tw1i = -tw1r;
+
+        // Stage s+1 butterfly: (B', D') pair with -j * tw_{s+1}[k]
+        // out_B = B' + (-j*tw1) * D',  out_D = B' - (-j*tw1) * D'
+        let out_b_re = nj_tw1i.mul_add(-dp_im, nj_tw1r.mul_add(dp_re, bp_re));
+        let out_b_im = nj_tw1i.mul_add(dp_re, nj_tw1r.mul_add(dp_im, bp_im));
+        let out_d_re = two.mul_sub(bp_re, out_b_re);
+        let out_d_im = two.mul_sub(bp_im, out_b_im);
+
+        // Store results
+        out_a_re.store_slice($ra);
+        out_a_im.store_slice($ia);
+        out_b_re.store_slice($rb);
+        out_b_im.store_slice($ib);
+        out_c_re.store_slice($rc);
+        out_c_im.store_slice($ic);
+        out_d_re.store_slice($rd);
+        out_d_im.store_slice($id);
+    }};
 }
 
 /// Fused two-stage DIT butterfly for f64 (radix-2², narrow SIMD: f64x4)
@@ -1265,33 +1203,20 @@ fn fft_dit_chunk_n_simd_f32_narrow<S: Simd>(
 /// `W_{4D}^{k+D} = -j * W_{4D}^k` to derive the second-half twiddle factors
 /// trivially.
 ///
-/// `twiddles_s` are for stage s (size dist_s), `twiddles_s1` are for stage s+1
-/// (only first dist_s elements needed; second half derived via -j multiply).
+/// `twiddles` contains stage-s and stage-(s+1) factors. Only the first
+/// `dist_s` entries of each slice are read; the next stage's second half
+/// is derived via a -j multiply.
 #[inline(never)]
-pub fn fft_dit_fused_2stage_f64_narrow<S: Simd>(
+pub(crate) fn fft_dit_fused_2stage_f64_narrow<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
-    twiddles_s_re: &[f64],
-    twiddles_s_im: &[f64],
-    twiddles_s1_re: &[f64],
-    twiddles_s1_im: &[f64],
+    twiddles: FusedTwiddles<'_, f64>,
     dist_s: usize,
 ) {
     simd.vectorize(
         #[inline(always)]
-        || {
-            fft_dit_fused_2stage_simd_f64_narrow(
-                simd,
-                reals,
-                imags,
-                twiddles_s_re,
-                twiddles_s_im,
-                twiddles_s1_re,
-                twiddles_s1_im,
-                dist_s,
-            )
-        },
+        || fft_dit_fused_2stage_simd_f64_narrow(simd, reals, imags, twiddles, dist_s),
     )
 }
 
@@ -1301,10 +1226,7 @@ fn fft_dit_fused_2stage_simd_f64_narrow<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
-    twiddles_s_re: &[f64],
-    twiddles_s_im: &[f64],
-    twiddles_s1_re: &[f64],
-    twiddles_s1_im: &[f64],
+    twiddles: FusedTwiddles<'_, f64>,
     dist_s: usize,
 ) {
     const LANES: usize = 4;
@@ -1335,76 +1257,22 @@ fn fft_dit_fused_2stage_simd_f64_narrow<S: Simd>(
             .zip(im_b.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(im_c.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(im_d.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles_s_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_s_im.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_s1_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_s1_im.as_chunks::<LANES>().0.iter())
+            .zip(twiddles.stage_re.as_chunks::<LANES>().0.iter())
+            .zip(twiddles.stage_im.as_chunks::<LANES>().0.iter())
+            .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.iter())
+            .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.iter())
             .for_each(
                 |(
                     ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
                     tw1_im,
                 )| {
-                    let two = f64x4::splat(simd, 2.0);
-
-                    // Load 4 data sub-blocks
-                    let a_re = f64x4::simd_from(simd, *ra);
-                    let a_im = f64x4::simd_from(simd, *ia);
-                    let b_re = f64x4::simd_from(simd, *rb);
-                    let b_im = f64x4::simd_from(simd, *ib);
-                    let c_re = f64x4::simd_from(simd, *rc);
-                    let c_im = f64x4::simd_from(simd, *ic);
-                    let d_re = f64x4::simd_from(simd, *rd);
-                    let d_im = f64x4::simd_from(simd, *id);
-
-                    // Load stage-s twiddles
-                    let tws_re = f64x4::simd_from(simd, *tw_s_re);
-                    let tws_im = f64x4::simd_from(simd, *tw_s_im);
-
-                    // Stage s butterfly: (A,B) pair
-                    // A' = A + tw_s * B,  B' = A - tw_s * B
-                    let ap_re = tws_im.mul_add(-b_im, tws_re.mul_add(b_re, a_re));
-                    let ap_im = tws_im.mul_add(b_re, tws_re.mul_add(b_im, a_im));
-                    let bp_re = two.mul_sub(a_re, ap_re);
-                    let bp_im = two.mul_sub(a_im, ap_im);
-
-                    // Stage s butterfly: (C,D) pair
-                    // C' = C + tw_s * D,  D' = C - tw_s * D
-                    let cp_re = tws_im.mul_add(-d_im, tws_re.mul_add(d_re, c_re));
-                    let cp_im = tws_im.mul_add(d_re, tws_re.mul_add(d_im, c_im));
-                    let dp_re = two.mul_sub(c_re, cp_re);
-                    let dp_im = two.mul_sub(c_im, cp_im);
-
-                    // Load stage-(s+1) twiddles (first half only)
-                    let tw1r = f64x4::simd_from(simd, *tw1_re);
-                    let tw1i = f64x4::simd_from(simd, *tw1_im);
-
-                    // Stage s+1 butterfly: (A', C') pair with tw_{s+1}[k]
-                    // out_A = A' + tw1 * C',  out_C = A' - tw1 * C'
-                    let out_a_re = tw1i.mul_add(-cp_im, tw1r.mul_add(cp_re, ap_re));
-                    let out_a_im = tw1i.mul_add(cp_re, tw1r.mul_add(cp_im, ap_im));
-                    let out_c_re = two.mul_sub(ap_re, out_a_re);
-                    let out_c_im = two.mul_sub(ap_im, out_a_im);
-
-                    // Derive -j * tw1: (-j)(w_re + i*w_im) = w_im - i*w_re
-                    let nj_tw1r = tw1i;
-                    let nj_tw1i = -tw1r;
-
-                    // Stage s+1 butterfly: (B', D') pair with -j * tw_{s+1}[k]
-                    // out_B = B' + (-j*tw1) * D',  out_D = B' - (-j*tw1) * D'
-                    let out_b_re = nj_tw1i.mul_add(-dp_im, nj_tw1r.mul_add(dp_re, bp_re));
-                    let out_b_im = nj_tw1i.mul_add(dp_re, nj_tw1r.mul_add(dp_im, bp_im));
-                    let out_d_re = two.mul_sub(bp_re, out_b_re);
-                    let out_d_im = two.mul_sub(bp_im, out_b_im);
-
-                    // Store results
-                    out_a_re.store_slice(ra);
-                    out_a_im.store_slice(ia);
-                    out_b_re.store_slice(rb);
-                    out_b_im.store_slice(ib);
-                    out_c_re.store_slice(rc);
-                    out_c_im.store_slice(ic);
-                    out_d_re.store_slice(rd);
-                    out_d_im.store_slice(id);
+                    fused_butterfly!(
+                        f64x4,
+                        simd,
+                        [ra, rb, rc, rd],
+                        [ia, ib, ic, id],
+                        [tw_s_re, tw_s_im, tw1_re, tw1_im]
+                    );
                 },
             );
     }
@@ -1412,30 +1280,16 @@ fn fft_dit_fused_2stage_simd_f64_narrow<S: Simd>(
 
 #[cfg(feature = "parallel")]
 #[inline(never)]
-pub fn fft_dit_fused_2stage_f64_narrow_parallel<S: Simd>(
+pub(crate) fn fft_dit_fused_2stage_f64_narrow_parallel<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
-    twiddles_s_re: &[f64],
-    twiddles_s_im: &[f64],
-    twiddles_s1_re: &[f64],
-    twiddles_s1_im: &[f64],
+    twiddles: FusedTwiddles<'_, f64>,
     dist_s: usize,
 ) {
     simd.vectorize(
         #[inline(always)]
-        || {
-            fft_dit_fused_2stage_simd_f64_narrow_parallel(
-                simd,
-                reals,
-                imags,
-                twiddles_s_re,
-                twiddles_s_im,
-                twiddles_s1_re,
-                twiddles_s1_im,
-                dist_s,
-            )
-        },
+        || fft_dit_fused_2stage_simd_f64_narrow_parallel(simd, reals, imags, twiddles, dist_s),
     )
 }
 
@@ -1446,10 +1300,7 @@ fn fft_dit_fused_2stage_simd_f64_narrow_parallel<S: Simd>(
     simd: S,
     reals: &mut [f64],
     imags: &mut [f64],
-    twiddles_s_re: &[f64],
-    twiddles_s_im: &[f64],
-    twiddles_s1_re: &[f64],
-    twiddles_s1_im: &[f64],
+    twiddles: FusedTwiddles<'_, f64>,
     dist_s: usize,
 ) {
     use rayon::prelude::*;
@@ -1481,10 +1332,10 @@ fn fft_dit_fused_2stage_simd_f64_narrow_parallel<S: Simd>(
             .zip(im_b.as_chunks_mut::<LANES>().0.par_iter_mut())
             .zip(im_c.as_chunks_mut::<LANES>().0.par_iter_mut())
             .zip(im_d.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(twiddles_s_re.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles_s_im.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles_s1_re.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles_s1_im.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles.stage_re.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles.stage_im.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.par_iter())
             .for_each(
                 |(
                     ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
@@ -1493,67 +1344,13 @@ fn fft_dit_fused_2stage_simd_f64_narrow_parallel<S: Simd>(
                     simd.vectorize(
                         #[inline(always)]
                         || {
-                            let two = f64x4::splat(simd, 2.0);
-
-                            // Load 4 data sub-blocks
-                            let a_re = f64x4::simd_from(simd, *ra);
-                            let a_im = f64x4::simd_from(simd, *ia);
-                            let b_re = f64x4::simd_from(simd, *rb);
-                            let b_im = f64x4::simd_from(simd, *ib);
-                            let c_re = f64x4::simd_from(simd, *rc);
-                            let c_im = f64x4::simd_from(simd, *ic);
-                            let d_re = f64x4::simd_from(simd, *rd);
-                            let d_im = f64x4::simd_from(simd, *id);
-
-                            // Load stage-s twiddles
-                            let tws_re = f64x4::simd_from(simd, *tw_s_re);
-                            let tws_im = f64x4::simd_from(simd, *tw_s_im);
-
-                            // Stage s butterfly: (A,B) pair
-                            // A' = A + tw_s * B,  B' = A - tw_s * B
-                            let ap_re = tws_im.mul_add(-b_im, tws_re.mul_add(b_re, a_re));
-                            let ap_im = tws_im.mul_add(b_re, tws_re.mul_add(b_im, a_im));
-                            let bp_re = two.mul_sub(a_re, ap_re);
-                            let bp_im = two.mul_sub(a_im, ap_im);
-
-                            // Stage s butterfly: (C,D) pair
-                            // C' = C + tw_s * D,  D' = C - tw_s * D
-                            let cp_re = tws_im.mul_add(-d_im, tws_re.mul_add(d_re, c_re));
-                            let cp_im = tws_im.mul_add(d_re, tws_re.mul_add(d_im, c_im));
-                            let dp_re = two.mul_sub(c_re, cp_re);
-                            let dp_im = two.mul_sub(c_im, cp_im);
-
-                            // Load stage-(s+1) twiddles (first half only)
-                            let tw1r = f64x4::simd_from(simd, *tw1_re);
-                            let tw1i = f64x4::simd_from(simd, *tw1_im);
-
-                            // Stage s+1 butterfly: (A', C') pair with tw_{s+1}[k]
-                            // out_A = A' + tw1 * C',  out_C = A' - tw1 * C'
-                            let out_a_re = tw1i.mul_add(-cp_im, tw1r.mul_add(cp_re, ap_re));
-                            let out_a_im = tw1i.mul_add(cp_re, tw1r.mul_add(cp_im, ap_im));
-                            let out_c_re = two.mul_sub(ap_re, out_a_re);
-                            let out_c_im = two.mul_sub(ap_im, out_a_im);
-
-                            // Derive -j * tw1: (-j)(w_re + i*w_im) = w_im - i*w_re
-                            let nj_tw1r = tw1i;
-                            let nj_tw1i = -tw1r;
-
-                            // Stage s+1 butterfly: (B', D') pair with -j * tw_{s+1}[k]
-                            // out_B = B' + (-j*tw1) * D',  out_D = B' - (-j*tw1) * D'
-                            let out_b_re = nj_tw1i.mul_add(-dp_im, nj_tw1r.mul_add(dp_re, bp_re));
-                            let out_b_im = nj_tw1i.mul_add(dp_re, nj_tw1r.mul_add(dp_im, bp_im));
-                            let out_d_re = two.mul_sub(bp_re, out_b_re);
-                            let out_d_im = two.mul_sub(bp_im, out_b_im);
-
-                            // Store results
-                            out_a_re.store_slice(ra);
-                            out_a_im.store_slice(ia);
-                            out_b_re.store_slice(rb);
-                            out_b_im.store_slice(ib);
-                            out_c_re.store_slice(rc);
-                            out_c_im.store_slice(ic);
-                            out_d_re.store_slice(rd);
-                            out_d_im.store_slice(id);
+                            fused_butterfly!(
+                                f64x4,
+                                simd,
+                                [ra, rb, rc, rd],
+                                [ia, ib, ic, id],
+                                [tw_s_re, tw_s_im, tw1_re, tw1_im]
+                            );
                         },
                     );
                 },
@@ -1568,33 +1365,20 @@ fn fft_dit_fused_2stage_simd_f64_narrow_parallel<S: Simd>(
 /// `W_{4D}^{k+D} = -j * W_{4D}^k` to derive the second-half twiddle factors
 /// trivially.
 ///
-/// `twiddles_s` are for stage s (size dist_s), `twiddles_s1` are for stage s+1
-/// (only first dist_s elements needed; second half derived via -j multiply).
+/// `twiddles` contains stage-s and stage-(s+1) factors. Only the first
+/// `dist_s` entries of each slice are read; the next stage's second half
+/// is derived via a -j multiply.
 #[inline(never)]
-pub fn fft_dit_fused_2stage_f32_narrow<S: Simd>(
+pub(crate) fn fft_dit_fused_2stage_f32_narrow<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
-    twiddles_s_re: &[f32],
-    twiddles_s_im: &[f32],
-    twiddles_s1_re: &[f32],
-    twiddles_s1_im: &[f32],
+    twiddles: FusedTwiddles<'_, f32>,
     dist_s: usize,
 ) {
     simd.vectorize(
         #[inline(always)]
-        || {
-            fft_dit_fused_2stage_simd_f32_narrow(
-                simd,
-                reals,
-                imags,
-                twiddles_s_re,
-                twiddles_s_im,
-                twiddles_s1_re,
-                twiddles_s1_im,
-                dist_s,
-            )
-        },
+        || fft_dit_fused_2stage_simd_f32_narrow(simd, reals, imags, twiddles, dist_s),
     )
 }
 
@@ -1604,10 +1388,7 @@ fn fft_dit_fused_2stage_simd_f32_narrow<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
-    twiddles_s_re: &[f32],
-    twiddles_s_im: &[f32],
-    twiddles_s1_re: &[f32],
-    twiddles_s1_im: &[f32],
+    twiddles: FusedTwiddles<'_, f32>,
     dist_s: usize,
 ) {
     const LANES: usize = 8;
@@ -1633,68 +1414,22 @@ fn fft_dit_fused_2stage_simd_f32_narrow<S: Simd>(
             .zip(im_b.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(im_c.as_chunks_mut::<LANES>().0.iter_mut())
             .zip(im_d.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles_s_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_s_im.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_s1_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles_s1_im.as_chunks::<LANES>().0.iter())
+            .zip(twiddles.stage_re.as_chunks::<LANES>().0.iter())
+            .zip(twiddles.stage_im.as_chunks::<LANES>().0.iter())
+            .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.iter())
+            .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.iter())
             .for_each(
                 |(
                     ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
                     tw1_im,
                 )| {
-                    let two = f32x8::splat(simd, 2.0);
-
-                    let a_re = f32x8::simd_from(simd, *ra);
-                    let a_im = f32x8::simd_from(simd, *ia);
-                    let b_re = f32x8::simd_from(simd, *rb);
-                    let b_im = f32x8::simd_from(simd, *ib);
-                    let c_re = f32x8::simd_from(simd, *rc);
-                    let c_im = f32x8::simd_from(simd, *ic);
-                    let d_re = f32x8::simd_from(simd, *rd);
-                    let d_im = f32x8::simd_from(simd, *id);
-
-                    let tws_re = f32x8::simd_from(simd, *tw_s_re);
-                    let tws_im = f32x8::simd_from(simd, *tw_s_im);
-
-                    // Stage s butterfly: (A,B) pair
-                    let ap_re = tws_im.mul_add(-b_im, tws_re.mul_add(b_re, a_re));
-                    let ap_im = tws_im.mul_add(b_re, tws_re.mul_add(b_im, a_im));
-                    let bp_re = two.mul_sub(a_re, ap_re);
-                    let bp_im = two.mul_sub(a_im, ap_im);
-
-                    // Stage s butterfly: (C,D) pair
-                    let cp_re = tws_im.mul_add(-d_im, tws_re.mul_add(d_re, c_re));
-                    let cp_im = tws_im.mul_add(d_re, tws_re.mul_add(d_im, c_im));
-                    let dp_re = two.mul_sub(c_re, cp_re);
-                    let dp_im = two.mul_sub(c_im, cp_im);
-
-                    let tw1r = f32x8::simd_from(simd, *tw1_re);
-                    let tw1i = f32x8::simd_from(simd, *tw1_im);
-
-                    // Stage s+1 butterfly: (A', C') pair with tw_{s+1}[k]
-                    let out_a_re = tw1i.mul_add(-cp_im, tw1r.mul_add(cp_re, ap_re));
-                    let out_a_im = tw1i.mul_add(cp_re, tw1r.mul_add(cp_im, ap_im));
-                    let out_c_re = two.mul_sub(ap_re, out_a_re);
-                    let out_c_im = two.mul_sub(ap_im, out_a_im);
-
-                    // Derive -j * tw1
-                    let nj_tw1r = tw1i;
-                    let nj_tw1i = -tw1r;
-
-                    // Stage s+1 butterfly: (B', D') pair with -j * tw_{s+1}[k]
-                    let out_b_re = nj_tw1i.mul_add(-dp_im, nj_tw1r.mul_add(dp_re, bp_re));
-                    let out_b_im = nj_tw1i.mul_add(dp_re, nj_tw1r.mul_add(dp_im, bp_im));
-                    let out_d_re = two.mul_sub(bp_re, out_b_re);
-                    let out_d_im = two.mul_sub(bp_im, out_b_im);
-
-                    out_a_re.store_slice(ra);
-                    out_a_im.store_slice(ia);
-                    out_b_re.store_slice(rb);
-                    out_b_im.store_slice(ib);
-                    out_c_re.store_slice(rc);
-                    out_c_im.store_slice(ic);
-                    out_d_re.store_slice(rd);
-                    out_d_im.store_slice(id);
+                    fused_butterfly!(
+                        f32x8,
+                        simd,
+                        [ra, rb, rc, rd],
+                        [ia, ib, ic, id],
+                        [tw_s_re, tw_s_im, tw1_re, tw1_im]
+                    );
                 },
             );
     }
@@ -1702,30 +1437,16 @@ fn fft_dit_fused_2stage_simd_f32_narrow<S: Simd>(
 
 #[cfg(feature = "parallel")]
 #[inline(never)]
-pub fn fft_dit_fused_2stage_f32_narrow_parallel<S: Simd>(
+pub(crate) fn fft_dit_fused_2stage_f32_narrow_parallel<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
-    twiddles_s_re: &[f32],
-    twiddles_s_im: &[f32],
-    twiddles_s1_re: &[f32],
-    twiddles_s1_im: &[f32],
+    twiddles: FusedTwiddles<'_, f32>,
     dist_s: usize,
 ) {
     simd.vectorize(
         #[inline(always)]
-        || {
-            fft_dit_fused_2stage_simd_f32_narrow_parallel(
-                simd,
-                reals,
-                imags,
-                twiddles_s_re,
-                twiddles_s_im,
-                twiddles_s1_re,
-                twiddles_s1_im,
-                dist_s,
-            )
-        },
+        || fft_dit_fused_2stage_simd_f32_narrow_parallel(simd, reals, imags, twiddles, dist_s),
     )
 }
 
@@ -1736,10 +1457,7 @@ fn fft_dit_fused_2stage_simd_f32_narrow_parallel<S: Simd>(
     simd: S,
     reals: &mut [f32],
     imags: &mut [f32],
-    twiddles_s_re: &[f32],
-    twiddles_s_im: &[f32],
-    twiddles_s1_re: &[f32],
-    twiddles_s1_im: &[f32],
+    twiddles: FusedTwiddles<'_, f32>,
     dist_s: usize,
 ) {
     use rayon::prelude::*;
@@ -1771,10 +1489,10 @@ fn fft_dit_fused_2stage_simd_f32_narrow_parallel<S: Simd>(
             .zip(im_b.as_chunks_mut::<LANES>().0.par_iter_mut())
             .zip(im_c.as_chunks_mut::<LANES>().0.par_iter_mut())
             .zip(im_d.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(twiddles_s_re.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles_s_im.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles_s1_re.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles_s1_im.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles.stage_re.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles.stage_im.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.par_iter())
+            .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.par_iter())
             .for_each(
                 |(
                     ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
@@ -1783,67 +1501,13 @@ fn fft_dit_fused_2stage_simd_f32_narrow_parallel<S: Simd>(
                     simd.vectorize(
                         #[inline(always)]
                         || {
-                            let two = f32x8::splat(simd, 2.0);
-
-                            // Load 4 data sub-blocks
-                            let a_re = f32x8::simd_from(simd, *ra);
-                            let a_im = f32x8::simd_from(simd, *ia);
-                            let b_re = f32x8::simd_from(simd, *rb);
-                            let b_im = f32x8::simd_from(simd, *ib);
-                            let c_re = f32x8::simd_from(simd, *rc);
-                            let c_im = f32x8::simd_from(simd, *ic);
-                            let d_re = f32x8::simd_from(simd, *rd);
-                            let d_im = f32x8::simd_from(simd, *id);
-
-                            // Load stage-s twiddles
-                            let tws_re = f32x8::simd_from(simd, *tw_s_re);
-                            let tws_im = f32x8::simd_from(simd, *tw_s_im);
-
-                            // Stage s butterfly: (A,B) pair
-                            // A' = A + tw_s * B,  B' = A - tw_s * B
-                            let ap_re = tws_im.mul_add(-b_im, tws_re.mul_add(b_re, a_re));
-                            let ap_im = tws_im.mul_add(b_re, tws_re.mul_add(b_im, a_im));
-                            let bp_re = two.mul_sub(a_re, ap_re);
-                            let bp_im = two.mul_sub(a_im, ap_im);
-
-                            // Stage s butterfly: (C,D) pair
-                            // C' = C + tw_s * D,  D' = C - tw_s * D
-                            let cp_re = tws_im.mul_add(-d_im, tws_re.mul_add(d_re, c_re));
-                            let cp_im = tws_im.mul_add(d_re, tws_re.mul_add(d_im, c_im));
-                            let dp_re = two.mul_sub(c_re, cp_re);
-                            let dp_im = two.mul_sub(c_im, cp_im);
-
-                            // Load stage-(s+1) twiddles (first half only)
-                            let tw1r = f32x8::simd_from(simd, *tw1_re);
-                            let tw1i = f32x8::simd_from(simd, *tw1_im);
-
-                            // Stage s+1 butterfly: (A', C') pair with tw_{s+1}[k]
-                            // out_A = A' + tw1 * C',  out_C = A' - tw1 * C'
-                            let out_a_re = tw1i.mul_add(-cp_im, tw1r.mul_add(cp_re, ap_re));
-                            let out_a_im = tw1i.mul_add(cp_re, tw1r.mul_add(cp_im, ap_im));
-                            let out_c_re = two.mul_sub(ap_re, out_a_re);
-                            let out_c_im = two.mul_sub(ap_im, out_a_im);
-
-                            // Derive -j * tw1: (-j)(w_re + i*w_im) = w_im - i*w_re
-                            let nj_tw1r = tw1i;
-                            let nj_tw1i = -tw1r;
-
-                            // Stage s+1 butterfly: (B', D') pair with -j * tw_{s+1}[k]
-                            // out_B = B' + (-j*tw1) * D',  out_D = B' - (-j*tw1) * D'
-                            let out_b_re = nj_tw1i.mul_add(-dp_im, nj_tw1r.mul_add(dp_re, bp_re));
-                            let out_b_im = nj_tw1i.mul_add(dp_re, nj_tw1r.mul_add(dp_im, bp_im));
-                            let out_d_re = two.mul_sub(bp_re, out_b_re);
-                            let out_d_im = two.mul_sub(bp_im, out_b_im);
-
-                            // Store results
-                            out_a_re.store_slice(ra);
-                            out_a_im.store_slice(ia);
-                            out_b_re.store_slice(rb);
-                            out_b_im.store_slice(ib);
-                            out_c_re.store_slice(rc);
-                            out_c_im.store_slice(ic);
-                            out_d_re.store_slice(rd);
-                            out_d_im.store_slice(id);
+                            fused_butterfly!(
+                                f32x8,
+                                simd,
+                                [ra, rb, rc, rd],
+                                [ia, ib, ic, id],
+                                [tw_s_re, tw_s_im, tw1_re, tw1_im]
+                            );
                         },
                     );
                 },
