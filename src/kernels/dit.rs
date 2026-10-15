@@ -1196,156 +1196,87 @@ macro_rules! fused_butterfly {
     }};
 }
 
-/// Fused two-stage DIT butterfly for f64 (radix-2², narrow SIMD: f64x4)
+/// Generate serial and parallel fused two-stage DIT kernels for one vector width.
 ///
 /// Processes two consecutive DIT stages in a single pass over memory,
 /// halving memory traffic for the fused stages. Uses the radix-2² identity
-/// `W_{4D}^{k+D} = -j * W_{4D}^k` to derive the second-half twiddle factors
-/// trivially.
+/// `W_{4D}^{k+D} = -j * W_{4D}^k` to derive the second-half twiddle factors.
+/// Only the first `dist_s` entries of each twiddle slice are read.
 ///
-/// `twiddles` contains stage-s and stage-(s+1) factors. Only the first
-/// `dist_s` entries of each slice are read; the next stage's second half
-/// is derived via a -j multiply.
-#[inline(never)]
-pub(crate) fn fft_dit_fused_2stage_f64_narrow<S: Simd>(
-    simd: S,
-    reals: &mut [f64],
-    imags: &mut [f64],
-    twiddles: FusedTwiddles<'_, f64>,
-    dist_s: usize,
-) {
-    simd.vectorize(
+/// The vector type and literal lane count are explicit so additional widths can
+/// be generated without changing the traversal. `as_chunks::<LANES>()` needs a
+/// const argument; an associated constant depending on generic `S` cannot be
+/// used there on stable Rust. Width selection belongs outside these kernels.
+macro_rules! impl_fft_dit_fused_2stage {
+    ($float:ty, $vector:ident, $lanes:literal,
+     $serial:ident, $serial_simd:ident,
+     $parallel:ident, $parallel_simd:ident) => {
+        /// Fused two-stage DIT butterfly (radix-2²).
+        #[inline(never)]
+        pub(crate) fn $serial<S: Simd>(
+            simd: S,
+            reals: &mut [$float],
+            imags: &mut [$float],
+            twiddles: FusedTwiddles<'_, $float>,
+            dist_s: usize,
+        ) {
+            simd.vectorize(
+                #[inline(always)]
+                || $serial_simd(simd, reals, imags, twiddles, dist_s),
+            )
+        }
+
+        /// Fused two-stage DIT traversal with serial SIMD butterflies.
         #[inline(always)]
-        || fft_dit_fused_2stage_simd_f64_narrow(simd, reals, imags, twiddles, dist_s),
-    )
-}
+        fn $serial_simd<S: Simd>(
+            simd: S,
+            reals: &mut [$float],
+            imags: &mut [$float],
+            twiddles: FusedTwiddles<'_, $float>,
+            dist_s: usize,
+        ) {
+            const LANES: usize = $lanes;
+            let block_size = dist_s * 4; // two stages: 4 sub-blocks of dist_s
+            assert!(dist_s >= LANES);
 
-/// Fused two-stage DIT butterfly for f64 (radix-2², narrow SIMD: f64x4)
-#[inline(always)]
-fn fft_dit_fused_2stage_simd_f64_narrow<S: Simd>(
-    simd: S,
-    reals: &mut [f64],
-    imags: &mut [f64],
-    twiddles: FusedTwiddles<'_, f64>,
-    dist_s: usize,
-) {
-    const LANES: usize = 4;
-    let block_size = dist_s * 4; // two stages: 4 sub-blocks of dist_s
-    assert!(dist_s >= LANES);
+            // Outer loop over blocks of 4*dist_s elements.
+            // Using `for` (not `for_each`) for the same inlining reasons
+            // as in the single-stage SIMD kernels.
+            for (reals_block, imags_block) in reals
+                .chunks_exact_mut(block_size)
+                .zip(imags.chunks_exact_mut(block_size))
+            {
+                // Split block into 4 sub-blocks of dist_s elements:
+                // A = [0..D), B = [D..2D), C = [2D..3D), D_blk = [3D..4D)
+                let (re_ab, re_cd) = reals_block.split_at_mut(dist_s * 2);
+                let (im_ab, im_cd) = imags_block.split_at_mut(dist_s * 2);
+                let (re_a, re_b) = re_ab.split_at_mut(dist_s);
+                let (im_a, im_b) = im_ab.split_at_mut(dist_s);
+                let (re_c, re_d) = re_cd.split_at_mut(dist_s);
+                let (im_c, im_d) = im_cd.split_at_mut(dist_s);
 
-    // Outer loop over blocks of 4*dist_s elements.
-    // Using `for` (not `for_each`) for the same inlining reasons
-    // as in fft_dit_chunk_n_simd_f64.
-    for (reals_block, imags_block) in reals
-        .chunks_exact_mut(block_size)
-        .zip(imags.chunks_exact_mut(block_size))
-    {
-        // Split block into 4 sub-blocks of dist_s elements:
-        // A = [0..D), B = [D..2D), C = [2D..3D), D_blk = [3D..4D)
-        let (re_ab, re_cd) = reals_block.split_at_mut(dist_s * 2);
-        let (im_ab, im_cd) = imags_block.split_at_mut(dist_s * 2);
-        let (re_a, re_b) = re_ab.split_at_mut(dist_s);
-        let (im_a, im_b) = im_ab.split_at_mut(dist_s);
-        let (re_c, re_d) = re_cd.split_at_mut(dist_s);
-        let (im_c, im_d) = im_cd.split_at_mut(dist_s);
-
-        (re_a.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(re_b.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(re_c.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(re_d.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(im_a.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(im_b.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(im_c.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(im_d.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles.stage_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles.stage_im.as_chunks::<LANES>().0.iter())
-            .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.iter())
-            .for_each(
-                |(
-                    ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
-                    tw1_im,
-                )| {
-                    fused_butterfly!(
-                        f64x4,
-                        simd,
-                        [ra, rb, rc, rd],
-                        [ia, ib, ic, id],
-                        [tw_s_re, tw_s_im, tw1_re, tw1_im]
-                    );
-                },
-            );
-    }
-}
-
-#[cfg(feature = "parallel")]
-#[inline(never)]
-pub(crate) fn fft_dit_fused_2stage_f64_narrow_parallel<S: Simd>(
-    simd: S,
-    reals: &mut [f64],
-    imags: &mut [f64],
-    twiddles: FusedTwiddles<'_, f64>,
-    dist_s: usize,
-) {
-    simd.vectorize(
-        #[inline(always)]
-        || fft_dit_fused_2stage_simd_f64_narrow_parallel(simd, reals, imags, twiddles, dist_s),
-    )
-}
-
-/// Fused two-stage DIT butterfly for f64 (radix-2², narrow SIMD: f64x4) that runs multi-threaded
-#[cfg(feature = "parallel")]
-#[inline(always)]
-fn fft_dit_fused_2stage_simd_f64_narrow_parallel<S: Simd>(
-    simd: S,
-    reals: &mut [f64],
-    imags: &mut [f64],
-    twiddles: FusedTwiddles<'_, f64>,
-    dist_s: usize,
-) {
-    use rayon::prelude::*;
-    const LANES: usize = 4;
-    let block_size = dist_s * 4; // two stages: 4 sub-blocks of dist_s
-    assert!(dist_s >= LANES);
-
-    // Outer loop over blocks of 4*dist_s elements.
-    // Using `for` (not `for_each`) for the same inlining reasons
-    // as in fft_dit_chunk_n_simd_f64.
-    for (reals_block, imags_block) in reals
-        .chunks_exact_mut(block_size)
-        .zip(imags.chunks_exact_mut(block_size))
-    {
-        // Split block into 4 sub-blocks of dist_s elements:
-        // A = [0..D), B = [D..2D), C = [2D..3D), D_blk = [3D..4D)
-        let (re_ab, re_cd) = reals_block.split_at_mut(dist_s * 2);
-        let (im_ab, im_cd) = imags_block.split_at_mut(dist_s * 2);
-        let (re_a, re_b) = re_ab.split_at_mut(dist_s);
-        let (im_a, im_b) = im_ab.split_at_mut(dist_s);
-        let (re_c, re_d) = re_cd.split_at_mut(dist_s);
-        let (im_c, im_d) = im_cd.split_at_mut(dist_s);
-
-        (re_a.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(re_b.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(re_c.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(re_d.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(im_a.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(im_b.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(im_c.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(im_d.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(twiddles.stage_re.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles.stage_im.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.par_iter())
-            .for_each(
-                |(
-                    ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
-                    tw1_im,
-                )| {
-                    simd.vectorize(
-                        #[inline(always)]
-                        || {
+                (re_a.as_chunks_mut::<LANES>().0.iter_mut())
+                    .zip(re_b.as_chunks_mut::<LANES>().0.iter_mut())
+                    .zip(re_c.as_chunks_mut::<LANES>().0.iter_mut())
+                    .zip(re_d.as_chunks_mut::<LANES>().0.iter_mut())
+                    .zip(im_a.as_chunks_mut::<LANES>().0.iter_mut())
+                    .zip(im_b.as_chunks_mut::<LANES>().0.iter_mut())
+                    .zip(im_c.as_chunks_mut::<LANES>().0.iter_mut())
+                    .zip(im_d.as_chunks_mut::<LANES>().0.iter_mut())
+                    .zip(twiddles.stage_re.as_chunks::<LANES>().0.iter())
+                    .zip(twiddles.stage_im.as_chunks::<LANES>().0.iter())
+                    .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.iter())
+                    .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.iter())
+                    .for_each(
+                        |(
+                            (
+                                (((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im),
+                                tw1_re,
+                            ),
+                            tw1_im,
+                        )| {
                             fused_butterfly!(
-                                f64x4,
+                                $vector,
                                 simd,
                                 [ra, rb, rc, rd],
                                 [ia, ib, ic, id],
@@ -1353,164 +1284,111 @@ fn fft_dit_fused_2stage_simd_f64_narrow_parallel<S: Simd>(
                             );
                         },
                     );
-                },
-            );
-    }
-}
+            }
+        }
 
-/// Fused two-stage DIT butterfly for f32 (radix-2², narrow SIMD: f32x8)
-///
-/// Processes two consecutive DIT stages in a single pass over memory,
-/// halving memory traffic for the fused stages. Uses the radix-2² identity
-/// `W_{4D}^{k+D} = -j * W_{4D}^k` to derive the second-half twiddle factors
-/// trivially.
-///
-/// `twiddles` contains stage-s and stage-(s+1) factors. Only the first
-/// `dist_s` entries of each slice are read; the next stage's second half
-/// is derived via a -j multiply.
-#[inline(never)]
-pub(crate) fn fft_dit_fused_2stage_f32_narrow<S: Simd>(
-    simd: S,
-    reals: &mut [f32],
-    imags: &mut [f32],
-    twiddles: FusedTwiddles<'_, f32>,
-    dist_s: usize,
-) {
-    simd.vectorize(
+        /// Fused two-stage DIT butterfly (radix-2²), executed in parallel.
+        #[cfg(feature = "parallel")]
+        #[inline(never)]
+        pub(crate) fn $parallel<S: Simd>(
+            simd: S,
+            reals: &mut [$float],
+            imags: &mut [$float],
+            twiddles: FusedTwiddles<'_, $float>,
+            dist_s: usize,
+        ) {
+            simd.vectorize(
+                #[inline(always)]
+                || $parallel_simd(simd, reals, imags, twiddles, dist_s),
+            )
+        }
+
+        /// Fused two-stage DIT traversal with parallel SIMD butterflies.
+        #[cfg(feature = "parallel")]
         #[inline(always)]
-        || fft_dit_fused_2stage_simd_f32_narrow(simd, reals, imags, twiddles, dist_s),
-    )
-}
+        fn $parallel_simd<S: Simd>(
+            simd: S,
+            reals: &mut [$float],
+            imags: &mut [$float],
+            twiddles: FusedTwiddles<'_, $float>,
+            dist_s: usize,
+        ) {
+            use rayon::prelude::*;
+            const LANES: usize = $lanes;
+            let block_size = dist_s * 4; // two stages: 4 sub-blocks of dist_s
+            assert!(dist_s >= LANES);
 
-/// Fused two-stage DIT butterfly for f32 (radix-2², narrow SIMD: f32x8)
-#[inline(always)]
-fn fft_dit_fused_2stage_simd_f32_narrow<S: Simd>(
-    simd: S,
-    reals: &mut [f32],
-    imags: &mut [f32],
-    twiddles: FusedTwiddles<'_, f32>,
-    dist_s: usize,
-) {
-    const LANES: usize = 8;
-    let block_size = dist_s * 4;
-    assert!(dist_s >= LANES);
+            // Outer loop over blocks of 4*dist_s elements.
+            // Using `for` (not `for_each`) for the same inlining reasons
+            // as in the single-stage SIMD kernels.
+            for (reals_block, imags_block) in reals
+                .chunks_exact_mut(block_size)
+                .zip(imags.chunks_exact_mut(block_size))
+            {
+                // Split block into 4 sub-blocks of dist_s elements:
+                // A = [0..D), B = [D..2D), C = [2D..3D), D_blk = [3D..4D)
+                let (re_ab, re_cd) = reals_block.split_at_mut(dist_s * 2);
+                let (im_ab, im_cd) = imags_block.split_at_mut(dist_s * 2);
+                let (re_a, re_b) = re_ab.split_at_mut(dist_s);
+                let (im_a, im_b) = im_ab.split_at_mut(dist_s);
+                let (re_c, re_d) = re_cd.split_at_mut(dist_s);
+                let (im_c, im_d) = im_cd.split_at_mut(dist_s);
 
-    for (reals_block, imags_block) in reals
-        .chunks_exact_mut(block_size)
-        .zip(imags.chunks_exact_mut(block_size))
-    {
-        let (re_ab, re_cd) = reals_block.split_at_mut(dist_s * 2);
-        let (im_ab, im_cd) = imags_block.split_at_mut(dist_s * 2);
-        let (re_a, re_b) = re_ab.split_at_mut(dist_s);
-        let (im_a, im_b) = im_ab.split_at_mut(dist_s);
-        let (re_c, re_d) = re_cd.split_at_mut(dist_s);
-        let (im_c, im_d) = im_cd.split_at_mut(dist_s);
-
-        (re_a.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(re_b.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(re_c.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(re_d.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(im_a.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(im_b.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(im_c.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(im_d.as_chunks_mut::<LANES>().0.iter_mut())
-            .zip(twiddles.stage_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles.stage_im.as_chunks::<LANES>().0.iter())
-            .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.iter())
-            .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.iter())
-            .for_each(
-                |(
-                    ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
-                    tw1_im,
-                )| {
-                    fused_butterfly!(
-                        f32x8,
-                        simd,
-                        [ra, rb, rc, rd],
-                        [ia, ib, ic, id],
-                        [tw_s_re, tw_s_im, tw1_re, tw1_im]
-                    );
-                },
-            );
-    }
-}
-
-#[cfg(feature = "parallel")]
-#[inline(never)]
-pub(crate) fn fft_dit_fused_2stage_f32_narrow_parallel<S: Simd>(
-    simd: S,
-    reals: &mut [f32],
-    imags: &mut [f32],
-    twiddles: FusedTwiddles<'_, f32>,
-    dist_s: usize,
-) {
-    simd.vectorize(
-        #[inline(always)]
-        || fft_dit_fused_2stage_simd_f32_narrow_parallel(simd, reals, imags, twiddles, dist_s),
-    )
-}
-
-/// Fused two-stage DIT butterfly for f32 (radix-2², narrow SIMD: f32x8) that runs multi-threaded
-#[cfg(feature = "parallel")]
-#[inline(always)]
-fn fft_dit_fused_2stage_simd_f32_narrow_parallel<S: Simd>(
-    simd: S,
-    reals: &mut [f32],
-    imags: &mut [f32],
-    twiddles: FusedTwiddles<'_, f32>,
-    dist_s: usize,
-) {
-    use rayon::prelude::*;
-    const LANES: usize = 8;
-    let block_size = dist_s * 4; // two stages: 4 sub-blocks of dist_s
-    assert!(dist_s >= LANES);
-
-    // Outer loop over blocks of 4*dist_s elements.
-    // Using `for` (not `for_each`) for the same inlining reasons
-    // as in fft_dit_chunk_n_simd_f32.
-    for (reals_block, imags_block) in reals
-        .chunks_exact_mut(block_size)
-        .zip(imags.chunks_exact_mut(block_size))
-    {
-        // Split block into 4 sub-blocks of dist_s elements:
-        // A = [0..D), B = [D..2D), C = [2D..3D), D_blk = [3D..4D)
-        let (re_ab, re_cd) = reals_block.split_at_mut(dist_s * 2);
-        let (im_ab, im_cd) = imags_block.split_at_mut(dist_s * 2);
-        let (re_a, re_b) = re_ab.split_at_mut(dist_s);
-        let (im_a, im_b) = im_ab.split_at_mut(dist_s);
-        let (re_c, re_d) = re_cd.split_at_mut(dist_s);
-        let (im_c, im_d) = im_cd.split_at_mut(dist_s);
-
-        (re_a.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(re_b.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(re_c.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(re_d.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(im_a.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(im_b.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(im_c.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(im_d.as_chunks_mut::<LANES>().0.par_iter_mut())
-            .zip(twiddles.stage_re.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles.stage_im.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.par_iter())
-            .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.par_iter())
-            .for_each(
-                |(
-                    ((((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im), tw1_re),
-                    tw1_im,
-                )| {
-                    simd.vectorize(
-                        #[inline(always)]
-                        || {
-                            fused_butterfly!(
-                                f32x8,
-                                simd,
-                                [ra, rb, rc, rd],
-                                [ia, ib, ic, id],
-                                [tw_s_re, tw_s_im, tw1_re, tw1_im]
+                (re_a.as_chunks_mut::<LANES>().0.par_iter_mut())
+                    .zip(re_b.as_chunks_mut::<LANES>().0.par_iter_mut())
+                    .zip(re_c.as_chunks_mut::<LANES>().0.par_iter_mut())
+                    .zip(re_d.as_chunks_mut::<LANES>().0.par_iter_mut())
+                    .zip(im_a.as_chunks_mut::<LANES>().0.par_iter_mut())
+                    .zip(im_b.as_chunks_mut::<LANES>().0.par_iter_mut())
+                    .zip(im_c.as_chunks_mut::<LANES>().0.par_iter_mut())
+                    .zip(im_d.as_chunks_mut::<LANES>().0.par_iter_mut())
+                    .zip(twiddles.stage_re.as_chunks::<LANES>().0.par_iter())
+                    .zip(twiddles.stage_im.as_chunks::<LANES>().0.par_iter())
+                    .zip(twiddles.next_stage_re.as_chunks::<LANES>().0.par_iter())
+                    .zip(twiddles.next_stage_im.as_chunks::<LANES>().0.par_iter())
+                    .for_each(
+                        |(
+                            (
+                                (((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s_re), tw_s_im),
+                                tw1_re,
+                            ),
+                            tw1_im,
+                        )| {
+                            simd.vectorize(
+                                #[inline(always)]
+                                || {
+                                    fused_butterfly!(
+                                        $vector,
+                                        simd,
+                                        [ra, rb, rc, rd],
+                                        [ia, ib, ic, id],
+                                        [tw_s_re, tw_s_im, tw1_re, tw1_im]
+                                    );
+                                },
                             );
                         },
                     );
-                },
-            );
-    }
+            }
+        }
+    };
 }
+
+impl_fft_dit_fused_2stage!(
+    f64,
+    f64x4,
+    4,
+    fft_dit_fused_2stage_f64_narrow,
+    fft_dit_fused_2stage_simd_f64_narrow,
+    fft_dit_fused_2stage_f64_narrow_parallel,
+    fft_dit_fused_2stage_simd_f64_narrow_parallel
+);
+
+impl_fft_dit_fused_2stage!(
+    f32,
+    f32x8,
+    8,
+    fft_dit_fused_2stage_f32_narrow,
+    fft_dit_fused_2stage_simd_f32_narrow,
+    fft_dit_fused_2stage_f32_narrow_parallel,
+    fft_dit_fused_2stage_simd_f32_narrow_parallel
+);
