@@ -42,7 +42,7 @@
 //! Based on the approach described by Levente Kovács:
 //! <https://kovleventer.com/blog/fft_real/>
 
-use fearless_simd::{dispatch, f32x8, f64x4, Simd, SimdBase, SimdFloat};
+use fearless_simd::{dispatch, f32x8, f64x4, Simd, SimdBase};
 
 use crate::algorithms::dit::{
     fft_f32_dit_with_planner_and_opts, fft_f64_dit_with_planner_and_opts,
@@ -59,14 +59,14 @@ use crate::planner::{Direction, PlannerR2c32, PlannerR2c64};
 // indices.
 #[inline(always)]
 fn rev_f64x4<S: Simd>(simd: S, v: f64x4<S>) -> f64x4<S> {
-    let arr = simd.as_array_f64x4(v);
+    let arr = v.to_array();
     let rev = [arr[3], arr[2], arr[1], arr[0]];
     f64x4::from_slice(simd, &rev)
 }
 
 #[inline(always)]
 fn rev_f32x8<S: Simd>(simd: S, v: f32x8<S>) -> f32x8<S> {
-    let arr = simd.as_array_f32x8(v);
+    let arr = v.to_array();
     let rev = [
         arr[7], arr[6], arr[5], arr[4], arr[3], arr[2], arr[1], arr[0],
     ];
