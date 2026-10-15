@@ -4,8 +4,6 @@ use std::fmt::Display;
 
 use rand::distr::Uniform;
 use rand::prelude::*;
-use rand::rngs::SmallRng;
-use rand::SeedableRng;
 use rustfft::num_traits::Float;
 
 /// Asserts that two floating-point numbers are approximately equal.
@@ -25,7 +23,7 @@ pub fn assert_float_closeness<T: Float + Display>(actual: T, expected: T, epsilo
 
 pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng: SmallRng = rand::make_rng();
     let dist = Uniform::try_from(-1.0f32..1.0f32).unwrap();
 
     for (re, im) in reals.iter_mut().zip(imags.iter_mut()) {
@@ -53,7 +51,7 @@ pub fn gen_random_signal_f32(reals: &mut [f32], imags: &mut [f32]) {
 /// Panics if `reals.len() != imags.len()`
 pub fn gen_random_signal_f64(reals: &mut [f64], imags: &mut [f64]) {
     assert!(reals.len() == imags.len() && !reals.is_empty());
-    let mut rng = SmallRng::from_os_rng();
+    let mut rng: SmallRng = rand::make_rng();
     let dist = Uniform::try_from(-1.0f64..1.0f64).unwrap();
 
     for (re, im) in reals.iter_mut().zip(imags.iter_mut()) {

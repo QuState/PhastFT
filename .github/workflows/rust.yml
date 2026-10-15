@@ -45,7 +45,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        args: ["--all-features", "--features=complex-nums"]
+        args:
+          - "--no-default-features"
+          - "--features=complex-nums"
+          - "--features=parallel"
+          - "--all-features"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v6
@@ -58,6 +62,40 @@ jobs:
 
       - name: Run cargo test
         run: cargo test ${{ matrix.args }}
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build on MSRV
+        run: cargo build --all-features
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build docs
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --all-features --no-deps
 
   coverage:
     runs-on: ubuntu-latest
@@ -78,7 +116,7 @@ jobs:
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:

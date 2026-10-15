@@ -2,12 +2,10 @@
 //!
 //! FFT kernels for the Decimation-in-Time algorithm.
 //!
-use core::f32;
-
 use fearless_simd::{f32x16, f32x4, f32x8, f64x4, f64x8, Simd, SimdBase, SimdFloat, SimdFrom};
 use num_traits::Float;
 
-/// DIT butterfly for chunk_size == 2
+/// DIT butterflies for stage 0 (i.e., where `chunk_size == 2`)
 /// Identical to DIF version (no twiddles at size 2)
 #[inline(always)] // required by fearless_simd
 pub fn fft_dit_chunk_2<S: Simd, T: Float>(_simd: S, reals: &mut [T], imags: &mut [T]) {
@@ -540,22 +538,22 @@ fn fft_dit_chunk_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut [f
     let twiddle_re = f32x16::simd_from(
         simd,
         [
-            1.0_f32,                         // W_32^0 = 1
-            0.980_785_25_f32,                // W_32^1 = cos(π/16)
-            0.923_879_5_f32,                 // W_32^2 = cos(π/8)
-            0.831_469_6_f32,                 // W_32^3 = cos(3π/16)
-            std::f32::consts::FRAC_1_SQRT_2, // W_32^4 = sqrt(2)/2
-            0.555_570_24_f32,                // W_32^5 = cos(5π/16)
-            0.382_683_43_f32,                // W_32^6 = cos(3π/8)
-            0.195_090_32_f32,                // W_32^7 = cos(7π/16)
-            0.0_f32,                         // W_32^8 = 0 - i
-            -0.195_090_32_f32,               // W_32^9
-            -0.382_683_43_f32,               // W_32^10
-            -0.555_570_24_f32,               // W_32^11
-            -f32::consts::FRAC_1_SQRT_2,     // W_32^12
-            -0.831_469_6_f32,                // W_32^13
-            -0.923_879_5_f32,                // W_32^14
-            -0.980_785_25_f32,               // W_32^15
+            1.0_f32,                          // W_32^0 = 1
+            0.980_785_25_f32,                 // W_32^1 = cos(π/16)
+            0.923_879_5_f32,                  // W_32^2 = cos(π/8)
+            0.831_469_6_f32,                  // W_32^3 = cos(3π/16)
+            std::f32::consts::FRAC_1_SQRT_2,  // W_32^4 = sqrt(2)/2
+            0.555_570_24_f32,                 // W_32^5 = cos(5π/16)
+            0.382_683_43_f32,                 // W_32^6 = cos(3π/8)
+            0.195_090_32_f32,                 // W_32^7 = cos(7π/16)
+            0.0_f32,                          // W_32^8 = 0
+            -0.195_090_32_f32,                // W_32^9
+            -0.382_683_43_f32,                // W_32^10
+            -0.555_570_24_f32,                // W_32^11
+            -std::f32::consts::FRAC_1_SQRT_2, // W_32^12
+            -0.831_469_6_f32,                 // W_32^13
+            -0.923_879_5_f32,                 // W_32^14
+            -0.980_785_25_f32,                // W_32^15
         ],
     );
 
@@ -995,6 +993,7 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
     const LANES: usize = 8;
     let chunk_size = dist * 2;
     assert!(chunk_size >= LANES * 2);
+    let two = f64x8::splat(simd, 2.0);
 
     // The structure of outer for loop with inner for_each is intentional: on x86
     // fearless_simd needs inlining all the way down to intrinsics to work properly,
@@ -1017,7 +1016,6 @@ fn fft_dit_chunk_n_simd_f64<S: Simd>(
             .zip(twiddles_re.as_chunks::<LANES>().0.iter())
             .zip(twiddles_im.as_chunks::<LANES>().0.iter())
             .for_each(|(((((re_s0, re_s1), im_s0), im_s1), tw_re), tw_im)| {
-                let two = f64x8::splat(simd, 2.0);
                 let in0_re = f64x8::simd_from(simd, *re_s0);
                 let in1_re = f64x8::simd_from(simd, *re_s1);
                 let in0_im = f64x8::simd_from(simd, *im_s0);

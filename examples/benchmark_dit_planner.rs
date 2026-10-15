@@ -2,14 +2,14 @@ use std::env;
 use std::str::FromStr;
 
 use phastft::planner::{Direction, PlannerDit64};
-use phastft::{fft_64_dit, fft_64_dit_with_planner};
+use phastft::{fft_f64_dit, fft_f64_dit_with_planner};
 use utilities::gen_random_signal_f64;
 
 fn benchmark_dit_with_planner(n: usize, iterations: usize) {
     let big_n = 1 << n; // 2.pow(n)
 
     // Create planner once
-    let planner = PlannerDit64::new(big_n, Direction::Forward);
+    let planner = PlannerDit64::new(big_n);
 
     let mut total_time = 0u128;
 
@@ -19,7 +19,7 @@ fn benchmark_dit_with_planner(n: usize, iterations: usize) {
         gen_random_signal_f64(&mut reals, &mut imags);
 
         let now = std::time::Instant::now();
-        fft_64_dit_with_planner(&mut reals, &mut imags, &planner);
+        fft_f64_dit_with_planner(&mut reals, &mut imags, Direction::Forward, &planner);
         total_time += now.elapsed().as_nanos();
     }
 
@@ -40,7 +40,7 @@ fn benchmark_dit_without_planner(n: usize, iterations: usize) {
         gen_random_signal_f64(&mut reals, &mut imags);
 
         let now = std::time::Instant::now();
-        fft_64_dit(&mut reals, &mut imags, Direction::Forward);
+        fft_f64_dit(&mut reals, &mut imags, Direction::Forward);
         total_time += now.elapsed().as_nanos();
     }
 

@@ -3,65 +3,44 @@
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
 
-/// Reverse is for running the Inverse Fast Fourier Transform (IFFT)
+/// Inverse is for running the Inverse Fast Fourier Transform (IFFT)
 /// Forward is for running the regular FFT
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
     /// Leave the exponent term in the twiddle factor alone
     Forward = 1,
     /// Multiply the exponent term in the twiddle factor by -1
-    Reverse = -1,
-}
-
-/// Controls how the planner selects algorithm variants.
-///
-/// The planner can choose between different internal strategies (e.g., whether to
-/// use the fused 32-point codelet). `Heuristic` uses a conservative static rule
-/// with zero planning overhead. `Tune` benchmarks both paths at plan time and
-/// picks whichever is faster, at the cost of additional planning time.
-#[derive(Copy, Clone, Debug, Default)]
-pub enum PlannerMode {
-    /// Use a conservative static heuristic. Zero overhead at plan time.
-    #[default]
-    Heuristic,
-    /// Benchmark both paths at plan time, pick whichever is faster.
-    /// Adds planning overhead proportional to FFT size.
-    Tune,
+    Inverse = -1,
 }
 
 macro_rules! impl_planner_dit_for {
     ($struct_name:ident, $precision:ident, $fft_func:path) => {
-        /// DIT-specific planner that pre-computes twiddles for all stages
+        /// DIT-specific planner that pre-computes twiddles for all stages.
+        ///
+        /// The planner is direction-agnostic. Namely, the same instance can drive both forward and
+        /// inverse transforms. Direction is supplied per-call to the `fft_*_dit*` functions.
+        #[derive(Clone)]
         pub struct $struct_name {
             /// Twiddles for each stage that needs them (stages with chunk_size > 64)
             /// Each element contains (twiddles_re, twiddles_im) for that stage
             pub(crate) stage_twiddles: Vec<(Vec<$precision>, Vec<$precision>)>,
-            /// The direction of the FFT
-            pub(crate) direction: Direction,
             /// The log2 of the FFT size
             pub(crate) log_n: usize,
             /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
             pub(crate) simd_level: fearless_simd::Level,
-            /// Whether to use the fused 32-point codelet for stages 0-4 in L1 blocks
-            pub(crate) use_codelet_32: bool,
         }
 
         impl $struct_name {
             /// Create a DIT planner for an FFT of size `num_points`.
             ///
-            /// Uses [`PlannerMode::Heuristic`] to decide algorithm variants.
-            /// For explicit control, use [`Self::with_mode`].
-            pub fn new(num_points: usize, direction: Direction) -> Self {
-                Self::with_mode(num_points, direction, PlannerMode::Heuristic)
-            }
-
-            /// Create a DIT planner with explicit control over algorithm selection.
+            /// Pre-computes the per-stage twiddle factors and detects the SIMD
+            /// support level once, so the planner can be reused across many
+            /// FFTs of the same size.
             ///
-            /// - [`PlannerMode::Heuristic`]: Zero-cost static rule. Conservative — may
-            ///   leave performance on the table on platforms with large L1i caches.
-            /// - [`PlannerMode::Tune`]: Benchmarks both paths at plan time. Use this
-            ///   when you can afford extra planning time (e.g., planner is reused).
-            pub fn with_mode(num_points: usize, direction: Direction, mode: PlannerMode) -> Self {
+            /// # Panics
+            ///
+            /// Panics if `num_points` is not a power of two.
+            pub fn new(num_points: usize) -> Self {
                 assert!(num_points > 0 && num_points.is_power_of_two());
 
                 let simd_level = fearless_simd::Level::new();
@@ -91,108 +70,19 @@ macro_rules! impl_planner_dit_for {
                     }
                 }
 
-                let use_codelet_32 = Self::estimate_use_codelet_32(log_n);
-
-                let mut planner = Self {
+                Self {
                     stage_twiddles,
-                    direction,
                     log_n,
                     simd_level,
-                    use_codelet_32,
-                };
-
-                if matches!(mode, PlannerMode::Tune) {
-                    planner.tune_codelet_32(num_points);
                 }
-
-                planner
             }
+        }
 
-            /// Conservative, arch-independent heuristic for whether the 32-point
-            /// codelet is beneficial.
-            ///
-            /// At small sizes (N ≤ 8192) the codelet dominates runtime and
-            /// cross-block kernel eviction from the µop cache doesn't matter.
-            /// At large sizes the codelet's code footprint can evict the
-            /// cross-block kernel on platforms with small L1i caches (e.g., 32KB
-            /// on x86). Use [`PlannerMode::Tune`] to discover the real threshold
-            /// on your hardware.
-            fn estimate_use_codelet_32(log_n: usize) -> bool {
-                // Codelet needs at least 32 elements (5 stages)
-                if log_n < 5 {
-                    return false;
-                }
-
-                // Conservative threshold: enable only for N ≤ 8192 where the
-                // codelet dominates runtime. On platforms with large L1i (e.g.,
-                // Apple Silicon at 192KB), Tune mode will discover that the
-                // codelet wins at larger sizes too.
-                log_n <= 13
-            }
-
-            /// Benchmark both paths and set `use_codelet_32` to whichever is faster.
-            fn tune_codelet_32(&mut self, num_points: usize) {
-                if self.log_n < 5 {
-                    self.use_codelet_32 = false;
-                    return;
-                }
-
-                let opts = crate::options::Options {
-                    multithreaded_bit_reversal: false,
-                    smallest_parallel_chunk_size: usize::MAX,
-                };
-
-                // Generate random complex signal via xorshift64 (no rand dependency)
-                let mut rng_state: u64 = 0x517C_C1B7_2722_0A95;
-                let mut next_f = || -> $precision {
-                    rng_state ^= rng_state << 13;
-                    rng_state ^= rng_state >> 7;
-                    rng_state ^= rng_state << 17;
-                    (rng_state as $precision) / (u64::MAX as $precision) * 2.0 - 1.0
-                };
-                let reals_orig: Vec<$precision> = (0..num_points).map(|_| next_f()).collect();
-                let imags_orig: Vec<$precision> = (0..num_points).map(|_| next_f()).collect();
-                let mut reals = reals_orig.clone();
-                let mut imags = imags_orig.clone();
-
-                const WARMUP: usize = 3;
-                const ITERS: usize = 5;
-
-                // Time WITHOUT codelet
-                self.use_codelet_32 = false;
-                for _ in 0..WARMUP {
-                    reals.copy_from_slice(&reals_orig);
-                    imags.copy_from_slice(&imags_orig);
-                    $fft_func(&mut reals, &mut imags, &*self, &opts);
-                }
-
-                let mut best_without = std::time::Duration::MAX;
-                for _ in 0..ITERS {
-                    reals.copy_from_slice(&reals_orig);
-                    imags.copy_from_slice(&imags_orig);
-                    let start = std::time::Instant::now();
-                    $fft_func(&mut reals, &mut imags, &*self, &opts);
-                    best_without = best_without.min(start.elapsed());
-                }
-
-                // Time WITH codelet
-                self.use_codelet_32 = true;
-                for _ in 0..WARMUP {
-                    reals.copy_from_slice(&reals_orig);
-                    imags.copy_from_slice(&imags_orig);
-                    $fft_func(&mut reals, &mut imags, &*self, &opts);
-                }
-
-                let mut best_with = std::time::Duration::MAX;
-                for _ in 0..ITERS {
-                    reals.copy_from_slice(&reals_orig);
-                    imags.copy_from_slice(&imags_orig);
-                    let start = std::time::Instant::now();
-                    $fft_func(&mut reals, &mut imags, &*self, &opts);
-                    best_with = best_with.min(start.elapsed());
-                }
-
-                self.use_codelet_32 = best_with < best_without;
+        impl core::fmt::Debug for $struct_name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.debug_struct(stringify!($struct_name))
+                    .field("fft_size", &(1usize << self.log_n))
+                    .finish_non_exhaustive()
             }
         }
     };
@@ -201,10 +91,112 @@ macro_rules! impl_planner_dit_for {
 impl_planner_dit_for!(
     PlannerDit64,
     f64,
-    crate::algorithms::dit::fft_64_dit_with_planner_and_opts
+    crate::algorithms::dit::fft_f64_dit_with_planner_and_opts
 );
 impl_planner_dit_for!(
     PlannerDit32,
     f32,
-    crate::algorithms::dit::fft_32_dit_with_planner_and_opts
+    crate::algorithms::dit::fft_f32_dit_with_planner_and_opts
 );
+
+// ---------------------------------------------------------------------------
+// R2C / C2R planners
+// ---------------------------------------------------------------------------
+
+fn compute_r2c_twiddles_f64(n: usize) -> (Vec<f64>, Vec<f64>) {
+    let half = n / 2;
+    let mut w_re = vec![0.0f64; half];
+    let mut w_im = vec![0.0f64; half];
+
+    // Forward R2C twiddles 0.5 * W_N^k = 0.5 * exp(-2 * pi * i * k / N).
+    // The 0.5 factor is folded in here so the untangle / c2r-preprocess hot
+    // loops avoid one multiply per bin. C2R conjugates at use time.
+    let angle_step = -std::f64::consts::PI / half as f64;
+    let (st, ct) = angle_step.sin_cos();
+    let (mut wr, mut wi) = (1.0f64, 0.0f64);
+
+    for k in 0..half {
+        w_re[k] = 0.5 * wr;
+        w_im[k] = 0.5 * wi;
+        let tmp = wr;
+        wr = tmp * ct - wi * st;
+        wi = tmp * st + wi * ct;
+    }
+
+    (w_re, w_im)
+}
+
+fn compute_r2c_twiddles_f32(n: usize) -> (Vec<f32>, Vec<f32>) {
+    let half = n / 2;
+    let mut w_re = vec![0.0f32; half];
+    let mut w_im = vec![0.0f32; half];
+
+    // 0.5 folded in (see f64 variant). Compute in f64 to avoid recurrence drift, then cast.
+    let angle_step = -std::f64::consts::PI / half as f64;
+    let (st, ct) = angle_step.sin_cos();
+    let (mut wr, mut wi) = (1.0f64, 0.0f64);
+
+    for k in 0..half {
+        w_re[k] = (0.5 * wr) as f32;
+        w_im[k] = (0.5 * wi) as f32;
+        let tmp = wr;
+        wr = tmp * ct - wi * st;
+        wi = tmp * st + wi * ct;
+    }
+
+    (w_re, w_im)
+}
+
+macro_rules! impl_planner_r2c_for {
+    ($struct_name:ident, $precision:ident, $dit_planner:ident, $twiddle_fn:ident) => {
+        /// Planner for real-to-complex (R2C) and complex-to-real (C2R) FFTs.
+        ///
+        /// Pre-computes the inner DIT planner for the half-length complex FFT
+        /// and the untangle twiddle factors for the post-processing step.
+        ///
+        /// The planner is direction-agnostic. Namely, the same instance can drive both
+        /// R2C and C2R transforms.
+        #[derive(Clone)]
+        pub struct $struct_name {
+            /// Inner DIT planner for the N/2 complex FFT
+            pub(crate) dit_planner: $dit_planner,
+            /// Pre-computed untangle twiddle factors (real parts).
+            /// 0.5 is pre-folded in so the hot loops avoid a per-bin multiply.
+            pub(crate) w_re: Vec<$precision>,
+            /// Pre-computed untangle twiddle factors (imaginary parts), 0.5 folded in.
+            pub(crate) w_im: Vec<$precision>,
+            /// Full real signal length N
+            pub(crate) n: usize,
+        }
+
+        impl $struct_name {
+            /// Create a planner for real FFTs of length `n`.
+            ///
+            /// # Panics
+            ///
+            /// Panics if `n` is not a power of 2 or `n < 4`.
+            pub fn new(n: usize) -> Self {
+                assert!(n >= 4 && n.is_power_of_two(), "n must be a power of 2 >= 4");
+                let (w_re, w_im) = $twiddle_fn(n);
+
+                Self {
+                    dit_planner: $dit_planner::new(n / 2),
+                    w_re,
+                    w_im,
+                    n,
+                }
+            }
+        }
+
+        impl core::fmt::Debug for $struct_name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.debug_struct(stringify!($struct_name))
+                    .field("n", &self.n)
+                    .finish_non_exhaustive()
+            }
+        }
+    };
+}
+
+impl_planner_r2c_for!(PlannerR2c64, f64, PlannerDit64, compute_r2c_twiddles_f64);
+impl_planner_r2c_for!(PlannerR2c32, f32, PlannerDit32, compute_r2c_twiddles_f32);

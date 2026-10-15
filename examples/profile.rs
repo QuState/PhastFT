@@ -1,7 +1,7 @@
 use std::env;
 use std::str::FromStr;
 
-use phastft::fft_64_dit;
+use phastft::fft_f64_dit;
 use phastft::planner::Direction;
 use utilities::gen_random_signal_f64;
 
@@ -15,5 +15,5 @@ fn main() {
     let mut imags = vec![0.0; big_n];
     gen_random_signal_f64(&mut reals, &mut imags);
 
-    fft_64_dit(&mut reals, &mut imags, Direction::Forward);
+    fft_f64_dit(&mut reals, &mut imags, Direction::Forward);
 }

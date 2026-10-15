@@ -1,39 +1,53 @@
 [package]
 name = "phastft"
-version = "0.3.0"
+version = "0.4.1"
+rust-version = "1.88"
 edition = "2021"
 authors = ["Saveliy Yusufov", "Shnatsel"]
 license = "MIT OR Apache-2.0"
-description = "A high-performance, quantum-inspired, implementation of FFT in pure Rust"
-repository = "https://github.com/QuState/PhastFT"
+description = "A high-performance Fast Fourier Transform (FFT) library written in pure and safe Rust"
+repository = "https://github.com/smu160/PhastFT"
 readme = "README.md"
 documentation = "https://docs.rs/phastft"
 keywords = ["quantum", "fft", "discrete", "fourier", "transform"]
-categories = ["algorithms", "compression", "science"]
-exclude = ["assets", "scripts", "benches"]
+categories = ["algorithms", "mathematics", "science"]
+exclude = [
+	".github",
+	"assets",
+	"benches",
+	"codecov.yml",
+	"hooks",
+	"profile.sh",
+	"rust-toolchain.toml",
+	"rustfmt.toml",
+]
 
 [dependencies]
 num-traits = "0.2.19"
 num-complex = { version = "0.4.6", features = ["bytemuck"], optional = true }
-bytemuck = { version = "1.23.2", optional = true }
+bytemuck = { version = "1.25.0", optional = true }
 rayon = { version = "1.11.0", optional = true }
-fearless_simd = "0.4.0"
+fearless_simd = "0.5.0"
 
 [features]
-default = []
+default = ["parallel"]
 complex-nums = ["dep:num-complex", "dep:bytemuck"]
 parallel = ["dep:rayon"]
 bench-internals = ["complex-nums"]
 
 [dev-dependencies]
 criterion = "0.8.2"
-fearless_simd = "0.4.0"
 fftw = "0.8.0"
-rand = "0.9.3"
+rand = "0.10.1"
+realfft = "3.5.0"
 utilities = { path = "utilities" }
 
 [[bench]]
 name = "bench"
+harness = false
+
+[[bench]]
+name = "rustfft"
 harness = false
 
 [[bench]]
@@ -46,13 +60,25 @@ harness = false
 required-features = ["complex-nums"]
 
 [[bench]]
-name = "heuristic_vs_tune"
-harness = false
-
-[[bench]]
 name = "bit_reversal"
 harness = false
 required-features = ["bench-internals"]
+
+[[bench]]
+name = "fftw_estimate"
+harness = false
+
+[[bench]]
+name = "fftw_measure"
+harness = false
+
+[[bench]]
+name = "fftw_conserve"
+harness = false
+
+[[bench]]
+name = "realfft"
+harness = false
 
 [profile.profiling]
 inherits = "release"
@@ -61,5 +87,5 @@ debug = true
 [package.metadata.docs.rs]
 all-features = true
 
+# for now we declare lints in lib.rs
 [lints.rust]
-

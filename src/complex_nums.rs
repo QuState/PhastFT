@@ -2,12 +2,10 @@
 //!
 //! They are not part of the public API because the module they're in is private.
 //! They can be accessed with `--features bench-internals` for benchmarking only.
-
 use bytemuck::cast_slice;
 use num_complex::Complex;
-use num_traits::Float;
 
-/// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any length
+/// Separates data like `[1, 2, 3, 4]` into `([1, 3], [2, 4])` for any *even* length
 pub fn deinterleave<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
     // Despite relying on autovectorization, this is the fastest approach
     // because we don't need to initialize the output Vecs.
@@ -16,23 +14,17 @@ pub fn deinterleave<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
     input.chunks_exact(2).map(|c| (c[0], c[1])).unzip()
 }
 
-/// Utility function to separate a slice of [`Complex64``]
-/// into a single vector of Complex Number Structs.
+/// Splits a slice of [`Complex<f64>`] into separate real and imaginary vectors.
 ///
-/// # Panics
-///
-/// Panics if `reals.len() != imags.len()`.
+/// Inverse of [`combine_re_im`].
 pub fn deinterleave_complex64(signal: &[Complex<f64>]) -> (Vec<f64>, Vec<f64>) {
     let complex_t: &[f64] = cast_slice(signal);
     deinterleave(complex_t)
 }
 
-/// Utility function to separate a slice of [`Complex32``]
-/// into a single vector of Complex Number Structs.
+/// Splits a slice of [`Complex<f32>`] into separate real and imaginary vectors.
 ///
-/// # Panics
-///
-/// Panics if `reals.len() != imags.len()`.
+/// Inverse of [`combine_re_im`].
 pub fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
     let complex_t: &[f32] = cast_slice(signal);
     deinterleave(complex_t)
@@ -44,7 +36,10 @@ pub fn deinterleave_complex32(signal: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
 /// # Panics
 ///
 /// Panics if `reals.len() != imags.len()`.
-pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
+pub fn combine_re_im<T>(reals: &[T], imags: &[T]) -> Vec<Complex<T>>
+where
+    T: Copy,
+{
     assert_eq!(reals.len(), imags.len());
 
     reals
@@ -58,7 +53,7 @@ pub fn combine_re_im<T: Float>(reals: &[T], imags: &[T]) -> Vec<Complex<T>> {
 mod tests {
     use rand::distr::StandardUniform;
     use rand::rngs::SmallRng;
-    use rand::{Rng, SeedableRng};
+    use rand::RngExt;
 
     use super::*;
 
@@ -69,7 +64,16 @@ mod tests {
     /// Slow but obviously correct implementation of deinterleaving,
     /// to be used in tests
     fn deinterleave_naive<T: Copy>(input: &[T]) -> (Vec<T>, Vec<T>) {
-        input.chunks_exact(2).map(|c| (c[0], c[1])).unzip()
+        let half_len = input.len() / 2;
+        let mut evens = Vec::with_capacity(half_len);
+        let mut odds = Vec::with_capacity(half_len);
+
+        for i in 0..half_len {
+            evens.push(input[2 * i]);
+            odds.push(input[2 * i + 1])
+        }
+        // assert_eq!(evens.len() + odds.len(), input.len());
+        (evens, odds)
     }
 
     #[test]
@@ -85,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_separate_and_combine_re_im() {
-        let mut rng = SmallRng::from_os_rng();
+        let mut rng = rand::make_rng::<SmallRng>();
         let complex_vec: Vec<f32> = (&mut rng)
             .sample_iter(StandardUniform)
             .take(16384)

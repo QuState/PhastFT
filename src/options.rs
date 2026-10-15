@@ -6,7 +6,7 @@
 /// You only need to tune these options if you are trying to squeeze maximum performance
 /// out of a known hardware platform that you can benchmark at varying input sizes.
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
     /// Whether to run the bit reversal step in 2 threads instead of one.
     /// This is beneficial only at medium to large sizes (i.e. megabytes of data).

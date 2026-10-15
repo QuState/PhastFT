@@ -4,8 +4,9 @@
 //! by Lokhmotov and Mycroft (SPAA'07).
 //!
 //! The algorithm uses vector interleaving operations to perform bit-reversal permutation.
-//! For `N = 2^n` elements with `W`-element vectors, the algorithm performs `log_2(N)` rounds
-//! of in-place interleave operations on pairs of vectors.
+//! For `N = 2^n` elements with `W`-element vectors, it splits the array into `N / W^2`
+//! equivalence classes, each permuted with `log_2(W)` rounds of in-place interleave
+//! operations on pairs of vectors.
 
 #![allow(clippy::manual_swap)] // cannot be applied to expressions, so needs to be defined here
 
@@ -13,11 +14,11 @@ use fearless_simd::prelude::*;
 use fearless_simd::{f32x4, f32x8, f64x4, f64x8, Simd};
 
 // Tile side length for COBRAVO, per element type.
-// B² × sizeof(T) must fit comfortably in L1d as a stack buffer.
+// `B^2 * sizeof(T)` must fit comfortably in L1d as a stack buffer.
 // Constraint: B must be a power of two and B >= LANES (the SIMD vector width).
 
-const TILE_SIDE_F32: usize = 64; // 64² × 4 = 16 KB
-const TILE_SIDE_F64: usize = 32; // 32² × 8 = 8 KB
+const TILE_SIDE_F32: usize = 64; // 64^2 * 4 = 16 KB
+const TILE_SIDE_F64: usize = 32; // 32^2 * 8 = 8 KB
 
 // Minimum number of tiles before engaging the tile loop.
 // With fewer tiles the staging overhead dominates.
@@ -25,7 +26,7 @@ const MIN_TILES: usize = 16;
 
 /// Copy TILE_SIDE strips from `data` into `buf`.
 ///
-/// Tile layout: strip `u` of tile `tile` is `data_chunks[u * strip_stride + tile]`,
+/// Tile layout: strip `u` of tile `tile` is `data[u * strip_stride + tile]`,
 /// and maps to `buf[u]`.
 #[inline(always)]
 fn stage_in<T: Copy, const TILE_SIDE: usize>(
@@ -77,7 +78,7 @@ fn stage_swap<T: Copy, const TILE_SIDE: usize>(
 macro_rules! impl_bit_rev_bravo {
     ($fn_name:ident, $buf_fn_name:ident, $cobravo_fn_name:ident, $elem_ty:ty, $vec_ty:ty, $lanes:expr, $tile_side:expr) => {
         /// Inner helper: runs the BRAVO class loop on a contiguous slice.
-        /// The slice must have length 2^n and at least LANES² elements.
+        /// The slice must have length 2^n and at least LANES^2 elements.
         #[inline(always)]
         fn $buf_fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
             type Chunk<S> = $vec_ty;
@@ -91,7 +92,7 @@ macro_rules! impl_bit_rev_bravo {
 
             const LOG_W: usize = LANES.ilog2() as usize;
 
-            // π = N / W² = number of equivalence classes
+            // pi = N / W^2 = number of equivalence classes
             let num_classes = big_n / (LANES * LANES);
             let class_bits = n - 2 * LOG_W;
 
@@ -137,8 +138,7 @@ macro_rules! impl_bit_rev_bravo {
                             let idx1 = i + offset + stride;
                             let vec0 = chunks_a[idx0];
                             let vec1 = chunks_a[idx1];
-                            chunks_a[idx0] = vec0.zip_low(vec1);
-                            chunks_a[idx1] = vec0.zip_high(vec1);
+                            (chunks_a[idx0], chunks_a[idx1]) = vec0.interleave(vec1);
                         }
                         i += stride * 2;
                     }
@@ -167,8 +167,7 @@ macro_rules! impl_bit_rev_bravo {
                                 let idx1 = i + offset + stride;
                                 let vec0 = chunks_b[idx0];
                                 let vec1 = chunks_b[idx1];
-                                chunks_b[idx0] = vec0.zip_low(vec1);
-                                chunks_b[idx1] = vec0.zip_high(vec1);
+                                (chunks_b[idx0], chunks_b[idx1]) = vec0.interleave(vec1);
                             }
                             i += stride * 2;
                         }
@@ -190,7 +189,7 @@ macro_rules! impl_bit_rev_bravo {
         #[inline(always)]
         fn $cobravo_fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
             const TILE_SIDE: usize = $tile_side;
-            const N_BUF: usize = 2 * TILE_SIDE.ilog2() as usize; // log2(TILE_SIDE²)
+            const N_BUF: usize = 2 * TILE_SIDE.ilog2() as usize; // log2(TILE_SIDE^2)
             let tile_bits = n - N_BUF;
             let num_tiles = 1usize << tile_bits;
 
@@ -229,7 +228,7 @@ macro_rules! impl_bit_rev_bravo {
 
             // For very small arrays, fall back to scalar bit-reversal
             if big_n < LANES * LANES {
-                scalar_bit_reversal(data, n);
+                scalar_bit_reversal(data);
                 return;
             }
 
@@ -253,7 +252,7 @@ macro_rules! impl_bit_rev_bravo {
 }
 
 // Generate concrete implementations for f32 and f64
-// This needed for two reasons:
+// This is needed for two reasons:
 // 1. fearless_simd doesn't support being generic over the element type
 // 2. As of Rust 1.93 we cannot use an associated constant for array lengths,
 //    which is necessary for using the native vector width
@@ -297,8 +296,8 @@ impl_bit_rev_bravo!(
 /// Performs in-place bit-reversal permutation using the CO-BRAVO algorithm.
 ///
 /// # Arguments
-/// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
-/// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
+/// * `data` - The slice to permute in-place. Length must be a power of 2.
+/// * `n` - log_2 of the data length (i.e., data.len() == 2^n)
 #[inline(always)] // required by fearless_simd
 pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
     match <S::f32s>::N {
@@ -311,8 +310,8 @@ pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
 /// Performs in-place bit-reversal permutation using the CO-BRAVO algorithm.
 ///
 /// # Arguments
-/// * `data` - The slice to permute in-place. Length must be a power of 2 and >= LANES².
-/// * `n` - The log₂ of the data length (i.e., data.len() == 2^n)
+/// * `data` - The slice to permute in-place. Length must be a power of 2.
+/// * `n` - log_2 of the data length (i.e., data.len() == 2^n)
 #[inline(always)] // required by fearless_simd
 pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
     match <S::f64s>::N {
@@ -325,11 +324,12 @@ pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
 }
 
 /// Scalar bit-reversal for small arrays
-fn scalar_bit_reversal<T: Default + Copy + Clone>(data: &mut [T], n: usize) {
+fn scalar_bit_reversal<T>(data: &mut [T]) {
     let big_n = data.len();
+    let bits = big_n.ilog2();
 
     for i in 0..big_n {
-        let j = reverse_bits_scalar(i, n as u32);
+        let j = reverse_bits_scalar(i, bits);
         if i < j {
             data.swap(i, j);
         }
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_bravo_bit_reversal_f64() {
-        for n in 2..24 {
+        for n in 0..24 {
             let big_n = 1 << n; // 2.pow(n)
             let mut actual_re: Vec<f64> = (0..big_n).map(f64::from).collect();
             let mut actual_im: Vec<f64> = (0..big_n).map(f64::from).collect();
@@ -390,7 +390,7 @@ mod tests {
 
     #[test]
     fn test_bravo_bit_reversal_f32() {
-        for n in 2..24 {
+        for n in 0..24 {
             let big_n = 1 << n; // 2.pow(n)
             let mut actual_re: Vec<f32> = (0..big_n).map(|i| i as f32).collect();
             let mut actual_im: Vec<f32> = (0..big_n).map(|i| i as f32).collect();
