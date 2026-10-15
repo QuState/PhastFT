@@ -418,7 +418,9 @@ mod tests {
 
     #[test]
     fn test_dit_fft_32_followed_by_ifft_correctness() {
-        for n in 4..12 {
+        // At 8192 points, a leaf's final single stage is outside the whole
+        // transform's final four stages and must not be sent to a fused kernel.
+        for n in 4..15 {
             let size = 1 << n; // 2.pow(n)
             let mut reals_original = vec![0.0f32; size];
             let mut imags_original = vec![0.0f32; size];

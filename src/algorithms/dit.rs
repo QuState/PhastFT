@@ -255,10 +255,12 @@ fn execute_dit_stages_f64<S: Simd>(
     } else {
         #[cfg(feature = "parallel")]
         {
-            // When nearing the end, use the parallelized kernel because recursion doesn't parallelize enough
+            // Only parallelize the final four stages of the whole transform, not
+            // the final stages of every recursive subproblem. Fusion still needs
+            // two stages remaining in the current subproblem.
             // TODO: make this dynamic based on std::thread::available_parallelism(), maybe?
             // The jump from 16 threads to all threads is probably not very large so this is entering diminishing returns
-            if stages_remaining > 4 {
+            if stages_remaining >= 2 && planner.log_n - stage > 4 {
                 // Fuse two stages into a single pass over memory
                 let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
                 let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
@@ -354,10 +356,12 @@ fn execute_dit_stages_f32<S: Simd>(
     } else {
         #[cfg(feature = "parallel")]
         {
-            // When nearing the end, use the parallelized kernel because recursion doesn't parallelize enough
+            // Only parallelize the final four stages of the whole transform, not
+            // the final stages of every recursive subproblem. Fusion still needs
+            // two stages remaining in the current subproblem.
             // TODO: make this dynamic based on std::thread::available_parallelism(), maybe?
             // The jump from 16 threads to all threads is probably not very large so this is entering diminishing returns
-            if stages_remaining > 4 {
+            if stages_remaining >= 2 && planner.log_n - stage > 4 {
                 // Fuse two stages into a single pass over memory
                 let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
                 let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
