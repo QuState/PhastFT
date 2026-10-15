@@ -352,6 +352,91 @@ mod tests {
     test_fft_correctness!(fft_correctness_32, f32, fft_f32_dit, 4, 9);
     test_fft_correctness!(fft_correctness_64, f64, fft_f64_dit, 4, 17);
 
+    macro_rules! test_fft_stage_scheduling {
+        ($name:ident, $float:ty, $planner:ty, $fft:ident, $tolerance:expr) => {
+            #[test]
+            fn $name() {
+                let mut reference_planner = FftPlanner::<$float>::new();
+                // Both exponent parities, across cache leaves, recursive merges,
+                // and the default parallel threshold. Test each direction against
+                // an independent FFT rather than relying only on a round trip.
+                // 2^18 is the default fused-kernel cutoff; 2^19 is above it.
+                for log_n in 8..=19 {
+                    let n = 1 << log_n;
+                    let input: Vec<_> = (0..n)
+                        .map(|i| {
+                            Complex::new(
+                                ((i * 17 % 257) as $float - 128.0) / 128.0,
+                                ((i * 31 % 251) as $float - 125.0) / 125.0,
+                            )
+                        })
+                        .collect();
+                    let planner = <$planner>::new(n);
+                    let opts = Options::guess_options(n);
+                    for direction in [Direction::Forward, Direction::Inverse] {
+                        let mut expected = input.clone();
+                        let reference = match direction {
+                            Direction::Forward => reference_planner.plan_fft_forward(n),
+                            Direction::Inverse => reference_planner.plan_fft_inverse(n),
+                        };
+                        reference.process(&mut expected);
+                        if direction == Direction::Inverse {
+                            for z in &mut expected {
+                                *z /= n as $float;
+                            }
+                        }
+                        // Also force and disable parallel FFT compute work at selected odd
+                        // sizes and on both sides of the kernel cutoff. MAX
+                        // exercises saturating threshold multiplication.
+                        let thresholds = [opts.smallest_parallel_chunk_size, 0, usize::MAX];
+                        let configurations = if matches!(log_n, 9 | 11 | 18 | 19) {
+                            3
+                        } else {
+                            1
+                        };
+                        for threshold in thresholds.into_iter().take(configurations) {
+                            let mut opts = opts.clone();
+                            opts.smallest_parallel_chunk_size = threshold;
+                            let mut re: Vec<_> = input.iter().map(|z| z.re).collect();
+                            let mut im: Vec<_> = input.iter().map(|z| z.im).collect();
+                            $fft(&mut re, &mut im, direction, &planner, &opts);
+
+                            let mut error_sq = 0.0f64;
+                            let mut reference_sq = 0.0f64;
+                            for ((re, im), expected) in re.iter().zip(&im).zip(&expected) {
+                                assert!(re.is_finite() && im.is_finite());
+                                error_sq += (*re as f64 - expected.re as f64).powi(2)
+                                    + (*im as f64 - expected.im as f64).powi(2);
+                                reference_sq +=
+                                    (expected.re as f64).powi(2) + (expected.im as f64).powi(2);
+                            }
+                            let relative_error = (error_sq / reference_sq).sqrt();
+                            assert!(
+                                relative_error < $tolerance,
+                                "n={n}, {direction:?}, cutoff={threshold}: relative L2 error {relative_error}"
+                            );
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    test_fft_stage_scheduling!(
+        fft_stage_scheduling_f32,
+        f32,
+        PlannerDit32,
+        fft_f32_dit_with_planner_and_opts,
+        2e-6
+    );
+    test_fft_stage_scheduling!(
+        fft_stage_scheduling_f64,
+        f64,
+        PlannerDit64,
+        fft_f64_dit_with_planner_and_opts,
+        1e-12
+    );
+
     #[cfg(feature = "complex-nums")]
     #[test]
     fn fft_interleaved_correctness() {
@@ -418,8 +503,7 @@ mod tests {
 
     #[test]
     fn test_dit_fft_32_followed_by_ifft_correctness() {
-        // At 8192 points, a leaf's final single stage is outside the whole
-        // transform's final four stages and must not be sent to a fused kernel.
+        // Include both exponent parities beyond the cache-sized leaves.
         for n in 4..15 {
             let size = 1 << n; // 2.pow(n)
             let mut reals_original = vec![0.0f32; size];
