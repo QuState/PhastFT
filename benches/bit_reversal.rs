@@ -47,7 +47,7 @@ mod old_bravo {
             fn $fn_name<S: Simd>(simd: S, data: &mut [$elem_ty], n: usize) {
                 type Chunk<S> = $vec_ty;
                 const LANES: usize = $lanes;
-                assert!(<Chunk<S>>::N == LANES);
+                assert!(<Chunk<S>>::LEN == LANES);
 
                 let big_n = 1usize << n;
                 assert_eq!(data.len(), big_n);
@@ -142,7 +142,7 @@ mod old_bravo {
 
     #[inline(always)]
     pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
-        match <S::f32s>::N {
+        match <S::f32s>::LEN {
             4 => bit_rev_bravo_chunk_4_f32(simd, data, n),
             _ => bit_rev_bravo_chunk_8_f32(simd, data, n),
         }
@@ -150,7 +150,7 @@ mod old_bravo {
 
     #[inline(always)]
     pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
-        match <S::f64s>::N {
+        match <S::f64s>::LEN {
             2 => bit_rev_bravo_chunk_4_f64(simd, data, n),
             _ => bit_rev_bravo_chunk_8_f64(simd, data, n),
         }
