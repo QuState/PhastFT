@@ -15,9 +15,12 @@ pub struct Options {
     /// This option is ignored if the `parallel` feature is disabled.
     pub multithreaded_bit_reversal: bool,
 
-    /// Do not split the input any further to run in parallel below this size
+    /// Run recursive FFT work serially at or below this subproblem size,
+    /// measured in complex elements. Fused kernels require a subproblem larger
+    /// than 16 times this size before distributing work across threads.
     ///
-    /// Set to `usize::MAX` to disable parallelism in the recursive FFT step.
+    /// Set to `usize::MAX` to disable parallelism throughout FFT computation.
+    /// Bit reversal is controlled separately by `multithreaded_bit_reversal`.
     ///
     /// This option is ignored if the `parallel` feature is disabled.
     pub smallest_parallel_chunk_size: usize,
