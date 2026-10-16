@@ -34,7 +34,7 @@ fn fft_dit_codelet_16_simd_f64<S: Simd>(simd: S, reals: &mut [f64], imags: &mut 
         .as_chunks_mut::<16>()
         .0
         .iter_mut()
-        .zip(imags.as_chunks_mut::<16>().0)
+        .zip(imags.as_chunks_mut::<16>().0.iter_mut())
     {
         macro_rules! transpose4x4_f64 {
             ($g0:expr, $g1:expr, $g2:expr, $g3:expr) => {{
@@ -225,7 +225,7 @@ fn fft_dit_codelet_32_simd_f32<S: Simd>(simd: S, reals: &mut [f32], imags: &mut 
         .as_chunks_mut::<32>()
         .0
         .iter_mut()
-        .zip(imags.as_chunks_mut::<32>().0)
+        .zip(imags.as_chunks_mut::<32>().0.iter_mut())
     {
         // ---- Load into 4 f32x8 register pairs (re + im) ----
         // v_k holds elements [8k .. 8k+7]

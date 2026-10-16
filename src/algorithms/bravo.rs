@@ -85,7 +85,7 @@ macro_rules! impl_bit_rev_bravo {
             const LANES: usize = $lanes; // Vector width W
 
             // as of Rust 1.93 we cannot use an associated constant for array lengths
-            assert!(<Chunk<S>>::N == LANES);
+            assert!(<Chunk<S>>::LEN == LANES);
 
             let big_n = 1usize << n; // 2.pow(n)
             assert_eq!(data.len(), big_n, "Data length must be 2^n");
@@ -300,7 +300,7 @@ impl_bit_rev_bravo!(
 /// * `n` - log_2 of the data length (i.e., data.len() == 2^n)
 #[inline(always)] // required by fearless_simd
 pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
-    match <S::f32s>::N {
+    match <S::f32s>::LEN {
         4 => bit_rev_bravo_chunk_4_f32(simd, data, n), // SSE, NEON and fallback
         _ => bit_rev_bravo_chunk_8_f32(simd, data, n),
         // fearless_simd has no native support for AVX-512 yet
@@ -314,7 +314,7 @@ pub fn bit_rev_bravo_f32<S: Simd>(simd: S, data: &mut [f32], n: usize) {
 /// * `n` - log_2 of the data length (i.e., data.len() == 2^n)
 #[inline(always)] // required by fearless_simd
 pub fn bit_rev_bravo_f64<S: Simd>(simd: S, data: &mut [f64], n: usize) {
-    match <S::f64s>::N {
+    match <S::f64s>::LEN {
         // despite exceeding the native vector width, it is profitable to use larger chunks
         // according to benchmarks on both Zen4 and Apple M4
         2 => bit_rev_bravo_chunk_4_f64(simd, data, n), // SSE, NEON and fallback
