@@ -1,7 +1,8 @@
 //! The planner module provides a convenient interface for planning and executing
-//! a Fast Fourier Transform (FFT). Currently, the planner is responsible for
-//! pre-computing twiddle factors based on the input signal length, as well as the
-//! direction of the FFT.
+//! a Fast Fourier Transform (FFT). Plans cache compact DIT twiddle factor
+//! tables and SIMD detection, and can be reused in either transform direction.
+
+use crate::twiddles::{TwiddleTable32, TwiddleTable64};
 
 /// Inverse is for running the Inverse Fast Fourier Transform (IFFT)
 /// Forward is for running the regular FFT
@@ -14,16 +15,19 @@ pub enum Direction {
 }
 
 macro_rules! impl_planner_dit_for {
-    ($struct_name:ident, $precision:ident, $fft_func:path) => {
-        /// DIT-specific planner that pre-computes twiddles for all stages.
+    ($struct_name:ident, $twiddles:ident) => {
+        /// DIT-specific planner with compact twiddle tables for each stage.
+        ///
+        /// Table storage grows logarithmically with the transform size. Twiddles
+        /// are generated from independent anchors and these small tables, avoiding
+        /// the rounding drift of a long recurrence.
         ///
         /// The planner is direction-agnostic. Namely, the same instance can drive both forward and
         /// inverse transforms. Direction is supplied per-call to the `fft_*_dit*` functions.
         #[derive(Clone)]
         pub struct $struct_name {
-            /// Twiddles for each stage that needs them (stages with chunk_size > 64)
-            /// Each element contains (twiddles_re, twiddles_im) for that stage
-            pub(crate) stage_twiddles: Vec<(Vec<$precision>, Vec<$precision>)>,
+            /// Fixed-size factor tables for stages with chunk_size > 64.
+            pub(crate) stage_twiddles: Vec<$twiddles>,
             /// The log2 of the FFT size
             pub(crate) log_n: usize,
             /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
@@ -33,7 +37,7 @@ macro_rules! impl_planner_dit_for {
         impl $struct_name {
             /// Create a DIT planner for an FFT of size `num_points`.
             ///
-            /// Pre-computes the per-stage twiddle factors and detects the SIMD
+            /// Pre-computes the compact per-stage factor tables and detects the SIMD
             /// support level once, so the planner can be reused across many
             /// FFTs of the same size.
             ///
@@ -46,29 +50,9 @@ macro_rules! impl_planner_dit_for {
                 let simd_level = fearless_simd::Level::new();
 
                 let log_n = num_points.ilog2() as usize;
-                let mut stage_twiddles = Vec::new();
-
-                // Pre-compute twiddles for each stage that needs them
-                for stage in 0..log_n {
-                    let dist = 1 << stage; // 2.pow(stage)
-                    let chunk_size = dist * 2;
-
-                    // Only stages with chunk_size > 64 need twiddles (we have SIMD kernels up to 64)
-                    if chunk_size > 64 {
-                        let mut twiddles_re = vec![0.0 as $precision; dist];
-                        let mut twiddles_im = vec![0.0 as $precision; dist];
-
-                        let angle_mult =
-                            -2.0 * std::$precision::consts::PI / chunk_size as $precision;
-                        for k in 0..dist {
-                            let angle = angle_mult * k as $precision;
-                            twiddles_re[k] = angle.cos();
-                            twiddles_im[k] = angle.sin();
-                        }
-
-                        stage_twiddles.push((twiddles_re, twiddles_im));
-                    }
-                }
+                let stage_twiddles = (6..log_n)
+                    .map(|stage| $twiddles::new(1 << (stage + 1)))
+                    .collect();
 
                 Self {
                     stage_twiddles,
@@ -88,16 +72,8 @@ macro_rules! impl_planner_dit_for {
     };
 }
 
-impl_planner_dit_for!(
-    PlannerDit64,
-    f64,
-    crate::algorithms::dit::fft_f64_dit_with_planner_and_opts
-);
-impl_planner_dit_for!(
-    PlannerDit32,
-    f32,
-    crate::algorithms::dit::fft_f32_dit_with_planner_and_opts
-);
+impl_planner_dit_for!(PlannerDit64, TwiddleTable64);
+impl_planner_dit_for!(PlannerDit32, TwiddleTable32);
 
 // ---------------------------------------------------------------------------
 // R2C / C2R planners

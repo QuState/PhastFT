@@ -294,23 +294,21 @@ fn execute_dit_stages_f64<S: Simd>(
         fft_dit_chunk_64_f64(simd, reals, imags);
         (stage_twiddle_idx, 1)
     } else {
-        let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
+        let twiddles = &planner.stage_twiddles[stage_twiddle_idx];
         match general_stage(stages, planner.log_n, reals.len(), opts) {
             GeneralStage::Single => {
-                fft_dit_chunk_n_f64(simd, reals, imags, twiddles_re, twiddles_im, dist);
+                fft_dit_chunk_n_f64(simd, reals, imags, twiddles, dist);
                 (stage_twiddle_idx + 1, 1)
             }
             GeneralStage::Fused => {
-                let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
+                let next_twiddles = &planner.stage_twiddles[stage_twiddle_idx + 1];
                 fft_dit_fused_2stage_f64_narrow(
                     simd,
                     reals,
                     imags,
                     FusedTwiddles {
-                        stage_re: twiddles_re,
-                        stage_im: twiddles_im,
-                        next_stage_re: twiddles_re2,
-                        next_stage_im: twiddles_im2,
+                        stage: twiddles,
+                        next_stage: next_twiddles,
                     },
                     dist,
                 );
@@ -318,16 +316,14 @@ fn execute_dit_stages_f64<S: Simd>(
             }
             #[cfg(feature = "parallel")]
             GeneralStage::FusedParallel => {
-                let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
+                let next_twiddles = &planner.stage_twiddles[stage_twiddle_idx + 1];
                 fft_dit_fused_2stage_f64_narrow_parallel(
                     simd,
                     reals,
                     imags,
                     FusedTwiddles {
-                        stage_re: twiddles_re,
-                        stage_im: twiddles_im,
-                        next_stage_re: twiddles_re2,
-                        next_stage_im: twiddles_im2,
+                        stage: twiddles,
+                        next_stage: next_twiddles,
                     },
                     dist,
                 );
@@ -370,23 +366,21 @@ fn execute_dit_stages_f32<S: Simd>(
         fft_dit_chunk_64_f32(simd, reals, imags);
         (stage_twiddle_idx, 1)
     } else {
-        let (twiddles_re, twiddles_im) = &planner.stage_twiddles[stage_twiddle_idx];
+        let twiddles = &planner.stage_twiddles[stage_twiddle_idx];
         match general_stage(stages, planner.log_n, reals.len(), opts) {
             GeneralStage::Single => {
-                fft_dit_chunk_n_f32(simd, reals, imags, twiddles_re, twiddles_im, dist);
+                fft_dit_chunk_n_f32(simd, reals, imags, twiddles, dist);
                 (stage_twiddle_idx + 1, 1)
             }
             GeneralStage::Fused => {
-                let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
+                let next_twiddles = &planner.stage_twiddles[stage_twiddle_idx + 1];
                 fft_dit_fused_2stage_f32_narrow(
                     simd,
                     reals,
                     imags,
                     FusedTwiddles {
-                        stage_re: twiddles_re,
-                        stage_im: twiddles_im,
-                        next_stage_re: twiddles_re2,
-                        next_stage_im: twiddles_im2,
+                        stage: twiddles,
+                        next_stage: next_twiddles,
                     },
                     dist,
                 );
@@ -394,16 +388,14 @@ fn execute_dit_stages_f32<S: Simd>(
             }
             #[cfg(feature = "parallel")]
             GeneralStage::FusedParallel => {
-                let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
+                let next_twiddles = &planner.stage_twiddles[stage_twiddle_idx + 1];
                 fft_dit_fused_2stage_f32_narrow_parallel(
                     simd,
                     reals,
                     imags,
                     FusedTwiddles {
-                        stage_re: twiddles_re,
-                        stage_im: twiddles_im,
-                        next_stage_re: twiddles_re2,
-                        next_stage_im: twiddles_im2,
+                        stage: twiddles,
+                        next_stage: next_twiddles,
                     },
                     dist,
                 );
