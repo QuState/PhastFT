@@ -1392,3 +1392,460 @@ impl_fft_dit_fused_2stage!(
     fft_dit_fused_2stage_f32_narrow_parallel,
     fft_dit_fused_2stage_simd_f32_narrow_parallel
 );
+
+/// Base twiddles for four consecutive DIT stages, from the final stage's table.
+/// Only the first `dist_s` entries of each slice are read. For `D = dist_s`,
+/// `w = W_{16D}^k` supplies the stage bases `w^8`, `w^4`, `w^2`, and `w`.
+/// Powers and fixed rotations are computed locally in the butterfly.
+#[derive(Clone, Copy)]
+pub(crate) struct Fused4Twiddles<'a, T> {
+    pub re: &'a [T],
+    pub im: &'a [T],
+}
+
+// Expand the complete radix-2⁴ network inside the SIMD target-feature boundary.
+// Each lane is an independent 16-point butterfly across sub-blocks spaced D
+// apart. Intermediates stay in local vectors rather than writing to the input.
+macro_rules! fused_4stage_butterfly {
+    ($float:ty, $vector:ident, $simd:expr, [$base_re:expr, $base_im:expr],
+     [($r0:expr, $i0:expr), ($r1:expr, $i1:expr), ($r2:expr, $i2:expr), ($r3:expr, $i3:expr),
+      ($r4:expr, $i4:expr), ($r5:expr, $i5:expr), ($r6:expr, $i6:expr), ($r7:expr, $i7:expr),
+      ($r8:expr, $i8:expr), ($r9:expr, $i9:expr), ($r10:expr, $i10:expr), ($r11:expr, $i11:expr),
+      ($r12:expr, $i12:expr), ($r13:expr, $i13:expr), ($r14:expr, $i14:expr), ($r15:expr, $i15:expr)]) => {{
+        let two = $vector::splat($simd, 2.0);
+        // One complex vector load for all four stages. Squaring is local to
+        // this SIMD position, so rounding error cannot accumulate across k.
+        let w_re = $vector::simd_from($simd, *$base_re);
+        let w_im = $vector::simd_from($simd, *$base_im);
+        let w2_re = w_re.mul_sub(w_re, w_im * w_im);
+        let w2_im = (w_re + w_re) * w_im;
+        let w4_re = w2_re.mul_sub(w2_re, w2_im * w2_im);
+        let w4_im = (w2_re + w2_re) * w2_im;
+        let w8_re = w4_re.mul_sub(w4_re, w4_im * w4_im);
+        let w8_im = (w4_re + w4_re) * w4_im;
+        let mut r0 = $vector::simd_from($simd, *$r0);
+        let mut i0 = $vector::simd_from($simd, *$i0);
+        let mut r1 = $vector::simd_from($simd, *$r1);
+        let mut i1 = $vector::simd_from($simd, *$i1);
+        let mut r2 = $vector::simd_from($simd, *$r2);
+        let mut i2 = $vector::simd_from($simd, *$i2);
+        let mut r3 = $vector::simd_from($simd, *$r3);
+        let mut i3 = $vector::simd_from($simd, *$i3);
+        let mut r4 = $vector::simd_from($simd, *$r4);
+        let mut i4 = $vector::simd_from($simd, *$i4);
+        let mut r5 = $vector::simd_from($simd, *$r5);
+        let mut i5 = $vector::simd_from($simd, *$i5);
+        let mut r6 = $vector::simd_from($simd, *$r6);
+        let mut i6 = $vector::simd_from($simd, *$i6);
+        let mut r7 = $vector::simd_from($simd, *$r7);
+        let mut i7 = $vector::simd_from($simd, *$i7);
+        let mut r8 = $vector::simd_from($simd, *$r8);
+        let mut i8 = $vector::simd_from($simd, *$i8);
+        let mut r9 = $vector::simd_from($simd, *$r9);
+        let mut i9 = $vector::simd_from($simd, *$i9);
+        let mut r10 = $vector::simd_from($simd, *$r10);
+        let mut i10 = $vector::simd_from($simd, *$i10);
+        let mut r11 = $vector::simd_from($simd, *$r11);
+        let mut i11 = $vector::simd_from($simd, *$i11);
+        let mut r12 = $vector::simd_from($simd, *$r12);
+        let mut i12 = $vector::simd_from($simd, *$i12);
+        let mut r13 = $vector::simd_from($simd, *$r13);
+        let mut i13 = $vector::simd_from($simd, *$i13);
+        let mut r14 = $vector::simd_from($simd, *$r14);
+        let mut i14 = $vector::simd_from($simd, *$i14);
+        let mut r15 = $vector::simd_from($simd, *$r15);
+        let mut i15 = $vector::simd_from($simd, *$i15);
+
+        macro_rules! butterfly {
+            ($ar:ident, $ai:ident, $br:ident, $bi:ident, $wr:expr, $wi:expr) => {{
+                let out_re = $wi.mul_add(-$bi, $wr.mul_add($br, $ar));
+                let out_im = $wi.mul_add($br, $wr.mul_add($bi, $ai));
+                $br = two.mul_sub($ar, out_re);
+                $bi = two.mul_sub($ai, out_im);
+                $ar = out_re;
+                $ai = out_im;
+            }};
+        }
+
+        // Stage s + 0: pair sub-blocks 1 apart.
+        let wr = w8_re;
+        let wi = w8_im;
+        butterfly!(r0, i0, r1, i1, wr, wi);
+        butterfly!(r2, i2, r3, i3, wr, wi);
+        butterfly!(r4, i4, r5, i5, wr, wi);
+        butterfly!(r6, i6, r7, i7, wr, wi);
+        butterfly!(r8, i8, r9, i9, wr, wi);
+        butterfly!(r10, i10, r11, i11, wr, wi);
+        butterfly!(r12, i12, r13, i13, wr, wi);
+        butterfly!(r14, i14, r15, i15, wr, wi);
+
+        // Stage s + 1: pair sub-blocks 2 apart.
+        let wr = w4_re;
+        let wi = w4_im;
+        butterfly!(r0, i0, r2, i2, wr, wi);
+        butterfly!(r4, i4, r6, i6, wr, wi);
+        butterfly!(r8, i8, r10, i10, wr, wi);
+        butterfly!(r12, i12, r14, i14, wr, wi);
+        // W[k + half_stage_distance] = -j * W[k].
+        butterfly!(r1, i1, r3, i3, wi, (-wr));
+        butterfly!(r5, i5, r7, i7, wi, (-wr));
+        butterfly!(r9, i9, r11, i11, wi, (-wr));
+        butterfly!(r13, i13, r15, i15, wi, (-wr));
+
+        // Stage s + 2: pair sub-blocks 4 apart.
+        let wr = w2_re;
+        let wi = w2_im;
+        butterfly!(r0, i0, r4, i4, wr, wi);
+        butterfly!(r8, i8, r12, i12, wr, wi);
+        // W[k + half_stage_distance] = -j * W[k].
+        butterfly!(r2, i2, r6, i6, wi, (-wr));
+        butterfly!(r10, i10, r14, i14, wi, (-wr));
+        // W_{8D}^{k+D} = w^2 * exp(-i*pi/4).
+        let sqrt_half = $vector::splat($simd, std::f64::consts::FRAC_1_SQRT_2 as $float);
+        let wr = (w2_re + w2_im) * sqrt_half;
+        let wi = (w2_im - w2_re) * sqrt_half;
+        butterfly!(r1, i1, r5, i5, wr, wi);
+        butterfly!(r9, i9, r13, i13, wr, wi);
+        // W[k + half_stage_distance] = -j * W[k].
+        butterfly!(r3, i3, r7, i7, wi, (-wr));
+        butterfly!(r11, i11, r15, i15, wi, (-wr));
+
+        // Stage s + 3: pair sub-blocks 8 apart.
+        let wr = w_re;
+        let wi = w_im;
+        butterfly!(r0, i0, r8, i8, wr, wi);
+        // W[k + half_stage_distance] = -j * W[k].
+        butterfly!(r4, i4, r12, i12, wi, (-wr));
+        // W_{16D}^{k+D} = w * exp(-i*pi/8).
+        let cos_pi_8 = $vector::splat($simd, 0.923_879_532_511_286_7_f64 as $float);
+        let sin_pi_8 = $vector::splat($simd, 0.382_683_432_365_089_8_f64 as $float);
+        let wr = w_re.mul_add(cos_pi_8, w_im * sin_pi_8);
+        let wi = w_im.mul_sub(cos_pi_8, w_re * sin_pi_8);
+        butterfly!(r1, i1, r9, i9, wr, wi);
+        // W[k + half_stage_distance] = -j * W[k].
+        butterfly!(r5, i5, r13, i13, wi, (-wr));
+        // W_{16D}^{k+2D} = w * exp(-i*pi/4).
+        let wr = (w_re + w_im) * sqrt_half;
+        let wi = (w_im - w_re) * sqrt_half;
+        butterfly!(r2, i2, r10, i10, wr, wi);
+        // W[k + half_stage_distance] = -j * W[k].
+        butterfly!(r6, i6, r14, i14, wi, (-wr));
+        // W_{16D}^{k+3D} = w * exp(-i*3*pi/8).
+        let wr = w_re.mul_add(sin_pi_8, w_im * cos_pi_8);
+        let wi = w_im.mul_sub(sin_pi_8, w_re * cos_pi_8);
+        butterfly!(r3, i3, r11, i11, wr, wi);
+        // W[k + half_stage_distance] = -j * W[k].
+        butterfly!(r7, i7, r15, i15, wi, (-wr));
+        r0.store_slice($r0);
+        i0.store_slice($i0);
+        r1.store_slice($r1);
+        i1.store_slice($i1);
+        r2.store_slice($r2);
+        i2.store_slice($i2);
+        r3.store_slice($r3);
+        i3.store_slice($i3);
+        r4.store_slice($r4);
+        i4.store_slice($i4);
+        r5.store_slice($r5);
+        i5.store_slice($i5);
+        r6.store_slice($r6);
+        i6.store_slice($i6);
+        r7.store_slice($r7);
+        i7.store_slice($i7);
+        r8.store_slice($r8);
+        i8.store_slice($i8);
+        r9.store_slice($r9);
+        i9.store_slice($i9);
+        r10.store_slice($r10);
+        i10.store_slice($i10);
+        r11.store_slice($r11);
+        i11.store_slice($i11);
+        r12.store_slice($r12);
+        i12.store_slice($i12);
+        r13.store_slice($r13);
+        i13.store_slice($i13);
+        r14.store_slice($r14);
+        i14.store_slice($i14);
+        r15.store_slice($r15);
+        i15.store_slice($i15);
+    }};
+}
+
+// Serial and Rayon traversals use the same disjoint slices and arithmetic.
+// Only the iterator method differs. Worker closures enter their SIMD boundary
+// explicitly, since Rayon workers do not inherit the caller's target features.
+macro_rules! fused_4stage_traversal {
+    ($float:ty, $vector:ident, $lanes:literal,
+     $simd:ident, $reals:ident, $imags:ident, $tw:ident, $dist:ident, $iter:ident, $tw_iter:ident) => {{
+        const LANES: usize = $lanes;
+        assert_eq!($reals.len(), $imags.len());
+        assert!($dist >= LANES && $dist % LANES == 0);
+        let block_size = $dist * 16;
+        assert_eq!($reals.len() % block_size, 0);
+        let tw_re = $tw.re[..$dist].as_chunks::<LANES>().0;
+        let tw_im = $tw.im[..$dist].as_chunks::<LANES>().0;
+
+        for (re, im) in $reals.chunks_exact_mut(block_size).zip($imags.chunks_exact_mut(block_size)) {
+            let mut re = re.chunks_exact_mut($dist);
+            let mut im = im.chunks_exact_mut($dist);
+            let [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15]: [&mut [$float]; 16] =
+                std::array::from_fn(|_| re.next().unwrap());
+            let [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15]: [&mut [$float]; 16] =
+                std::array::from_fn(|_| im.next().unwrap());
+            let p0 = r0.as_chunks_mut::<LANES>().0.$iter().zip(i0.as_chunks_mut::<LANES>().0.$iter());
+            let p1 = r1.as_chunks_mut::<LANES>().0.$iter().zip(i1.as_chunks_mut::<LANES>().0.$iter());
+            let p2 = r2.as_chunks_mut::<LANES>().0.$iter().zip(i2.as_chunks_mut::<LANES>().0.$iter());
+            let p3 = r3.as_chunks_mut::<LANES>().0.$iter().zip(i3.as_chunks_mut::<LANES>().0.$iter());
+            let p4 = r4.as_chunks_mut::<LANES>().0.$iter().zip(i4.as_chunks_mut::<LANES>().0.$iter());
+            let p5 = r5.as_chunks_mut::<LANES>().0.$iter().zip(i5.as_chunks_mut::<LANES>().0.$iter());
+            let p6 = r6.as_chunks_mut::<LANES>().0.$iter().zip(i6.as_chunks_mut::<LANES>().0.$iter());
+            let p7 = r7.as_chunks_mut::<LANES>().0.$iter().zip(i7.as_chunks_mut::<LANES>().0.$iter());
+            let p8 = r8.as_chunks_mut::<LANES>().0.$iter().zip(i8.as_chunks_mut::<LANES>().0.$iter());
+            let p9 = r9.as_chunks_mut::<LANES>().0.$iter().zip(i9.as_chunks_mut::<LANES>().0.$iter());
+            let p10 = r10.as_chunks_mut::<LANES>().0.$iter().zip(i10.as_chunks_mut::<LANES>().0.$iter());
+            let p11 = r11.as_chunks_mut::<LANES>().0.$iter().zip(i11.as_chunks_mut::<LANES>().0.$iter());
+            let p12 = r12.as_chunks_mut::<LANES>().0.$iter().zip(i12.as_chunks_mut::<LANES>().0.$iter());
+            let p13 = r13.as_chunks_mut::<LANES>().0.$iter().zip(i13.as_chunks_mut::<LANES>().0.$iter());
+            let p14 = r14.as_chunks_mut::<LANES>().0.$iter().zip(i14.as_chunks_mut::<LANES>().0.$iter());
+            let p15 = r15.as_chunks_mut::<LANES>().0.$iter().zip(i15.as_chunks_mut::<LANES>().0.$iter());
+            let q0 = p0.zip(p1).zip(p2.zip(p3));
+            let q1 = p4.zip(p5).zip(p6.zip(p7));
+            let q2 = p8.zip(p9).zip(p10.zip(p11));
+            let q3 = p12.zip(p13).zip(p14.zip(p15));
+            let tw = tw_re.$tw_iter().zip(tw_im.$tw_iter());
+            q0.zip(q1).zip(q2.zip(q3)).zip(tw)
+                .for_each(|(((q0, q1), (q2, q3)), (base_re, base_im))| {
+                    let (((r0, i0), (r1, i1)), ((r2, i2), (r3, i3))) = q0;
+                    let (((r4, i4), (r5, i5)), ((r6, i6), (r7, i7))) = q1;
+                    let (((r8, i8), (r9, i9)), ((r10, i10), (r11, i11))) = q2;
+                    let (((r12, i12), (r13, i13)), ((r14, i14), (r15, i15))) = q3;
+                    $simd.vectorize(
+                        #[inline(always)]
+                        || {
+                            fused_4stage_butterfly!($float, $vector, $simd, [base_re, base_im],
+                                [(r0, i0), (r1, i1), (r2, i2), (r3, i3),
+                                 (r4, i4), (r5, i5), (r6, i6), (r7, i7),
+                                 (r8, i8), (r9, i9), (r10, i10), (r11, i11),
+                                 (r12, i12), (r13, i13), (r14, i14), (r15, i15)]);
+                        },
+                    );
+                });
+        }
+    }};
+}
+
+/// Generate four-stage kernels for one precision and vector width.
+macro_rules! impl_fft_dit_fused_4stage {
+    ($float:ty, $vector:ident, $lanes:literal,
+     $serial:ident, $serial_simd:ident, $parallel:ident, $parallel_simd:ident) => {
+        /// Four consecutive DIT stages (radix-2⁴) in one pass over the input.
+        #[inline(never)]
+        pub(crate) fn $serial<S: Simd>(
+            simd: S,
+            reals: &mut [$float],
+            imags: &mut [$float],
+            twiddles: Fused4Twiddles<'_, $float>,
+            dist_s: usize,
+        ) {
+            simd.vectorize(
+                #[inline(always)]
+                || $serial_simd(simd, reals, imags, twiddles, dist_s),
+            )
+        }
+
+        #[inline(always)]
+        fn $serial_simd<S: Simd>(
+            simd: S,
+            reals: &mut [$float],
+            imags: &mut [$float],
+            twiddles: Fused4Twiddles<'_, $float>,
+            dist_s: usize,
+        ) {
+            fused_4stage_traversal!(
+                $float, $vector, $lanes, simd, reals, imags, twiddles, dist_s, iter_mut, iter
+            );
+        }
+
+        /// Four consecutive DIT stages, distributed across Rayon workers.
+        #[cfg(feature = "parallel")]
+        #[inline(never)]
+        pub(crate) fn $parallel<S: Simd>(
+            simd: S,
+            reals: &mut [$float],
+            imags: &mut [$float],
+            twiddles: Fused4Twiddles<'_, $float>,
+            dist_s: usize,
+        ) {
+            simd.vectorize(
+                #[inline(always)]
+                || $parallel_simd(simd, reals, imags, twiddles, dist_s),
+            )
+        }
+
+        #[cfg(feature = "parallel")]
+        #[inline(always)]
+        fn $parallel_simd<S: Simd>(
+            simd: S,
+            reals: &mut [$float],
+            imags: &mut [$float],
+            twiddles: Fused4Twiddles<'_, $float>,
+            dist_s: usize,
+        ) {
+            use rayon::prelude::*;
+            fused_4stage_traversal!(
+                $float,
+                $vector,
+                $lanes,
+                simd,
+                reals,
+                imags,
+                twiddles,
+                dist_s,
+                par_iter_mut,
+                par_iter
+            );
+        }
+    };
+}
+
+impl_fft_dit_fused_4stage!(
+    f64,
+    f64x4,
+    4,
+    fft_dit_fused_4stage_f64_narrow,
+    fft_dit_fused_4stage_simd_f64_narrow,
+    fft_dit_fused_4stage_f64_narrow_parallel,
+    fft_dit_fused_4stage_simd_f64_narrow_parallel
+);
+
+impl_fft_dit_fused_4stage!(
+    f32,
+    f32x8,
+    8,
+    fft_dit_fused_4stage_f32_narrow,
+    fft_dit_fused_4stage_simd_f32_narrow,
+    fft_dit_fused_4stage_f32_narrow_parallel,
+    fft_dit_fused_4stage_simd_f32_narrow_parallel
+);
+
+#[cfg(test)]
+mod tests {
+    use fearless_simd::{dispatch, Level};
+
+    use super::*;
+
+    fn supported_levels() -> Vec<Level> {
+        let detected = Level::new();
+        #[allow(unused_mut)]
+        let mut levels = vec![Level::baseline(), detected];
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            levels.extend(detected.as_sse2().map(Level::Sse2));
+            levels.extend(detected.as_sse4_2().map(Level::Sse4_2));
+            levels.extend(detected.as_avx2().map(Level::Avx2));
+            levels.extend(detected.as_avx512().map(Level::Avx512));
+        }
+        levels
+    }
+
+    macro_rules! test_four_stages {
+        ($name:ident, $float:ident, $lanes:literal,
+         $single:ident, $small:ident, $fused:ident, $parallel:ident, $tolerance:expr) => {
+            #[test]
+            fn $name() {
+                for level in supported_levels() {
+                    for dist in [$lanes, 2 * $lanes, 64, 256, 1024] {
+                        let tables: [(Vec<$float>, Vec<$float>); 4] =
+                            std::array::from_fn(|stage| {
+                                let distance = dist << stage;
+                                (0..distance)
+                                    .map(|k| {
+                                        let angle = -std::$float::consts::PI * k as $float
+                                            / distance as $float;
+                                        (angle.cos(), angle.sin())
+                                    })
+                                    .unzip()
+                            });
+                        // Supply only the final stage's first D entries. The
+                        // kernel must derive every other twiddle locally, while
+                        // the reference uses independent tables for all stages.
+                        let twiddles = Fused4Twiddles {
+                            re: &tables[3].0[..dist],
+                            im: &tables[3].1[..dist],
+                        };
+                        for blocks in [1, 3] {
+                            let n = 16 * dist * blocks;
+                            let input_re: Vec<$float> = (0..n)
+                                .map(|i| ((i * 17 % 257) as $float - 128.0) / 128.0)
+                                .collect();
+                            let input_im: Vec<$float> = (0..n)
+                                .map(|i| ((i * 31 % 251) as $float - 125.0) / 125.0)
+                                .collect();
+                            let mut expected_re = input_re.clone();
+                            let mut expected_im = input_im.clone();
+                            dispatch!(level, simd => {
+                                for (stage, (tw_re, tw_im)) in tables.iter().enumerate() {
+                                    let distance = dist << stage;
+                                    // The existing general kernels use twice the
+                                    // lane width of the fused kernels.
+                                    if distance == $lanes {
+                                        $small(simd, &mut expected_re, &mut expected_im);
+                                    } else {
+                                        $single(simd, &mut expected_re, &mut expected_im,
+                                            tw_re, tw_im, distance);
+                                    }
+                                }
+                            });
+                            let check = |actual_re: &[$float], actual_im: &[$float]| {
+                                let mut error = 0.0;
+                                let mut norm = 0.0;
+                                for ((re, im), (er, ei)) in actual_re.iter().zip(actual_im)
+                                    .zip(expected_re.iter().zip(&expected_im))
+                                {
+                                    assert!(re.is_finite() && im.is_finite());
+                                    error += (*re as f64 - *er as f64).powi(2)
+                                        + (*im as f64 - *ei as f64).powi(2);
+                                    norm += (*er as f64).powi(2) + (*ei as f64).powi(2);
+                                }
+                                assert!((error / norm).sqrt() < $tolerance,
+                                    "{level:?}, dist={dist}, blocks={blocks}: error={error}, norm={norm}");
+                            };
+                            let mut re = input_re.clone();
+                            let mut im = input_im.clone();
+                            dispatch!(level, simd => $fused(simd, &mut re, &mut im, twiddles, dist));
+                            check(&re, &im);
+                            #[cfg(feature = "parallel")]
+                            {
+                                let mut re = input_re.clone();
+                                let mut im = input_im.clone();
+                                dispatch!(level, simd => $parallel(simd, &mut re, &mut im, twiddles, dist));
+                                check(&re, &im);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    test_four_stages!(
+        fused_four_stages_f64,
+        f64,
+        4,
+        fft_dit_chunk_n_f64,
+        fft_dit_chunk_8_f64,
+        fft_dit_fused_4stage_f64_narrow,
+        fft_dit_fused_4stage_f64_narrow_parallel,
+        1e-12
+    );
+    test_four_stages!(
+        fused_four_stages_f32,
+        f32,
+        8,
+        fft_dit_chunk_n_f32,
+        fft_dit_chunk_16_f32,
+        fft_dit_fused_4stage_f32_narrow,
+        fft_dit_fused_4stage_f32_narrow_parallel,
+        2e-6
+    );
+}
