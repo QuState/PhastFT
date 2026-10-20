@@ -34,8 +34,8 @@ mkdir -p \
   "$OUTPUT_DIR/phastft" \
   "$OUTPUT_DIR/fftwrb"
 
-echo "[build] cargo build --release --examples"
-(cd .. && cargo build --release --examples)
+echo "[build] cargo build --profile bench --examples"
+(cd .. && cargo build --profile bench --examples)
 
 PHASTFT_BIN=../target/release/examples/benchmark
 RUSTFFT_BIN=../target/release/examples/rustfft

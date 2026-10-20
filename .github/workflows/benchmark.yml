@@ -1,0 +1,83 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      parallel:
+        default: true
+        type: boolean
+        description: Enable phastft parallel feature
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    strategy:
+      matrix:
+        target:
+          - c2c_forward
+          - c2c_inverse
+          - r2c
+          - c2r
+          - planner
+          - interleave
+          - bit_reversal
+      fail-fast: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Benchmark
+        run: >
+            cargo bench --bench ${{ matrix.target }}
+            --profile bench
+            --no-default-features
+            --features="bench-internals,complex-nums,${{ inputs.parallel && 'parallel' || null }}"
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: criterion-${{ matrix.target }}
+          path: |
+              target/criterion
+          if-no-files-found: error
+
+  merge:
+      needs: benchmark
+      runs-on: ubuntu-latest
+      steps:
+        - name: Merge benchmark artifacts
+          uses: actions/upload-artifact/merge@v7
+          with:
+            name: criterion-data
+            pattern: criterion-*
+            delete-merged: true
+
+  plot:
+    needs: merge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download benchmark artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: criterion-data
+          path: target/criterion
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Plot
+        run: |
+          uv run benches/plot_criterion_overlay.py \
+            --out-dir target/overlays
+
+      - name: Upload overlays
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: plot-overlays
+          path: target/overlays
+          if-no-files-found: error

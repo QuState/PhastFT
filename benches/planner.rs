@@ -14,7 +14,7 @@ macro_rules! planner_bench {
                 LENGTHS,
                 throughput_complex::<$float>,
                 |g, len| {
-                    g.bench_function(BenchmarkId::new(ids::PHASTFT_DIT, len), |b| {
+                    g.bench_function(BenchmarkId::new(ids::PHASTFT, len), |b| {
                         b.iter(|| <$planner>::new(len));
                     });
                     g.bench_function(BenchmarkId::new(ids::RUSTFFT, len), |b| {

@@ -63,7 +63,6 @@ import matplotlib.container
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 from utils import bytes2human
 
 
@@ -72,6 +71,7 @@ class GroupSpec:
     """Per-group plot config. `title` is the humanized chart title;
     `baseline` is the series whose median normalizes the others (`None`
     means single-series — skip ratio plot)."""
+
     title: str
     baseline: str | None
 
@@ -82,47 +82,54 @@ class GroupSpec:
 # and are skipped — the registry doubles as a "what groups are known"
 # list so unregistered output surfaces immediately.
 GROUPS: dict[str, GroupSpec] = {
-    "c2c_forward_f32":          GroupSpec("C2C Forward (f32)",   "RustFFT"),
-    "c2c_forward_f64":          GroupSpec("C2C Forward (f64)",   "RustFFT"),
-    "c2c_inverse_f32":          GroupSpec("C2C Inverse (f32)",   "RustFFT"),
-    "c2c_inverse_f64":          GroupSpec("C2C Inverse (f64)",   "RustFFT"),
-    "r2c_f32":                  GroupSpec("R2C (f32)",           "realfft"),
-    "r2c_f64":                  GroupSpec("R2C (f64)",           "realfft"),
-    "c2r_f32":                  GroupSpec("C2R (f32)",           "realfft"),
-    "c2r_f64":                  GroupSpec("C2R (f64)",           "realfft"),
-    "planner_f32":              GroupSpec("Planner (f32)",       "RustFFT"),
-    "planner_f64":              GroupSpec("Planner (f64)",       "RustFFT"),
-    "planner_mode_f32":         GroupSpec("Planner Mode (f32)",  "Heuristic"),
-    "planner_mode_f64":         GroupSpec("Planner Mode (f64)",  "Heuristic"),
-    "kernel_bit_reversal_f32":  GroupSpec("Bit Reversal (f32)",  "COBRA"),
-    "kernel_bit_reversal_f64":  GroupSpec("Bit Reversal (f64)",  "COBRA"),
-    "kernel_deinterleave_f32":  GroupSpec("Deinterleave (f32)",  None),
-    "kernel_deinterleave_f64":  GroupSpec("Deinterleave (f64)",  None),
+    "c2c_forward_f32": GroupSpec("C2C Forward (f32)", "phastft"),
+    "c2c_forward_f64": GroupSpec("C2C Forward (f64)", "phastft"),
+    "c2c_inverse_f32": GroupSpec("C2C Inverse (f32)", "phastft"),
+    "c2c_inverse_f64": GroupSpec("C2C Inverse (f64)", "phastft"),
+    "r2c_f32": GroupSpec("R2C (f32)", "phastft"),
+    "r2c_f64": GroupSpec("R2C (f64)", "phastft"),
+    "c2r_f32": GroupSpec("C2R (f32)", "phastft"),
+    "c2r_f64": GroupSpec("C2R (f64)", "phastft"),
+    "planner_f32": GroupSpec("Planner (f32)", "phastft"),
+    "planner_f64": GroupSpec("Planner (f64)", "phastft"),
+    "planner_mode_f32": GroupSpec("Planner Mode (f32)", "heuristic"),
+    "planner_mode_f64": GroupSpec("Planner Mode (f64)", "heuristic"),
+    "kernel_bit_reversal_f32": GroupSpec("Bit Reversal (f32)", "cobra"),
+    "kernel_bit_reversal_f64": GroupSpec("Bit Reversal (f64)", "cobra"),
+    "kernel_deinterleave_f32": GroupSpec("Deinterleave (f32)", None),
+    "kernel_deinterleave_f64": GroupSpec("Deinterleave (f64)", None),
     "kernel_combine_re_im_f32": GroupSpec("Combine Re/Im (f32)", None),
     "kernel_combine_re_im_f64": GroupSpec("Combine Re/Im (f64)", None),
 }
 
 # Series styling. Color is the canonical Okabe-Ito assignment per series;
-# sort_index pins left-to-right bar order (lower = leftmost). PhastFT R2C/C2R
-# reuse the PhastFT DIT orange and `realfft` reuses the RustFFT blue — they
+# sort_index pins left-to-right bar order (lower = leftmost). PhastFT
+# blue and `realfft` reuses the RustFFT orange — they
 # live in disjoint groups so the colors never collide on a single chart.
 SERIES_REGISTRY: dict[str, tuple[str, int]] = {
-    "RustFFT":       ("#0072B2", 0),
-    "realfft":       ("#0072B2", 0),
-    "PhastFT DIT":   ("#D55E00", 1),
-    "PhastFT R2C":   ("#D55E00", 1),
-    "PhastFT C2R":   ("#D55E00", 1),
-    "FFTW Estimate": ("#009E73", 2),
-    "FFTW Measure":  ("#E69F00", 3),
-    "FFTW Conserve": ("#CC79A7", 4),
-    "Heuristic":     ("#0072B2", 0),
-    "Tune":          ("#D55E00", 1),
-    "BRAVO":         ("#0072B2", 0),
-    "COBRAVO":       ("#D55E00", 1),
-    "COBRA":         ("#009E73", 2),
-    "Elaan":         ("#E69F00", 3),
-    "Naive BR":      ("#CC79A7", 4),
-    "deinterleave":  ("#D55E00", 0),
+    "phastft": ("#0072B2", 0),
+    "rustfft": ("#D55E00", 1),
+    "realfft": ("#D55E00", 1),
+    "fftw_estimate_c2c": ("#009E73", 2),
+    "fftw_measure_c2c": ("#E69F00", 3),
+    "fftw_conserve_c2c": ("#CC79A7", 4),
+    "fftw_estimate_r2c": ("#009E73", 2),
+    "fftw_measure_r2c": ("#E69F00", 3),
+    "fftw_conserve_r2c": ("#CC79A7", 4),
+    "fftw_estimate_c2r": ("#009E73", 2),
+    "fftw_measure_c2r": ("#E69F00", 3),
+    "fftw_conserve_c2r": ("#CC79A7", 4),
+    "fftw_estimate_r2r": ("#009E73", 5),
+    "fftw_measure_r2r": ("#E69F00", 6),
+    "fftw_conserve_r2r": ("#CC79A7", 7),
+    "heuristic": ("#0072B2", 0),
+    "tune": ("#D55E00", 1),
+    "bravo": ("#0072B2", 0),
+    "cobravo": ("#D55E00", 1),
+    "cobra": ("#009E73", 2),
+    "elaan": ("#E69F00", 3),
+    "naive_br": ("#CC79A7", 4),
+    "deinterleave": ("#D55E00", 0),
     "combine_re_im": ("#D55E00", 0),
 }
 _UNKNOWN_COLOR = "#7A7A7A"
@@ -131,39 +138,41 @@ _PARAM_DIR_RE = re.compile(r"^\d+$")
 
 
 def _configure_style() -> None:
-    mpl.rcParams.update({
-        "figure.facecolor":    "white",
-        "axes.facecolor":      "white",
-        "font.family":         "sans-serif",
-        "font.sans-serif":     ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"],
-        "font.size":           11,
-        "axes.titlesize":      14,
-        "axes.titleweight":    "semibold",
-        "axes.titlepad":       14,
-        "axes.labelsize":      11,
-        "axes.labelweight":    "medium",
-        "axes.labelpad":       8,
-        "axes.labelcolor":     "#2F2F2F",
-        "axes.edgecolor":      "#C9C9C9",
-        "axes.linewidth":      0.8,
-        "axes.spines.top":     False,
-        "axes.spines.right":   False,
-        "axes.axisbelow":      True,
-        "xtick.color":         "#4A4A4A",
-        "ytick.color":         "#4A4A4A",
-        "xtick.major.size":    0,
-        "ytick.major.size":    3,
-        "xtick.labelsize":     10,
-        "ytick.labelsize":     10,
-        "legend.frameon":      False,
-        "legend.fontsize":     10,
-        "legend.handlelength": 1.3,
-        "grid.linestyle":      "-",
-        "grid.color":          "#ECECEC",
-        "grid.linewidth":      0.8,
-        "savefig.facecolor":   "white",
-        "savefig.bbox":        "tight",
-    })
+    mpl.rcParams.update(
+        {
+            "figure.facecolor": "white",
+            "axes.facecolor": "white",
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"],
+            "font.size": 11,
+            "axes.titlesize": 14,
+            "axes.titleweight": "semibold",
+            "axes.titlepad": 14,
+            "axes.labelsize": 11,
+            "axes.labelweight": "medium",
+            "axes.labelpad": 8,
+            "axes.labelcolor": "#2F2F2F",
+            "axes.edgecolor": "#C9C9C9",
+            "axes.linewidth": 0.8,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.axisbelow": True,
+            "xtick.color": "#4A4A4A",
+            "ytick.color": "#4A4A4A",
+            "xtick.major.size": 0,
+            "ytick.major.size": 3,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "legend.frameon": False,
+            "legend.fontsize": 10,
+            "legend.handlelength": 1.3,
+            "grid.linestyle": "-",
+            "grid.color": "#ECECEC",
+            "grid.linewidth": 0.8,
+            "savefig.facecolor": "white",
+            "savefig.bbox": "tight",
+        }
+    )
 
 
 def humanize(group_name: str) -> str:
@@ -175,16 +184,12 @@ def humanize(group_name: str) -> str:
 
 def discover_groups(criterion_dir: Path) -> list[Path]:
     return sorted(
-        p for p in criterion_dir.iterdir()
-        if p.is_dir() and p.name != "report"
+        p for p in criterion_dir.iterdir() if p.is_dir() and p.name != "report"
     )
 
 
 def discover_series(group_dir: Path) -> list[Path]:
-    return sorted(
-        p for p in group_dir.iterdir()
-        if p.is_dir() and p.name != "report"
-    )
+    return sorted(p for p in group_dir.iterdir() if p.is_dir() and p.name != "report")
 
 
 def load_sample(param_dir: Path) -> tuple[int, int, float, float, float] | None:
@@ -228,7 +233,9 @@ def load_sample(param_dir: Path) -> tuple[int, int, float, float, float] | None:
         if _PARAM_DIR_RE.match(param_dir.name):
             elements = int(param_dir.name)
         else:
-            print(f"warn: skipping non-integer param '{param_dir.name}'", file=sys.stderr)
+            print(
+                f"warn: skipping non-integer param '{param_dir.name}'", file=sys.stderr
+            )
             return None
 
     if byte_count is None:
@@ -256,6 +263,7 @@ def load_series(series_dir: Path) -> dict[int, tuple[int, float, float, float]]:
 def order_series(available: list[str], baseline: str) -> list[str]:
     """Baseline first, then series sorted by SERIES_REGISTRY index, then
     unknown series alphabetically."""
+
     def key(s: str) -> tuple[int, str]:
         entry = SERIES_REGISTRY.get(s)
         # Unknown series sort after all known ones.
@@ -275,7 +283,7 @@ def _color_for(series_name: str) -> str:
     return _UNKNOWN_COLOR
 
 
-def plot_half(
+def plot_group_item(
     group_name: str,
     baseline: str,
     series_names: list[str],
@@ -344,7 +352,8 @@ def plot_half(
     # plotted patches, which would otherwise show "0.00" over missing-data
     # slots.
     bar_containers = [
-        c for c in ax.containers
+        c
+        for c in ax.containers
         if hasattr(c, "patches") and isinstance(c, mpl.container.BarContainer)
     ]
     for i, container in enumerate(bar_containers):
@@ -370,9 +379,17 @@ def plot_half(
 
     plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
 
+    # Each line up to 5 legends and swap legend order if multilines.
+    handles, labels = ax.get_legend_handles_labels()
+    ncol = min(len(labels), 5)
+    order = [i for col in range(ncol) for i in range(col, len(labels), ncol)]
+    handles = [handles[i] for i in order]
+    labels = [labels[i] for i in order]
     ax.legend(
+        handles,
+        labels,
         loc="upper left",
-        ncol=len(series_names),
+        ncol=ncol,
         columnspacing=1.4,
         handlelength=1.2,
         handleheight=1.0,
@@ -402,11 +419,13 @@ def plot_group(
     series_names = order_series(list(group_data.keys()), baseline)
     sizes = sorted(group_data[baseline].keys())
 
-    mid = len(sizes) // 2
-    halves: list[list[int]] = []
-    if mid > 0:
-        halves.append(sizes[:mid])
-    halves.append(sizes[mid:])
+    # max active size 50
+    active = sum(1 for s in series_names if any(sz in group_data[s] for sz in sizes))
+    max_bars = 50
+    max_sizes = max(1, max_bars // active)
+    n_plots = math.ceil(len(sizes) / max_sizes)
+    chunk_size = math.ceil(len(sizes) / n_plots)
+    halves = [sizes[i : i + chunk_size] for i in range(0, len(sizes), chunk_size)]
 
     for half in halves:
         if not half:
@@ -414,10 +433,8 @@ def plot_group(
         n_lo = int(math.log2(half[0]))
         n_hi = int(math.log2(half[-1]))
         out_stem = out_dir / f"criterion_overlay_{group_name}_{n_lo}_{n_hi}"
-        plot_half(group_name, baseline, series_names, group_data, half, out_stem)
-        active = sum(
-            1 for s in series_names if any(sz in group_data[s] for sz in half)
-        )
+        plot_group_item(group_name, baseline, series_names, group_data, half, out_stem)
+        active = sum(1 for s in series_names if any(sz in group_data[s] for sz in half))
         print(
             f"wrote {out_stem.with_suffix('.svg')} "
             f"({len(half)} sizes, {active} series active)"
@@ -462,7 +479,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         default=None,
         help=(
             "Series whose median normalizes every other series. If unset, "
-            "each group uses its GROUP_DEFAULTS entry (RustFFT for complex, "
+            "each group uses its GROUP_DEFAULTS entry (rustfft for complex, "
             "realfft for R2C/C2R, etc.); explicit value applies to every "
             "group."
         ),

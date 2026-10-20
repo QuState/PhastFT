@@ -38,16 +38,25 @@ bench-internals = ["complex-nums"]
 [dev-dependencies]
 criterion = "0.8.2"
 fftw = "0.8.0"
+fftw-sys="0.8.0"
 rand = "0.10.1"
 realfft = "3.5.0"
 utilities = { path = "utilities" }
 
 [[bench]]
-name = "bench"
+name = "c2c_forward"
 harness = false
 
 [[bench]]
-name = "rustfft"
+name = "c2c_inverse"
+harness = false
+
+[[bench]]
+name = "r2c"
+harness = false
+
+[[bench]]
+name = "c2r"
 harness = false
 
 [[bench]]
@@ -57,32 +66,24 @@ harness = false
 [[bench]]
 name = "interleave"
 harness = false
-required-features = ["complex-nums"]
+required-features = ["bench-internals", "complex-nums"]
 
 [[bench]]
 name = "bit_reversal"
 harness = false
 required-features = ["bench-internals"]
 
-[[bench]]
-name = "fftw_estimate"
-harness = false
-
-[[bench]]
-name = "fftw_measure"
-harness = false
-
-[[bench]]
-name = "fftw_conserve"
-harness = false
-
-[[bench]]
-name = "realfft"
-harness = false
-
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[profile.bench]
+inherits = "release"
+debug = false
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = "symbols"
 
 [package.metadata.docs.rs]
 all-features = true

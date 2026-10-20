@@ -797,6 +797,7 @@ dependencies = [
  "criterion",
  "fearless_simd",
  "fftw",
+ "fftw-sys",
  "num-complex",
  "num-traits",
  "rand",

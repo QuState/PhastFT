@@ -249,28 +249,35 @@ pub mod groups {
 }
 
 /// Series IDs (the inner directory under `target/criterion/<group>/`).
-/// Human-readable PascalCase / lowercase-crate-name; never used as a CLI
+/// Human-readable snake_case; never used as a CLI
 /// filter argument, so spaces and case mixing are fine.
 pub mod ids {
-    pub const PHASTFT_DIT: &str = "PhastFT DIT";
-    pub const PHASTFT_R2C: &str = "PhastFT R2C";
-    pub const PHASTFT_C2R: &str = "PhastFT C2R";
+    pub const PHASTFT: &str = "phastft";
 
-    pub const RUSTFFT: &str = "RustFFT";
+    pub const RUSTFFT: &str = "rustfft";
     pub const REALFFT: &str = "realfft";
 
-    pub const FFTW_ESTIMATE: &str = "FFTW Estimate";
-    pub const FFTW_MEASURE: &str = "FFTW Measure";
-    pub const FFTW_CONSERVE: &str = "FFTW Conserve";
+    pub const FFTW_ESTIMATE_C2C: &str = "fftw_estimate_c2c";
+    pub const FFTW_MEASURE_C2C: &str = "fftw_measure_c2c";
+    pub const FFTW_CONSERVE_C2C: &str = "fftw_conserve_c2c";
+    pub const FFTW_ESTIMATE_R2C: &str = "fftw_estimate_r2c";
+    pub const FFTW_MEASURE_R2C: &str = "fftw_measure_r2c";
+    pub const FFTW_CONSERVE_R2C: &str = "fftw_conserve_r2c";
+    pub const FFTW_ESTIMATE_C2R: &str = "fftw_estimate_c2r";
+    pub const FFTW_MEASURE_C2R: &str = "fftw_measure_c2r";
+    pub const FFTW_CONSERVE_C2R: &str = "fftw_conserve_c2r";
+    pub const FFTW_ESTIMATE_R2R: &str = "fftw_estimate_r2r";
+    pub const FFTW_MEASURE_R2R: &str = "fftw_measure_r2r";
+    pub const FFTW_CONSERVE_R2R: &str = "fftw_conserve_r2r";
 
-    pub const HEURISTIC: &str = "Heuristic";
-    pub const TUNE: &str = "Tune";
+    pub const HEURISTIC: &str = "heuristic";
+    pub const TUNE: &str = "tune";
 
-    pub const COBRAVO: &str = "COBRAVO";
-    pub const BRAVO: &str = "BRAVO";
-    pub const COBRA: &str = "COBRA";
-    pub const ELAAN: &str = "Elaan";
-    pub const BASIC: &str = "Naive BR";
+    pub const COBRAVO: &str = "cobravo";
+    pub const BRAVO: &str = "bravo";
+    pub const COBRA: &str = "cobra";
+    pub const ELAAN: &str = "elaan";
+    pub const BASIC: &str = "naive_br";
 
     pub const DEINTERLEAVE: &str = "deinterleave";
     pub const COMBINE_RE_IM: &str = "combine_re_im";
