@@ -179,9 +179,9 @@ macro_rules! impl_simd_untangle_inplace {
             // Process while a full LANES-block stays strictly below the self-pair at q.
             while k + LANES <= q {
                 let start = k;
-                let block_end = (start + T::BLOCK_LEN).min(q);
+                let block_end = start + T::BLOCK_LEN.min(q - start);
                 let block = twiddles.block(simd, start);
-                while k + LANES <= block_end {
+                for chunk in twiddles.chunks(start, block_end - start) {
                     let mirror_low = half - k - (LANES - 1);
 
                     let a = $V::from_slice(simd, &output_re[k..k + LANES]);
@@ -196,7 +196,7 @@ macro_rules! impl_simd_untangle_inplace {
                     let t_re = b + d;
                     let t_im = c - a;
 
-                    let (wkr_h, wki_h) = twiddles.vector(simd, &block, k - start);
+                    let (wkr_h, wki_h) = twiddles.vector(simd, &block, chunk);
                     let wzr = wkr_h * t_re - wki_h * t_im;
                     let wzi = wkr_h * t_im + wki_h * t_re;
 
@@ -308,9 +308,9 @@ fn simd_c2r_preprocess_f64<S: Simd, T: TwiddleSource<S, f64x4<S>> + ScalarTwiddl
     let mut k = 1;
     while k + LANES <= half {
         let start = k;
-        let block_end = (start + T::BLOCK_LEN).min(half);
+        let block_end = start + T::BLOCK_LEN.min(half - start);
         let block = twiddles.block(simd, start);
-        while k + LANES <= block_end {
+        for chunk in twiddles.chunks(start, block_end - start) {
             let mirror_low = half - k - (LANES - 1);
 
             let re_f = f64x4::from_slice(simd, &input_re[k..k + LANES]);
@@ -326,7 +326,7 @@ fn simd_c2r_preprocess_f64<S: Simd, T: TwiddleSource<S, f64x4<S>> + ScalarTwiddl
             let dr = re_f - re_s;
             let di = im_f - im_s;
 
-            let (c_h, s_h) = twiddles.vector(simd, &block, k - start);
+            let (c_h, s_h) = twiddles.vector(simd, &block, chunk);
             let zy_re = c_h * dr + s_h * di;
             let zy_im = c_h * di - s_h * dr;
 
@@ -395,9 +395,9 @@ fn simd_c2r_preprocess_f32<S: Simd, T: TwiddleSource<S, f32x8<S>> + ScalarTwiddl
     let mut k = 1;
     while k + LANES <= half {
         let start = k;
-        let block_end = (start + T::BLOCK_LEN).min(half);
+        let block_end = start + T::BLOCK_LEN.min(half - start);
         let block = twiddles.block(simd, start);
-        while k + LANES <= block_end {
+        for chunk in twiddles.chunks(start, block_end - start) {
             let mirror_low = half - k - (LANES - 1);
 
             let re_f = f32x8::from_slice(simd, &input_re[k..k + LANES]);
@@ -412,7 +412,7 @@ fn simd_c2r_preprocess_f32<S: Simd, T: TwiddleSource<S, f32x8<S>> + ScalarTwiddl
             let dr = re_f - re_s;
             let di = im_f - im_s;
 
-            let (c_h, s_h) = twiddles.vector(simd, &block, k - start);
+            let (c_h, s_h) = twiddles.vector(simd, &block, chunk);
             let zy_re = c_h * dr + s_h * di;
             let zy_im = c_h * di - s_h * dr;
 

@@ -5,19 +5,27 @@
 //! independently. Each result therefore has at most two complex multiplies
 //! of rounding error, regardless of the transform size.
 
-use fearless_simd::{f32x16, f32x8, f64x4, f64x8, Simd, SimdBase, SimdFloat};
+use fearless_simd::{f32x16, f32x8, f64x4, f64x8, Simd, SimdBase, SimdFloat, SimdFrom};
 
-/// A statically dispatched source of SIMD twiddles. Each block is independent,
-/// so serial and Rayon traversals can use the same interface without sharing
-/// mutable state. Vector offsets are relative to the start of the block.
-/// A block may start at any absolute index; vector offsets within it must be
-/// multiples of the vector width, with the whole vector inside `BLOCK_LEN`.
+/// A statically dispatched source of SIMD twiddles. Blocks are independent,
+/// so serial and Rayon traversals need no shared mutable state. A block may
+/// start at any absolute index, and its length must not exceed `BLOCK_LEN`.
+///
+/// `chunks` yields plain data (stored arrays or indices). SIMD work happens in
+/// `vector`, explicitly inlined into the kernel: doing it inside an iterator
+/// adapter can prevent inlining across fearless_simd's target-feature boundary.
 pub(crate) trait TwiddleSource<S: Simd, V>: Sync {
+    /// Maximum span of one block. Stored sources can traverse the whole stage.
     const BLOCK_LEN: usize;
+    /// Work assigned to a Rayon item; bounded even for stored sources.
+    #[cfg(feature = "parallel")]
+    const PARALLEL_BLOCK_LEN: usize;
     type Block;
+    type Chunk;
 
     fn block(&self, simd: S, offset: usize) -> Self::Block;
-    fn vector(&self, simd: S, block: &Self::Block, offset: usize) -> (V, V);
+    fn chunks(&self, offset: usize, len: usize) -> impl Iterator<Item = Self::Chunk>;
+    fn vector(&self, simd: S, block: &Self::Block, chunk: Self::Chunk) -> (V, V);
 }
 
 /// Scalar access for real-transform endpoints and tails (at most one vector).
@@ -69,26 +77,33 @@ impl_stored_twiddles!(f32);
 macro_rules! impl_stored_source {
     ($float:ty, $vector:ident, $lanes:literal, $block_len:expr) => {
         impl<S: Simd> TwiddleSource<S, $vector<S>> for StoredTwiddles<$float> {
-            const BLOCK_LEN: usize = $block_len;
-            type Block = usize;
+            const BLOCK_LEN: usize = usize::MAX;
+            #[cfg(feature = "parallel")]
+            const PARALLEL_BLOCK_LEN: usize = $block_len;
+            type Block = ();
+            type Chunk = ([$float; $lanes], [$float; $lanes]);
 
             #[inline(always)]
-            fn block(&self, _simd: S, offset: usize) -> Self::Block {
-                offset
+            fn block(&self, _simd: S, _offset: usize) {}
+
+            #[inline(always)]
+            fn chunks(&self, offset: usize, len: usize) -> impl Iterator<Item = Self::Chunk> {
+                self.re[offset..offset + len]
+                    .as_chunks::<$lanes>()
+                    .0
+                    .iter()
+                    .zip(self.im[offset..offset + len].as_chunks::<$lanes>().0.iter())
+                    .map(|(re, im)| (*re, *im))
             }
 
             #[inline(always)]
             fn vector(
                 &self,
                 simd: S,
-                block: &Self::Block,
-                offset: usize,
+                _block: &Self::Block,
+                (re, im): Self::Chunk,
             ) -> ($vector<S>, $vector<S>) {
-                let k = block + offset;
-                (
-                    $vector::from_slice(simd, &self.re[k..k + $lanes]),
-                    $vector::from_slice(simd, &self.im[k..k + $lanes]),
-                )
+                ($vector::simd_from(simd, re), $vector::simd_from(simd, im))
             }
         }
     };
@@ -178,7 +193,10 @@ macro_rules! impl_compact_source {
     ($table:ty, $vector:ident, $lanes:literal) => {
         impl<S: Simd> TwiddleSource<S, $vector<S>> for $table {
             const BLOCK_LEN: usize = Self::BLOCK_LEN;
+            #[cfg(feature = "parallel")]
+            const PARALLEL_BLOCK_LEN: usize = Self::BLOCK_LEN;
             type Block = ($vector<S>, $vector<S>);
+            type Chunk = usize;
 
             #[inline(always)] // Keep SIMD operations inside the vectorize boundary.
             fn block(&self, simd: S, offset: usize) -> Self::Block {
@@ -187,12 +205,19 @@ macro_rules! impl_compact_source {
             }
 
             #[inline(always)]
+            fn chunks(&self, _offset: usize, len: usize) -> impl Iterator<Item = Self::Chunk> {
+                assert!(len <= Self::BLOCK_LEN);
+                0..len / $lanes
+            }
+
+            #[inline(always)]
             fn vector(
                 &self,
                 simd: S,
                 block: &Self::Block,
-                offset: usize,
+                chunk: usize,
             ) -> ($vector<S>, $vector<S>) {
+                let offset = chunk * $lanes;
                 let q = offset / Self::LANES;
                 let r = offset % Self::LANES;
                 let (anchor_re, anchor_im) = *block;

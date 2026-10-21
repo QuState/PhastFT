@@ -1008,17 +1008,18 @@ macro_rules! impl_fft_dit_chunk_n {
                     .zip(im1.chunks_mut(T::BLOCK_LEN))
                     .enumerate()
                     .for_each(|(block, (((re0, re1), im0), im1))| {
-                        let twiddle_block = twiddles.block(simd, block * T::BLOCK_LEN);
+                        let offset = block * T::BLOCK_LEN;
+                        let twiddle_block = twiddles.block(simd, offset);
+                        let twiddle_chunks = twiddles.chunks(offset, re0.len());
                         re0.as_chunks_mut::<LANES>()
                             .0
                             .iter_mut()
                             .zip(re1.as_chunks_mut::<LANES>().0.iter_mut())
                             .zip(im0.as_chunks_mut::<LANES>().0.iter_mut())
                             .zip(im1.as_chunks_mut::<LANES>().0.iter_mut())
-                            .enumerate()
-                            .for_each(|(i, (((re0, re1), im0), im1))| {
-                                let (tw_re, tw_im) =
-                                    twiddles.vector(simd, &twiddle_block, i * LANES);
+                            .zip(twiddle_chunks)
+                            .for_each(|((((re0, re1), im0), im1), twiddle)| {
+                                let (tw_re, tw_im) = twiddles.vector(simd, &twiddle_block, twiddle);
                                 let in0_re = $vector::simd_from(simd, *re0);
                                 let in1_re = $vector::simd_from(simd, *re1);
                                 let in0_im = $vector::simd_from(simd, *im0);
@@ -1126,16 +1127,17 @@ macro_rules! fused_butterfly {
     }};
 }
 
-// One independent anchor block. The parallel traversal assigns whole blocks
-// to workers, so every worker starts from sin_cos rather than another worker's
-// recurrence state. Both traversals share the same twiddle and butterfly math.
+// One independent twiddle block. Compact sources evaluate their anchors here,
+// so workers never depend on another worker's recurrence state. Both traversals
+// share the same twiddle and butterfly math.
 macro_rules! fused_twiddle_block {
-    ($vector:ident, $simd:expr, $twiddles:expr, $block:expr,
+    ($vector:ident, $simd:expr, $twiddles:expr, $offset:expr,
      [$ra:expr, $rb:expr, $rc:expr, $rd:expr],
      [$ia:expr, $ib:expr, $ic:expr, $id:expr]) => {{
-        let offset = $block * T::BLOCK_LEN;
-        let stage_block = $twiddles.stage.block($simd, offset);
-        let next_block = $twiddles.next_stage.block($simd, offset);
+        let stage_block = $twiddles.stage.block($simd, $offset);
+        let next_block = $twiddles.next_stage.block($simd, $offset);
+        let stage_chunks = $twiddles.stage.chunks($offset, $ra.len());
+        let next_chunks = $twiddles.next_stage.chunks($offset, $ra.len());
         $ra.as_chunks_mut::<LANES>()
             .0
             .iter_mut()
@@ -1146,18 +1148,21 @@ macro_rules! fused_twiddle_block {
             .zip($ib.as_chunks_mut::<LANES>().0.iter_mut())
             .zip($ic.as_chunks_mut::<LANES>().0.iter_mut())
             .zip($id.as_chunks_mut::<LANES>().0.iter_mut())
-            .enumerate()
-            .for_each(|(i, (((((((ra, rb), rc), rd), ia), ib), ic), id))| {
-                let (tw_s_re, tw_s_im) = $twiddles.stage.vector($simd, &stage_block, i * LANES);
-                let (tw1_re, tw1_im) = $twiddles.next_stage.vector($simd, &next_block, i * LANES);
-                fused_butterfly!(
-                    $vector,
-                    $simd,
-                    [ra, rb, rc, rd],
-                    [ia, ib, ic, id],
-                    [tw_s_re, tw_s_im, tw1_re, tw1_im]
-                );
-            });
+            .zip(stage_chunks)
+            .zip(next_chunks)
+            .for_each(
+                |(((((((((ra, rb), rc), rd), ia), ib), ic), id), tw_s), tw1)| {
+                    let (tw_s_re, tw_s_im) = $twiddles.stage.vector($simd, &stage_block, tw_s);
+                    let (tw1_re, tw1_im) = $twiddles.next_stage.vector($simd, &next_block, tw1);
+                    fused_butterfly!(
+                        $vector,
+                        $simd,
+                        [ra, rb, rc, rd],
+                        [ia, ib, ic, id],
+                        [tw_s_re, tw_s_im, tw1_re, tw1_im]
+                    );
+                },
+            );
     }};
 }
 
@@ -1225,7 +1230,7 @@ macro_rules! impl_fft_dit_fused_2stage {
                             $vector,
                             simd,
                             twiddles,
-                            block,
+                            block * T::BLOCK_LEN,
                             [ra, rb, rc, rd],
                             [ia, ib, ic, id]
                         );
@@ -1280,14 +1285,14 @@ macro_rules! impl_fft_dit_fused_2stage {
                 let (re_c, re_d) = re_cd.split_at_mut(dist_s);
                 let (im_c, im_d) = im_cd.split_at_mut(dist_s);
 
-                re_a.par_chunks_mut(T::BLOCK_LEN)
-                    .zip(re_b.par_chunks_mut(T::BLOCK_LEN))
-                    .zip(re_c.par_chunks_mut(T::BLOCK_LEN))
-                    .zip(re_d.par_chunks_mut(T::BLOCK_LEN))
-                    .zip(im_a.par_chunks_mut(T::BLOCK_LEN))
-                    .zip(im_b.par_chunks_mut(T::BLOCK_LEN))
-                    .zip(im_c.par_chunks_mut(T::BLOCK_LEN))
-                    .zip(im_d.par_chunks_mut(T::BLOCK_LEN))
+                re_a.par_chunks_mut(T::PARALLEL_BLOCK_LEN)
+                    .zip(re_b.par_chunks_mut(T::PARALLEL_BLOCK_LEN))
+                    .zip(re_c.par_chunks_mut(T::PARALLEL_BLOCK_LEN))
+                    .zip(re_d.par_chunks_mut(T::PARALLEL_BLOCK_LEN))
+                    .zip(im_a.par_chunks_mut(T::PARALLEL_BLOCK_LEN))
+                    .zip(im_b.par_chunks_mut(T::PARALLEL_BLOCK_LEN))
+                    .zip(im_c.par_chunks_mut(T::PARALLEL_BLOCK_LEN))
+                    .zip(im_d.par_chunks_mut(T::PARALLEL_BLOCK_LEN))
                     .enumerate()
                     .for_each(|(block, (((((((ra, rb), rc), rd), ia), ib), ic), id))| {
                         simd.vectorize(
@@ -1297,7 +1302,7 @@ macro_rules! impl_fft_dit_fused_2stage {
                                     $vector,
                                     simd,
                                     twiddles,
-                                    block,
+                                    block * T::PARALLEL_BLOCK_LEN,
                                     [ra, rb, rc, rd],
                                     [ia, ib, ic, id]
                                 );
