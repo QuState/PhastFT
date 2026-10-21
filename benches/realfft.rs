@@ -9,7 +9,7 @@
 //! between planning modes; realfft has no such cache, so a single binary
 //! suffices and gives a self-contained PhastFT-vs-realfft comparison.
 
-use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use phastft::options::Options;
 use phastft::planner::{PlannerR2c32, PlannerR2c64};
 use phastft::{
@@ -20,8 +20,8 @@ use realfft::RealFftPlanner;
 
 mod common;
 use common::{
-    bench_at_sizes, groups, ids, real_signal, spectrum_interleaved, spectrum_split,
-    throughput_real, LENGTHS,
+    bench_transforms_at_sizes, groups, ids, real_signal, spectrum_interleaved, spectrum_split,
+    throughput_real, transform_batch_size, LENGTHS,
 };
 //
 // Group names (snake_case): r2c_f32 / r2c_f64 / c2r_f32 / c2r_f64 — distinct
@@ -30,19 +30,19 @@ use common::{
 macro_rules! r2c_bench {
     ($name:ident, $float:ty, $planner:ty, $fft_fn:ident, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            bench_at_sizes(c, $group, LENGTHS, throughput_real::<$float>, |g, len| {
-                // Plan + output buffers allocated outside iter_batched —
+            bench_transforms_at_sizes(c, $group, LENGTHS, throughput_real::<$float>, |g, len| {
+                // Plan + output buffers allocated outside iter_batched_ref —
                 // planning and allocation cost is excluded from per-sample timings.
                 let phast_planner = <$planner>::new(len);
                 let phast_opts = Options::guess_options(len / 2);
                 let mut phast_re = vec![0 as $float; len / 2 + 1];
                 let mut phast_im = vec![0 as $float; len / 2 + 1];
                 g.bench_function(BenchmarkId::new(ids::PHASTFT_R2C, len), |b| {
-                    b.iter_batched(
+                    b.iter_batched_ref(
                         || real_signal::<$float>(len),
                         |input| {
                             $fft_fn(
-                                &input,
+                                input,
                                 &mut phast_re,
                                 &mut phast_im,
                                 &phast_planner,
@@ -50,7 +50,7 @@ macro_rules! r2c_bench {
                             );
                             std::hint::black_box((&mut phast_re, &mut phast_im));
                         },
-                        BatchSize::SmallInput,
+                        transform_batch_size(len * size_of::<$float>()),
                     );
                 });
 
@@ -59,15 +59,15 @@ macro_rules! r2c_bench {
                 let mut rf_output = rf_r2c.make_output_vec();
                 let mut rf_scratch = rf_r2c.make_scratch_vec();
                 g.bench_function(BenchmarkId::new(ids::REALFFT, len), |b| {
-                    b.iter_batched(
+                    b.iter_batched_ref(
                         || real_signal::<$float>(len),
-                        |mut input| {
+                        |input| {
                             rf_r2c
-                                .process_with_scratch(&mut input, &mut rf_output, &mut rf_scratch)
+                                .process_with_scratch(input, &mut rf_output, &mut rf_scratch)
                                 .unwrap();
                             std::hint::black_box(&mut rf_output);
                         },
-                        BatchSize::SmallInput,
+                        transform_batch_size(len * size_of::<$float>()),
                     );
                 });
             });
@@ -78,19 +78,19 @@ macro_rules! r2c_bench {
 macro_rules! c2r_bench {
     ($name:ident, $float:ty, $planner:ty, $fft_fn:ident, $group:expr) => {
         fn $name(c: &mut Criterion) {
-            bench_at_sizes(c, $group, LENGTHS, throughput_real::<$float>, |g, len| {
+            bench_transforms_at_sizes(c, $group, LENGTHS, throughput_real::<$float>, |g, len| {
                 let phast_planner = <$planner>::new(len);
                 let phast_opts = Options::guess_options(len / 2);
                 let mut phast_output = vec![0 as $float; len];
                 let mut phast_scratch_re = vec![0 as $float; len / 2];
                 let mut phast_scratch_im = vec![0 as $float; len / 2];
                 g.bench_function(BenchmarkId::new(ids::PHASTFT_C2R, len), |b| {
-                    b.iter_batched(
+                    b.iter_batched_ref(
                         || spectrum_split::<$float>(len),
                         |(input_re, input_im)| {
                             $fft_fn(
-                                &input_re,
-                                &input_im,
+                                input_re,
+                                input_im,
                                 &mut phast_output,
                                 &phast_planner,
                                 &phast_opts,
@@ -99,7 +99,7 @@ macro_rules! c2r_bench {
                             );
                             std::hint::black_box(&mut phast_output);
                         },
-                        BatchSize::SmallInput,
+                        transform_batch_size(2 * (len / 2 + 1) * size_of::<$float>()),
                     );
                 });
 
@@ -108,15 +108,15 @@ macro_rules! c2r_bench {
                 let mut rf_output = rf_c2r.make_output_vec();
                 let mut rf_scratch = rf_c2r.make_scratch_vec();
                 g.bench_function(BenchmarkId::new(ids::REALFFT, len), |b| {
-                    b.iter_batched(
+                    b.iter_batched_ref(
                         || spectrum_interleaved::<$float>(len),
-                        |mut input| {
+                        |input| {
                             rf_c2r
-                                .process_with_scratch(&mut input, &mut rf_output, &mut rf_scratch)
+                                .process_with_scratch(input, &mut rf_output, &mut rf_scratch)
                                 .unwrap();
                             std::hint::black_box(&mut rf_output);
                         },
-                        BatchSize::SmallInput,
+                        transform_batch_size(2 * (len / 2 + 1) * size_of::<$float>()),
                     );
                 });
             });

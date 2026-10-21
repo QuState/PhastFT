@@ -12,13 +12,16 @@
 
 use std::ptr::slice_from_raw_parts_mut;
 
-use criterion::{BatchSize, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion};
 use fftw::array::AlignedVec;
 use fftw::plan::{C2CPlan, C2CPlan32, C2CPlan64};
 use fftw::types::{Flag, Sign};
 use utilities::rustfft::num_complex::Complex;
 
-use crate::common::{bench_at_sizes, groups, split_complex, throughput_complex, LENGTHS};
+use crate::common::{
+    bench_transforms_at_sizes, groups, split_complex, throughput_complex, transform_batch_size,
+    LENGTHS,
+};
 
 macro_rules! fftw_sweep {
     ($name:ident, $float:ty, $plan:ty, $sign:expr, $group:expr) => {
@@ -28,7 +31,7 @@ macro_rules! fftw_sweep {
             // closure. Round-trip through the underlying `u32` bits, which
             // are Copy, and reconstruct the flag set per `n`.
             let flag_bits = flags.bits();
-            bench_at_sizes(
+            bench_transforms_at_sizes(
                 c,
                 $group,
                 LENGTHS,
@@ -37,7 +40,7 @@ macro_rules! fftw_sweep {
                     let mut plan =
                         <$plan>::aligned(&[len], $sign, Flag::from_bits_retain(flag_bits)).unwrap();
                     g.bench_function(BenchmarkId::new(id, len), |b| {
-                        b.iter_batched(
+                        b.iter_batched_ref(
                             || {
                                 let (reals, imags) = split_complex::<$float>(len);
                                 let mut nums: AlignedVec<Complex<$float>> = AlignedVec::new(len);
@@ -48,7 +51,7 @@ macro_rules! fftw_sweep {
                                 }
                                 nums
                             },
-                            |mut nums| {
+                            |nums| {
                                 plan.c2c(
                                     // SAFETY: identical shape to examples/fftwrb.rs:42-48.
                                     // DESTROYINPUT permits in-place c2c; the raw slice
@@ -57,12 +60,12 @@ macro_rules! fftw_sweep {
                                     unsafe {
                                         &mut *slice_from_raw_parts_mut(nums.as_mut_ptr(), len)
                                     },
-                                    &mut nums,
+                                    nums,
                                 )
                                 .unwrap();
-                                std::hint::black_box(&mut nums);
+                                std::hint::black_box(nums);
                             },
-                            BatchSize::SmallInput,
+                            transform_batch_size(2 * len * size_of::<$float>()),
                         );
                     });
                 },

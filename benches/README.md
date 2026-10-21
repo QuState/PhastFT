@@ -60,6 +60,30 @@ from the C2C groups, so no cross-binary aggregation is needed. R2C is
 forward by definition and C2R is inverse by definition — direction is
 implicit in the prefix.
 
+### Transform timing and repeatability
+
+Benchmarks allocate fresh inputs for every transform.
+The shared generators use a fixed seed: values repeat for a given precision
+and length on the same target with the locked `rand` version, and
+split/interleaved layouts contain the same values. `SmallRng` does not promise
+identical streams across platforms or dependency upgrades. Fresh allocation
+does **not** imply cold-cache execution.
+
+Transform groups collect 20 samples using Criterion's `Flat` sampling mode.
+Every sample performs the same number of iterations. Batch size is independent
+of that count: `clamp(1 MiB / input_bytes, 1, 256)`. The budget counts both split
+arrays or the corresponding interleaved array; real inputs and half-spectra use
+their actual lengths. It excludes plans, scratch, output buffers, and temporary
+setup allocations. Inputs larger than 1 MiB use a batch of one. Criterion may
+finish a sample with a partial batch, identical across samples in flat mode.
+
+`iter_batched_ref` keeps input generation, allocation, and destruction outside
+timing. Planning and reusable scratch/output allocation remain outside timing;
+allocations performed internally by an FFT API remain part of its execution.
+The timed region measures the FFT and output black-boxing, plus Criterion's
+batch traversal overhead. Planner and internal-kernel timing policies are
+unchanged (their shared input generators are also seeded).
+
 ### Cross-binary overlay plots
 
 Criterion does **not** auto-aggregate across `[[bench]]` binaries — the
