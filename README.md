@@ -117,6 +117,34 @@ don't hesitate to create an issue.
 
 **Reuse planners.** If you're doing multiple FFTs of the same size, create the planner once and reuse it.
 
+**Twiddle storage.** All planners default to `TwiddleMode::Auto`: they store full
+twiddle tables for smaller transforms and generate twiddle vectors from compact
+factor tables for larger ones. Generating twiddles reduces plan storage from
+O(N) to O(log N) and can improve performance by reducing memory traffic.
+
+```rust
+use phastft::planner::{PlannerDit64, PlannerR2c64, TwiddleMode};
+
+let automatic = PlannerDit64::new(1 << 20);
+let compact = PlannerDit64::with_twiddle_mode(1 << 20, TwiddleMode::LowMemory);
+let stored = PlannerDit64::with_twiddle_mode(1 << 20, TwiddleMode::Precomputed);
+assert_eq!(compact.twiddle_mode(), TwiddleMode::LowMemory);
+assert_eq!(stored.twiddle_mode(), TwiddleMode::Precomputed);
+
+// Real plans apply the mode to both the inner FFT and the real twiddles.
+let real = PlannerR2c64::with_twiddle_mode(1 << 20, TwiddleMode::LowMemory);
+```
+
+`Auto` resolves once at plan construction; `twiddle_mode()` reports the resolved
+mode. The current heuristic selects low-memory mode at a complex input footprint
+of 32 MiB: `2^22` complex points for `f32`, or `2^21` for `f64`. Real transforms
+use their half-length complex FFT, so the real-input point thresholds are twice
+those values. This heuristic may change as more hardware is measured. Use an
+explicit mode to tune for your workload; the
+[mode comparison benchmark](https://github.com/smu160/PhastFT/blob/main/benches/README.md#twiddle-storage-modes) measures both.
+Low-memory mode changes twiddle storage; input, output, and C2R scratch sizes
+remain the same. Both modes reuse the same plan for forward and inverse FFTs.
+
 **Threading.** If the `parallel` feature is enabled, the library uses 2 threads for bit reversal and all available threads for FFT calculation when it seems profitable.
 
 **Complex numbers.** The separate real/imaginary array API is faster and uses less memory than the interleaved complex API which allocates temporary buffers.

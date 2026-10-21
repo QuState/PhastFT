@@ -55,6 +55,10 @@ name = "planner"
 harness = false
 
 [[bench]]
+name = "twiddle_modes"
+harness = false
+
+[[bench]]
 name = "interleave"
 harness = false
 required-features = ["complex-nums"]

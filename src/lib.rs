@@ -250,6 +250,7 @@ mod tests {
     use utilities::{assert_float_closeness, gen_random_signal_f32, gen_random_signal_f64};
 
     use super::*;
+    use crate::planner::TwiddleMode;
 
     macro_rules! non_power_of_2_planner {
         ($test_name:ident, $planner:ty) => {
@@ -372,53 +373,57 @@ mod tests {
                             )
                         })
                         .collect();
-                    for mode in [crate::planner::TwiddleMode::Precomputed, crate::planner::TwiddleMode::LowMemory, crate::planner::TwiddleMode::Auto] {
-                    let planner = <$planner>::with_twiddle_mode(n, mode);
-                    let opts = Options::guess_options(n);
-                    for direction in [Direction::Forward, Direction::Inverse] {
-                        let mut expected = input.clone();
-                        let reference = match direction {
-                            Direction::Forward => reference_planner.plan_fft_forward(n),
-                            Direction::Inverse => reference_planner.plan_fft_inverse(n),
-                        };
-                        reference.process(&mut expected);
-                        if direction == Direction::Inverse {
-                            for z in &mut expected {
-                                *z /= n as $float;
+                    for mode in [
+                        TwiddleMode::Precomputed,
+                        TwiddleMode::LowMemory,
+                        TwiddleMode::Auto,
+                    ] {
+                        let planner = <$planner>::with_twiddle_mode(n, mode);
+                        let opts = Options::guess_options(n);
+                        for direction in [Direction::Forward, Direction::Inverse] {
+                            let mut expected = input.clone();
+                            let reference = match direction {
+                                Direction::Forward => reference_planner.plan_fft_forward(n),
+                                Direction::Inverse => reference_planner.plan_fft_inverse(n),
+                            };
+                            reference.process(&mut expected);
+                            if direction == Direction::Inverse {
+                                for z in &mut expected {
+                                    *z /= n as $float;
+                                }
                             }
-                        }
-                        // Also force and disable parallel FFT compute work at selected odd
-                        // sizes and on both sides of the kernel cutoff. MAX
-                        // exercises saturating threshold multiplication.
-                        let thresholds = [opts.smallest_parallel_chunk_size, 0, usize::MAX];
-                        let configurations = if matches!(log_n, 9 | 11 | 18 | 19) {
-                            3
-                        } else {
-                            1
-                        };
-                        for threshold in thresholds.into_iter().take(configurations) {
-                            let mut opts = opts.clone();
-                            opts.smallest_parallel_chunk_size = threshold;
-                            let mut re: Vec<_> = input.iter().map(|z| z.re).collect();
-                            let mut im: Vec<_> = input.iter().map(|z| z.im).collect();
-                            $fft(&mut re, &mut im, direction, &planner, &opts);
+                            // Also force and disable parallel FFT compute work at selected odd
+                            // sizes and on both sides of the kernel cutoff. MAX
+                            // exercises saturating threshold multiplication.
+                            let thresholds = [opts.smallest_parallel_chunk_size, 0, usize::MAX];
+                            let configurations = if matches!(log_n, 9 | 11 | 18 | 19) {
+                                3
+                            } else {
+                                1
+                            };
+                            for threshold in thresholds.into_iter().take(configurations) {
+                                let mut opts = opts.clone();
+                                opts.smallest_parallel_chunk_size = threshold;
+                                let mut re: Vec<_> = input.iter().map(|z| z.re).collect();
+                                let mut im: Vec<_> = input.iter().map(|z| z.im).collect();
+                                $fft(&mut re, &mut im, direction, &planner, &opts);
 
-                            let mut error_sq = 0.0f64;
-                            let mut reference_sq = 0.0f64;
-                            for ((re, im), expected) in re.iter().zip(&im).zip(&expected) {
-                                assert!(re.is_finite() && im.is_finite());
-                                error_sq += (*re as f64 - expected.re as f64).powi(2)
-                                    + (*im as f64 - expected.im as f64).powi(2);
-                                reference_sq +=
-                                    (expected.re as f64).powi(2) + (expected.im as f64).powi(2);
+                                let mut error_sq = 0.0f64;
+                                let mut reference_sq = 0.0f64;
+                                for ((re, im), expected) in re.iter().zip(&im).zip(&expected) {
+                                    assert!(re.is_finite() && im.is_finite());
+                                    error_sq += (*re as f64 - expected.re as f64).powi(2)
+                                        + (*im as f64 - expected.im as f64).powi(2);
+                                    reference_sq +=
+                                        (expected.re as f64).powi(2) + (expected.im as f64).powi(2);
+                                }
+                                let relative_error = (error_sq / reference_sq).sqrt();
+                                assert!(
+                                    relative_error < $tolerance,
+                                    "n={n}, {mode:?}, {direction:?}, cutoff={threshold}: relative L2 error {relative_error}"
+                                );
                             }
-                            let relative_error = (error_sq / reference_sq).sqrt();
-                            assert!(
-                                relative_error < $tolerance,
-                                "n={n}, {mode:?}, {direction:?}, cutoff={threshold}: relative L2 error {relative_error}"
-                            );
                         }
-                    }
                     }
                 }
             }
@@ -450,44 +455,48 @@ mod tests {
                 // parities, and parallel fused passes. Reuse the plan both ways.
                 for log_n in [9, 11, 16, 19, 20] {
                     let n = 1 << log_n;
-                    for mode in [crate::planner::TwiddleMode::Precomputed, crate::planner::TwiddleMode::LowMemory, crate::planner::TwiddleMode::Auto] {
-                    let mut planner = <$planner>::with_twiddle_mode(n, mode);
-                    // Also exercise the baseline backend (without FMA on x86).
-                    if matches!(log_n, 11 | 16) {
-                        planner.simd_level = fearless_simd::Level::baseline();
-                    }
-                    for threshold in [usize::MAX, 0] {
-                        let mut opts = Options::default();
-                        opts.smallest_parallel_chunk_size = threshold;
-                        for direction in [Direction::Forward, Direction::Inverse] {
-                            let mut re = vec![0.0 as $float; n];
-                            let mut im = vec![0.0 as $float; n];
-                            re[n - 1] = 1.0;
-                            $fft(&mut re, &mut im, direction, &planner, &opts);
-                            let mut error_sq = 0.0;
-                            let mut max_error = 0.0_f64;
-                            for k in 0..n {
-                                let angle = std::f64::consts::TAU * k as f64 / n as f64;
-                                let (mut expected_im, expected_re) = angle.sin_cos();
-                                let scale = if direction == Direction::Inverse {
-                                    expected_im = -expected_im;
-                                    n as f64
-                                } else {
-                                    1.0
-                                };
-                                let error = (re[k] as f64 * scale - expected_re)
-                                    .hypot(im[k] as f64 * scale - expected_im);
-                                assert!(error.is_finite());
-                                error_sq += error * error;
-                                max_error = max_error.max(error);
-                            }
-                            let relative_l2 = (error_sq / n as f64).sqrt();
-                            assert!(
-                                relative_l2 < $l2_limit && max_error < $max_limit,
-                                "n={n}, {mode:?}, {direction:?}, cutoff={threshold}: L2={relative_l2}, max={max_error}"
-                            );
+                    for mode in [
+                        TwiddleMode::Precomputed,
+                        TwiddleMode::LowMemory,
+                        TwiddleMode::Auto,
+                    ] {
+                        let mut planner = <$planner>::with_twiddle_mode(n, mode);
+                        // Also exercise the baseline backend (without FMA on x86).
+                        if matches!(log_n, 11 | 16) {
+                            planner.simd_level = fearless_simd::Level::baseline();
                         }
-                    }
+                        for threshold in [usize::MAX, 0] {
+                            let mut opts = Options::default();
+                            opts.smallest_parallel_chunk_size = threshold;
+                            for direction in [Direction::Forward, Direction::Inverse] {
+                                let mut re = vec![0.0 as $float; n];
+                                let mut im = vec![0.0 as $float; n];
+                                re[n - 1] = 1.0;
+                                $fft(&mut re, &mut im, direction, &planner, &opts);
+                                let mut error_sq = 0.0;
+                                let mut max_error = 0.0_f64;
+                                for k in 0..n {
+                                    let angle = std::f64::consts::TAU * k as f64 / n as f64;
+                                    let (mut expected_im, expected_re) = angle.sin_cos();
+                                    let scale = if direction == Direction::Inverse {
+                                        expected_im = -expected_im;
+                                        n as f64
+                                    } else {
+                                        1.0
+                                    };
+                                    let error = (re[k] as f64 * scale - expected_re)
+                                        .hypot(im[k] as f64 * scale - expected_im);
+                                    assert!(error.is_finite());
+                                    error_sq += error * error;
+                                    max_error = max_error.max(error);
+                                }
+                                let relative_l2 = (error_sq / n as f64).sqrt();
+                                assert!(
+                                    relative_l2 < $l2_limit && max_error < $max_limit,
+                                    "n={n}, {mode:?}, {direction:?}, cutoff={threshold}: L2={relative_l2}, max={max_error}"
+                                );
+                            }
+                        }
                     }
                 }
             }

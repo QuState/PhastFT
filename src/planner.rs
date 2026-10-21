@@ -28,15 +28,19 @@ pub enum TwiddleMode {
     /// is used, so rounding error does not accumulate along a stage.
     LowMemory,
     /// Choose a mode once at plan construction using a size heuristic.
+    /// Currently selects `LowMemory` when the complex input occupies at least
+    /// 32 MiB (`2^22` complex points for f32, `2^21` for f64). Real plans use
+    /// their half-length complex FFT, so their point thresholds are doubled.
     /// The heuristic may change in future releases; select an explicit mode
-    /// to override it. This is the default used by `PlannerDit*::new`.
+    /// to override it. This is the default used by each planner's `new` constructor.
     #[default]
     Auto,
 }
 
-// Initial cache-footprint heuristic; benchmarked with benches/twiddle_modes.rs.
-// Express in bytes so f32 and f64 switch at comparable working-set sizes.
-const AUTO_LOW_MEMORY_BYTES: usize = 1 << 20;
+// Complex input footprint, also approximately the full DIT twiddle footprint.
+// A conservative crossover from the Ryzen 9950X serial/parallel sweeps; see
+// benches/README.md for measurements and the command to retune it.
+const AUTO_LOW_MEMORY_BYTES: usize = 32 << 20;
 
 impl TwiddleMode {
     fn uses_low_memory<T>(self, num_points: usize) -> bool {
