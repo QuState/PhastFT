@@ -40,6 +40,13 @@ pub const BIT_REVERSAL_LENGTHS: &[usize] =
 /// constructed for the same `n`.
 pub const PLANNER_MODE_LENGTHS: &[usize] = &[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 
+/// Non-power-of-2 sizes for the Bluestein comparison: primes just below powers
+/// of two (worst case, M jumps to the next pow2), plus two "just above pow2"
+/// sizes where M is maximal. Raw lengths (not log2).
+pub const BLUESTEIN_LENGTHS: &[usize] = &[
+    31, 127, 251, 509, 1021, 1025, 2039, 4093, 4097, 8191, 16381, 32749, 65521, 131071,
+];
+
 /// Number of samples criterion collects per (group, id, size). 20 is a
 /// compromise between run time and stable medians; tighter convergence comes
 /// from running the bench multiple times rather than raising this number.
@@ -278,6 +285,11 @@ pub mod groups {
 
     pub const KERNEL_BIT_REVERSAL_F32: &str = "kernel_bit_reversal_f32";
     pub const KERNEL_BIT_REVERSAL_F64: &str = "kernel_bit_reversal_f64";
+
+    pub const C2C_BLUESTEIN_FORWARD_F32: &str = "c2c_bluestein_forward_f32";
+    pub const C2C_BLUESTEIN_FORWARD_F64: &str = "c2c_bluestein_forward_f64";
+    pub const C2C_BLUESTEIN_INVERSE_F32: &str = "c2c_bluestein_inverse_f32";
+    pub const C2C_BLUESTEIN_INVERSE_F64: &str = "c2c_bluestein_inverse_f64";
 }
 
 /// Series IDs (the inner directory under `target/criterion/<group>/`).
@@ -306,4 +318,7 @@ pub mod ids {
 
     pub const DEINTERLEAVE: &str = "deinterleave";
     pub const COMBINE_RE_IM: &str = "combine_re_im";
+
+    pub const PHASTFT_BLUESTEIN: &str = "PhastFT Bluestein";
+    pub const RUSTFFT_BLUESTEIN: &str = "RustFFT Bluestein";
 }

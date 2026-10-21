@@ -3,6 +3,8 @@
 //! pre-computing twiddle factors based on the input signal length, as well as the
 //! direction of the FFT.
 
+use crate::options::Options;
+
 /// Inverse is for running the Inverse Fast Fourier Transform (IFFT)
 /// Forward is for running the regular FFT
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -200,3 +202,221 @@ macro_rules! impl_planner_r2c_for {
 
 impl_planner_r2c_for!(PlannerR2c64, f64, PlannerDit64, compute_r2c_twiddles_f64);
 impl_planner_r2c_for!(PlannerR2c32, f32, PlannerDit32, compute_r2c_twiddles_f32);
+
+// ---------------------------------------------------------------------------
+// Bluestein planners
+// ---------------------------------------------------------------------------
+
+fn bluestein_convolution_len(len: usize) -> usize {
+    assert!(len > 0, "Bluestein FFT size must be greater than 0");
+
+    let min_inner_len = len
+        .checked_mul(2)
+        .and_then(|twice_len| twice_len.checked_sub(1))
+        .expect("Bluestein inner FFT size overflow");
+
+    min_inner_len
+        .checked_next_power_of_two()
+        .expect("Bluestein inner FFT size overflow")
+}
+
+/// Returns `exp(-i * pi * k^2 / len)` for `k = 0..len`.
+fn bluestein_chirp_f64(len: usize) -> (Vec<f64>, Vec<f64>) {
+    let mut re = vec![0.0; len];
+    let mut im = vec![0.0; len];
+
+    // The phase is periodic in k^2 modulo 2N. Tracking that residue avoids
+    // overflowing k^2 and keeps the trigonometric argument small.
+    let period = 2 * len;
+    let mut square = 0usize;
+    for k in 0..len {
+        let angle = -core::f64::consts::PI * square as f64 / len as f64;
+        let (sin, cos) = angle.sin_cos();
+        re[k] = cos;
+        im[k] = sin;
+
+        square += 2 * k + 1;
+        if square >= period {
+            square -= period;
+        }
+    }
+
+    (re, im)
+}
+
+fn bluestein_chirp_f32(len: usize) -> (Vec<f32>, Vec<f32>) {
+    // Computing the phase in f64 noticeably reduces error for larger f32
+    // transforms, while planning remains outside the hot path.
+    let (re, im) = bluestein_chirp_f64(len);
+    (
+        re.into_iter().map(|value| value as f32).collect(),
+        im.into_iter().map(|value| value as f32).collect(),
+    )
+}
+
+macro_rules! impl_planner_bluestein_for {
+    ($struct_name:ident, $precision:ident, $dit_planner:ident, $dit_fft:path, $chirp_fn:ident) => {
+        /// Reusable plan for an arbitrary-length FFT using Bluestein's algorithm.
+        ///
+        /// The plan owns the chirp table, convolution-kernel spectrum, and
+        /// inner DIT plan. It can execute both forward and inverse transforms.
+        #[derive(Clone)]
+        pub struct $struct_name {
+            /// Inner DIT planner for the convolution FFT.
+            pub(crate) dit_planner: $dit_planner,
+            /// `exp(-i * pi * k^2 / N)`, split into real and imaginary parts.
+            pub(crate) chirp_re: Vec<$precision>,
+            pub(crate) chirp_im: Vec<$precision>,
+            /// Fourier transform of the convolution kernel, scaled by `1 / M`.
+            pub(crate) kernel_fft_re: Vec<$precision>,
+            pub(crate) kernel_fft_im: Vec<$precision>,
+            /// Number of points transformed by this plan.
+            pub(crate) len: usize,
+            /// Power-of-two length of the inner convolution FFT.
+            pub(crate) inner_len: usize,
+        }
+
+        impl $struct_name {
+            /// Creates a plan for transforms of `num_points` complex values.
+            ///
+            /// # Panics
+            ///
+            /// Panics if `num_points` is 0, or if the required inner FFT length
+            /// does not fit in `usize`.
+            #[must_use]
+            pub fn new(num_points: usize) -> Self {
+                let len = num_points;
+                let inner_len = bluestein_convolution_len(len);
+                let (chirp_re, chirp_im) = $chirp_fn(len);
+
+                // Scaling the kernel here lets execution use a second forward
+                // FFT (with swapped components) as an unscaled inverse. That
+                // avoids a separate normalization pass over the M-point buffer.
+                let scale = (1.0 / inner_len as f64) as $precision;
+                let mut kernel_fft_re = vec![0.0; inner_len];
+                let mut kernel_fft_im = vec![0.0; inner_len];
+                for j in 0..len {
+                    kernel_fft_re[j] = chirp_re[j] * scale;
+                    kernel_fft_im[j] = -chirp_im[j] * scale;
+                }
+                for j in 1..len {
+                    kernel_fft_re[inner_len - j] = chirp_re[j] * scale;
+                    kernel_fft_im[inner_len - j] = -chirp_im[j] * scale;
+                }
+
+                let dit_planner = $dit_planner::new(inner_len);
+                let opts = Options::guess_options(inner_len);
+                $dit_fft(
+                    &mut kernel_fft_re,
+                    &mut kernel_fft_im,
+                    Direction::Forward,
+                    &dit_planner,
+                    &opts,
+                );
+
+                Self {
+                    dit_planner,
+                    chirp_re,
+                    chirp_im,
+                    kernel_fft_re,
+                    kernel_fft_im,
+                    len,
+                    inner_len,
+                }
+            }
+
+            /// Returns the number of points transformed by this plan.
+            #[must_use]
+            pub fn fft_len(&self) -> usize {
+                self.len
+            }
+
+            /// Returns the minimum length of each scratch buffer.
+            ///
+            /// This is the power-of-two convolution length
+            /// `next_power_of_two(2 * self.fft_len() - 1)`. Options for this
+            /// plan should be tuned using this length.
+            #[must_use]
+            pub fn scratch_len(&self) -> usize {
+                self.inner_len
+            }
+        }
+
+        impl core::fmt::Debug for $struct_name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.debug_struct(stringify!($struct_name))
+                    .field("fft_len", &self.len)
+                    .field("scratch_len", &self.inner_len)
+                    .finish_non_exhaustive()
+            }
+        }
+    };
+}
+
+impl_planner_bluestein_for!(
+    PlannerBluestein64,
+    f64,
+    PlannerDit64,
+    crate::algorithms::dit::fft_f64_dit_with_planner_and_opts,
+    bluestein_chirp_f64
+);
+impl_planner_bluestein_for!(
+    PlannerBluestein32,
+    f32,
+    PlannerDit32,
+    crate::algorithms::dit::fft_f32_dit_with_planner_and_opts,
+    bluestein_chirp_f32
+);
+
+#[cfg(test)]
+mod bluestein_planner_tests {
+    use super::*;
+
+    #[test]
+    fn reports_transform_and_scratch_lengths() {
+        let cases = [
+            (1usize, 1usize),
+            (2, 4),
+            (3, 8),
+            (5, 16),
+            (7, 16),
+            (17, 64),
+            (1000, 2048),
+        ];
+        for (n, expected_m) in cases {
+            let plan_f64 = PlannerBluestein64::new(n);
+            assert_eq!(plan_f64.fft_len(), n);
+            assert_eq!(plan_f64.scratch_len(), expected_m, "n={n}");
+
+            let plan_f32 = PlannerBluestein32::new(n);
+            assert_eq!(plan_f32.fft_len(), n);
+            assert_eq!(plan_f32.scratch_len(), expected_m, "n={n}");
+        }
+    }
+
+    #[test]
+    fn accepts_non_power_of_two_sizes() {
+        for n in [3usize, 5, 6, 7, 100, 101] {
+            let _ = PlannerBluestein64::new(n);
+            let _ = PlannerBluestein32::new(n);
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn rejects_zero_64() {
+        let _ = PlannerBluestein64::new(0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn rejects_zero_32() {
+        let _ = PlannerBluestein32::new(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Bluestein inner FFT size overflow")]
+    fn rejects_convolution_length_overflow() {
+        let _ = PlannerBluestein64::new(usize::MAX / 2 + 1);
+    }
+}
