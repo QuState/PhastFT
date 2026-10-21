@@ -1,0 +1,206 @@
+SIMD transpose retry on the optimized four-pass FFT layout
+
+Date: 2026-10-21
+Reference layout: commit 1c26c77
+CPU: AMD Ryzen 9 9950X, 16 cores / 16 online logical CPUs
+Compiler: rustc 1.99.1 (58cf8f9c3 2026-10-13)
+Build: cargo build --release --offline --example benchmark_four_pass
+Features: default (parallel); no RUSTFLAGS / target-cpu override
+Threads: RAYON_NUM_THREADS=16; affinity not pinned; powersave governor unchanged
+Input: 2,147,483,648 bytes (2 GiB) of split complex input
+f64: 2^27 points, matrix 2048 x 65536
+f32: 2^28 points, matrix 4096 x 65536
+
+Conclusion:
+The new SIMD kernels really do emit and select AVX-512, but do not provide a
+consistent whole-FFT improvement on this host. f64 is slower; the small f32
+median difference is below the run-to-run spread. Keep scalar packed tiles
+as the default. Both SIMD load strategies remain available for experiments.
+
+Variants (FOUR_PASS_TRANSPOSE):
+- scalar: the committed packed scalar transpose, default.
+- simd: packed tiles followed by register transposes, 8x8 f64 / 16x16 f32.
+- direct: same register transpose, loaded directly from the source matrix.
+All preserve the optimized matrix dimensions, 16-column gather batches,
+128-column transpose bands, 32-row tiles, FFT kernels and twiddle generation.
+The SIMD permutation uses three interleave stages for f64 and four for f32.
+Everything remains safe Rust, using fearless_simd runtime dispatch with
+inline(always) on the SIMD implementation below the dispatch boundary.
+
+Disassembly:
+See four_pass_simd_disassembly.txt for named transpose wrapper symbols,
+ZMM instruction counts and selected loads, permutations and stores.
+f64 emits vpermt2pd; f32 emits vpermt2ps, using 512-bit ZMM registers.
+Runtime logs select Avx512 for the actual 2 GiB executions.
+These checks inspect the transpose functions, not merely the FFT kernels.
+
+A separate explicit constant-index shuffle network was also tested. LLVM
+lowered that version to gathers and substantial stack traffic rather than
+the intended compact unpack/shuffle sequence; it did not improve timings
+and was discarded. The retained experiment uses the cleaner interleave network.
+
+Final comparison method:
+- Same final release executable for scalar and SIMD, selected at planning time.
+- No profiling, compilation or tests overlapped these timing runs.
+- f64 process order: scalar A, SIMD A, SIMD B, scalar B.
+- f32 process order: SIMD A, scalar A, scalar B, SIMD B.
+- Each process warms up once, then measures 5 transforms: 10 samples per mode.
+- Same seeded input regenerated outside timing before every transform.
+- Allocation, page touching, planning and input generation excluded.
+- four-pass-only mode, approximately 4 GiB resident data/scratch plus small plans.
+- Separate both-mode runs at 2 GiB validate 4096 output bins against DIT.
+
+Invocation for each block (select MODE=scalar or simd):
+FOUR_PASS_TRANSPOSE=MODE RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 5 four-pass
+FOUR_PASS_TRANSPOSE=MODE RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 32 28 5 four-pass
+
+Validation:
+- Exact bitwise transpose permutation tests for packed and direct kernels,
+  both precisions, 16/128-column bands, baseline and detected SIMD levels.
+  Include partial tiles, nonzero source column offsets, NaNs and signed zero.
+- Whole-FFT SIMD comparisons with RustFFT, forward and normalized inverse,
+  all powers of two from 2^0 through 2^22.
+- cargo test --release --offline --example benchmark_four_pass: 4 passed.
+- cargo test --release --offline --no-default-features --example benchmark_four_pass:
+  4 passed.
+- cargo test --offline --all-features: 53 unit tests, 8 doctests passed;
+  1 doctest ignored.
+- cargo clippy --offline --example benchmark_four_pass -- -D warnings: passed.
+
+Final measurements (milliseconds):
+f64 scalar block a: median 458.540
+f64 scalar block b: median 460.188
+f64 scalar pooled n=10: median 459.886, min 456.286, max 462.706
+f64 simd block a: median 472.303
+f64 simd block b: median 468.367
+f64 simd pooled n=10: median 470.218, min 468.024, max 481.717
+f64 SIMD/scalar elapsed-time ratio: 1.0225
+
+f32 scalar block a: median 484.142
+f32 scalar block b: median 484.986
+f32 scalar pooled n=10: median 484.564, min 476.187, max 489.119
+f32 simd block a: median 484.086
+f32 simd block b: median 481.256
+f32 simd pooled n=10: median 482.219, min 479.608, max 492.482
+f32 SIMD/scalar elapsed-time ratio: 0.9952
+
+Exploratory profiled runs:
+One warm-up excluded, then 3 measured transforms, four-pass-only mode.
+Median pass 1 / 2 / 3 / 4 and median sum in milliseconds.
+These preceded the final alternating comparison and are diagnostic only.
+
+Scalar packed
+  f64: 140.261 / 118.349 / 84.352 / 118.592; total 460.323
+  f32: 154.438 / 122.740 / 81.870 / 123.391; total 480.390
+SIMD packed, interleave network
+  f64: 140.877 / 120.829 / 84.325 / 122.424; total 468.937
+  f32: 147.527 / 126.483 / 82.494 / 124.757; total 480.443
+SIMD direct, interleave network
+  f64: 142.943 / 123.985 / 84.309 / 126.574; total 479.171
+  f32: 147.619 / 133.298 / 82.050 / 130.908; total 494.692
+SIMD packed, discarded explicit shuffle
+  f64: 140.769 / 122.129 / 83.956 / 121.886; total 470.997
+  f32: 157.043 / 134.391 / 82.344 / 130.424; total 503.809
+SIMD direct, discarded explicit shuffle
+  f64: 140.677 / 126.619 / 84.951 / 127.855; total 480.994
+  f32: 154.038 / 138.047 / 82.323 / 135.635; total 509.471
+
+Full-size sampled correctness:
+input_bytes=2147483648, points=134217728, setup_seconds=1.575012
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=4.911463e-15
+input_bytes=2147483648, points=268435456, setup_seconds=1.277440
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=3.023101e-7
+
+Final raw samples and metadata:
+
+f64 scalar_a:
+input_bytes=2147483648, points=134217728, setup_seconds=0.302151
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,457421613
+four-pass,2,462706488
+four-pass,3,456286067
+four-pass,4,461139575
+four-pass,5,458539767
+
+f64 simd_a:
+input_bytes=2147483648, points=134217728, setup_seconds=0.301881
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,468631804
+four-pass,2,470012328
+four-pass,3,481717355
+four-pass,4,479437587
+four-pass,5,472302947
+
+f64 simd_b:
+input_bytes=2147483648, points=134217728, setup_seconds=0.301904
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,468023885
+four-pass,2,468212489
+four-pass,3,470423067
+four-pass,4,468366647
+four-pass,5,472187421
+
+f64 scalar_b:
+input_bytes=2147483648, points=134217728, setup_seconds=0.302278
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,462545428
+four-pass,2,460264166
+four-pass,3,459583181
+four-pass,4,460188043
+four-pass,5,458139735
+
+f32 simd_a:
+input_bytes=2147483648, points=268435456, setup_seconds=0.300363
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,492481739
+four-pass,2,487437878
+four-pass,3,484086265
+four-pass,4,482605273
+four-pass,5,481024965
+
+f32 scalar_a:
+input_bytes=2147483648, points=268435456, setup_seconds=0.300924
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,489119157
+four-pass,2,481999962
+four-pass,3,476186501
+four-pass,4,486553046
+four-pass,5,484141912
+
+f32 scalar_b:
+input_bytes=2147483648, points=268435456, setup_seconds=0.296538
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,484985553
+four-pass,2,482299485
+four-pass,3,489089435
+four-pass,4,483044330
+four-pass,5,488251317
+
+f32 simd_b:
+input_bytes=2147483648, points=268435456, setup_seconds=0.305077
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,481256325
+four-pass,2,486650703
+four-pass,3,480093941
+four-pass,4,479608121
+four-pass,5,481831834

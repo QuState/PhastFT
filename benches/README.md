@@ -268,6 +268,97 @@ median, normalized against RustFFT's median; whiskers are the IQR in
 that normalized space; the dashed `y = 1.0` line is RustFFT by
 construction. PNGs land in the current working directory.
 
+## Four-pass prototype at 2 GiB
+
+`examples/benchmark_four_pass.rs` compares the experimental implementation in
+`examples/support/four_pass.rs` with the existing DIT FFT. Run from the repo root:
+
+```bash
+cargo build --release --example benchmark_four_pass
+RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10
+RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 32 28 10
+```
+
+Each input contains exactly 2,147,483,648 bytes across the real and imaginary
+arrays: 2^27 complex f64 values or 2^28 complex f32 values. The optional last
+argument is `both` (default), `dit`, or `four-pass`. CSV on stdout contains
+`algorithm,iteration,nanoseconds`; setup information and sampled correctness
+checks and the selected matrix dimensions go to stderr. Set `FOUR_PASS_PROFILE=1`
+to also print the four individual pass times in milliseconds (including warm-up).
+Leave it unset for final timing runs. `RAYON_NUM_THREADS` controls both algorithms; building with
+`--no-default-features` also supports serial execution.
+
+The benchmark excludes planning, allocation, page-touching, and input generation.
+It warms up each implementation once, alternates their order, and regenerates
+the same seeded input before each transform. The `both` mode compares 4096
+distributed output bins during warm-up. For full forward/inverse comparisons
+against RustFFT at sizes 2^0 through 2^22, run:
+
+```bash
+cargo test --release --example benchmark_four_pass
+cargo test --release --no-default-features --example benchmark_four_pass
+```
+
+The four sweeps are column gather/FFT/twiddle multiplication, transpose, row
+FFTs, and a final transpose to natural output order. Small FFTs perform multiple
+cache passes within each sweep. The prototype destroys its input and returns
+output in caller-provided scratch, with no final copy back. It needs another
+2 GiB for scratch and O(sqrt(N)) planning storage. DIT instead needs about
+2 GiB for its full-size twiddle plan. `both` retains both plans and scratch,
+so allow roughly 6 GiB of RAM. The optimized matrix split uses 2048 x 65536 for
+f64 and 4096 x 65536 for f32 at 2 GiB, keeping the first-pass batches at 512 KiB.
+Transposes use packed stack tiles of 32 x 128 elements (32 KiB per worker for
+f64); the initial gather uses 32 x 16 tiles. No library API or default algorithm
+is changed.
+
+Original results are in [four_pass_results.txt](four_pass_results.txt); optimization
+experiments and final raw samples are in
+[four_pass_optimized_results.txt](four_pass_optimized_results.txt).
+
+The optional SIMD transpose experiment preserves that matrix split and batching:
+
+```bash
+# Default: the existing packed scalar transpose.
+FOUR_PASS_TRANSPOSE=scalar RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10 four-pass
+# Packed tiles, then an 8x8 f64 / 16x16 f32 register transpose.
+FOUR_PASS_TRANSPOSE=simd RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10 four-pass
+# Same register transpose, loading directly from the source instead of packing.
+FOUR_PASS_TRANSPOSE=direct RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10 four-pass
+```
+
+For f32, substitute `32 28` for `64 27`. The benchmark reports the selected
+transpose layout and detected SIMD backend. The experiment uses normal
+`fearless_simd` runtime dispatch and safe Rust; it does not require native CPU
+build flags. The scalar path remains the default because the SIMD variants did
+not consistently improve whole-FFT timings on the Ryzen 9950X. Measurements are
+in [four_pass_simd_results.txt](four_pass_simd_results.txt), with named-kernel
+AVX-512 instruction evidence in
+[four_pass_simd_disassembly.txt](four_pass_simd_disassembly.txt).
+
+The same comparison at **64 MiB of input** uses `64 22` or `32 23` as the
+precision/exponent arguments. It retains the current matrix split and tiling;
+scratch adds another 64 MiB. See
+[four_pass_64mib_results.txt](four_pass_64mib_results.txt) for 120 samples per
+variant, pass timings and correctness checks. SIMD did not improve total FFT
+time at this size either.
+
+With **one Rayon worker pinned to one CPU core**, direct SIMD transposes do
+improve total FFT time: 11.0%/10.8% less time at 64 MiB and 9.0%/4.3% less
+at 2 GiB, for f64/f32 respectively. Packed SIMD helps only f32 at 64 MiB
+(3.0%) in this comparison. See
+[four_pass_single_thread_results.txt](four_pass_single_thread_results.txt)
+for timings, run order, reproduction commands and sampled correctness checks.
+These measurements use the same executable and layout as the 16-thread runs;
+the scalar default is unchanged.
+
+An experiment force-inlined the original scalar formulation into `dispatch!`,
+with no explicit vector operations. LLVM emitted AVX-512 gathers from the packed
+tile and 512-bit stores. It took 6.2–9.6% longer than scalar on one thread,
+and showed no improvement with 16 threads. The wrapper, forced inlining and
+`auto` mode have been removed; the measurements remain as historical records.
+See [four_pass_auto_results.txt](four_pass_auto_results.txt) and
+[four_pass_auto_disassembly.txt](four_pass_auto_disassembly.txt).
+
 ## Profiling
 
 From the repo root:

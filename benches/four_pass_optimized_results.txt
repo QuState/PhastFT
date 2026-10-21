@@ -1,0 +1,218 @@
+Four-pass FFT optimization results
+
+Date: 2026-10-21
+Baseline: commit 7d098a4 (original prototype, saved release binary)
+Optimized: follow-up changes to examples/support/four_pass.rs
+CPU: AMD Ryzen 9 9950X, 16 cores / 16 online logical CPUs
+RAM: 30 GiB; governor: powersave; affinity not pinned
+OS: Linux 6.8.0-138-generic, x86_64
+Compiler: rustc 1.99.1 (58cf8f9c3 2026-10-13)
+Build: cargo build --release --offline --example benchmark_four_pass
+Features: default (parallel); no RUSTFLAGS override
+Threads: RAYON_NUM_THREADS=16
+Input: 2,147,483,648 bytes per transform (2 GiB), split complex arrays
+f64: 2^27 points; f32: 2^28 points
+
+Retained changes:
+- Change rows from 2^(floor(log2(N)/2)) to
+  2^max(floor(log2(N)/2)-2, 0). Both dimensions remain O(sqrt(N)).
+  At 2 GiB: 2048 x 65536 (f64), 4096 x 65536 (f32).
+  The first-pass batch shrinks from 2 MiB to 512 KiB, fitting in the
+  1 MiB per-core L2 with room for the local FFT and its small twiddle plan.
+- Widen full-transpose destination bands from 32 to 128 columns to
+  amortize source page walks.
+- Copy source tiles contiguously to a packed stack buffer before transposing.
+  Process real and imaginary components separately to reduce cache-set
+  conflicts. Full transpose tiles are 32 x 128; gather tiles are 32 x 16.
+  The largest stack buffer is 32 KiB per worker for f64.
+- Share the tile helper between the initial gather and full transposes.
+- Add optional FOUR_PASS_PROFILE=1 pass timing and print matrix dimensions.
+
+The algorithm still has four full-array sweeps, natural-order output in
+scratch, normalized inverse transforms, safe Rust and no execution-time heap
+allocation when profiling is disabled. Scratch remains one extra input-sized
+complex array; planning is O(sqrt(N)). The public library API is unchanged.
+
+Explicit SIMD transposes and eight-lane f64 twiddle recurrences were tried
+with dispatch! and inline(always) as prescribed by fearless_simd's manual.
+Neither gave a consistent end-to-end improvement, so neither is retained.
+The final implementation uses the existing DIT SIMD dispatch boundaries.
+Fusing the middle transpose and row FFTs also did not improve total time.
+
+Final comparison method:
+- Original executable copied before edits; optimized executable built after
+  correctness tests. No compilation or tests overlapped timed runs.
+- Sequential order: original f64, optimized f64, original f32, optimized f32.
+- Original: 5 measured runs per algorithm. Optimized: 10 measured runs.
+- Each invocation has one untimed warm-up per algorithm and alternates
+  DIT/four-pass order in measured pairs.
+- Identical seeded random input regenerated outside timing for every FFT.
+- Planning, allocation, initial page-touching and input generation excluded.
+- FOUR_PASS_PROFILE unset for all final comparison runs.
+- Each process retains both plans and scratch (approximately 6 GiB).
+- Both modes compare 4096 distributed output bins against DIT at 2 GiB.
+- These are single-host results. The matrix split was tuned for these sizes;
+  performance on other hardware, sizes and thread counts is not established.
+
+Commands (run sequentially):
+RAYON_NUM_THREADS=16 /tmp/benchmark_four_pass_original 64 27 5
+RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10
+RAYON_NUM_THREADS=16 /tmp/benchmark_four_pass_original 32 28 5
+RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 32 28 10
+The /tmp executable is the release example from commit 7d098a4.
+
+Binary SHA-256:
+Original: 60016e06efee650d968febdb9c6422c4b8cf127a72c0fe1f80ecdb088bdd0d9b
+Optimized: 4fd3c5488d25115cba97a47879824766ecd838ce129b4710c55432fe4d33fe05
+
+Validation:
+- Full output comparisons against RustFFT for forward and normalized inverse,
+  f32 and f64, all powers of two from 2^0 through 2^22. This includes both
+  exponent parities, partial tiles, and twiddle recurrence reseeding.
+- cargo test --release --offline --example benchmark_four_pass: 2 passed.
+- cargo test --release --offline --no-default-features --example benchmark_four_pass:
+  2 passed.
+- cargo test --offline --all-features: 53 unit tests and 8 doctests passed,
+  1 doctest ignored.
+- cargo clippy --offline --example benchmark_four_pass -- -D warnings: passed.
+
+Final timings (milliseconds):
+f64 original_rerun dit       n= 5 median=692.606 min=688.191 max=699.098
+f64 original_rerun four-pass n= 5 median=547.452 min=546.334 max=557.687
+f64 final          dit       n=10 median=678.700 min=676.582 max=684.074
+f64 final          four-pass n=10 median=453.072 min=451.157 max=456.815
+f64: optimized/original speedup 1.208x; elapsed time reduced 17.24%; optimized vs same-run DIT speedup 1.498x
+
+f32 original_rerun dit       n= 5 median=681.576 min=677.304 max=687.975
+f32 original_rerun four-pass n= 5 median=600.647 min=599.465 max=603.624
+f32 final          dit       n=10 median=683.926 min=678.365 max=716.919
+f32 final          four-pass n=10 median=481.034 min=475.960 max=498.293
+f32: optimized/original speedup 1.249x; elapsed time reduced 19.91%; optimized vs same-run DIT speedup 1.422x
+
+Exploratory pass profiling (milliseconds):
+These short tuning runs used FOUR_PASS_PROFILE=1, four-pass-only mode,
+one excluded warm-up, then 2 or 3 measured samples. Entries list median
+pass 1 / pass 2 / pass 3 / pass 4, then median total in parentheses.
+They guide selection; final unprofiled measurements above are the comparison.
+
+Original
+  f64, n=3: 195.742 / 135.686 / 78.424 / 134.100 (total 542.951)
+  f32, n=3: 225.567 / 154.127 / 78.541 / 154.918 (total 608.694)
+Original + explicit SIMD transposes
+  f64, n=3: 202.527 / 135.834 / 79.232 / 137.156 (total 554.183)
+  f32, n=3: 223.483 / 148.982 / 77.039 / 149.042 (total 599.887)
+SIMD transposes, separate components, 16 source rows
+  f64, n=2: 210.916 / 140.142 / 81.248 / 140.853 (total 573.158)
+  f32, n=2: 228.802 / 150.089 / 79.488 / 152.486 (total 610.865)
+Original transposes + SIMD twiddles
+  f64, n=3: 198.751 / 138.651 / 79.507 / 137.123 (total 554.863)
+  f32, n=3: 216.764 / 152.895 / 77.511 / 156.067 (total 600.188)
+SIMD twiddles + wider transpose bands
+  f64, n=2: 194.345 / 124.453 / 78.362 / 123.535 (total 520.694)
+  f32, n=2: 221.204 / 135.731 / 77.055 / 136.728 (total 570.717)
+Wide bands + fused middle passes
+  f64, n=2: 195.969 / 216.618 / 0.000 / 125.076 (total 537.663)
+  f32, n=2: 219.808 / 216.814 / 0.000 / 138.410 (total 575.032)
+Wide bands + packed full transposes (fusion reverted)
+  f64, n=2: 196.587 / 120.439 / 80.344 / 122.758 (total 520.128)
+  f32, n=2: 225.523 / 125.013 / 78.697 / 125.772 (total 555.005)
+Packed transposes + half-sized first FFTs
+  f64, n=2: 157.343 / 118.901 / 80.300 / 119.066 (total 475.611)
+  f32, n=2: 181.384 / 124.539 / 80.602 / 129.977 (total 516.501)
+Half-sized first FFTs + packed gather
+  f64, n=2: 155.042 / 119.003 / 80.386 / 119.050 (total 473.482)
+  f32, n=2: 177.402 / 123.498 / 80.829 / 123.919 (total 505.649)
+Quarter-sized first FFTs + packed gather
+  f64, n=2: 141.180 / 117.754 / 84.441 / 118.554 (total 461.928)
+  f32, n=2: 153.985 / 123.226 / 81.117 / 123.152 (total 481.479)
+Quarter-sized first FFTs + scalar twiddles
+  f64, n=3: 139.223 / 116.364 / 84.490 / 119.051 (total 458.761)
+  f32, n=3: 152.535 / 121.899 / 82.175 / 122.784 (total 479.493)
+
+Final raw measurements and metadata:
+
+f64 original_rerun:
+input_bytes=2147483648, points=134217728, setup_seconds=1.585781
+rayon_threads=16
+sampled_bins=4096, relative_l2_vs_dit=4.862249e-15
+algorithm,iteration,nanoseconds
+four-pass,1,557687191
+dit,1,699097780
+dit,2,690523005
+four-pass,2,547451916
+four-pass,3,547233658
+dit,3,692605965
+dit,4,688191098
+four-pass,4,546334043
+four-pass,5,552535615
+dit,5,692808974
+
+f64 final:
+input_bytes=2147483648, points=134217728, setup_seconds=1.590223
+rayon_threads=16
+four_pass_matrix=2048x65536
+sampled_bins=4096, relative_l2_vs_dit=4.911463e-15
+algorithm,iteration,nanoseconds
+four-pass,1,456814937
+dit,1,679372245
+dit,2,684073809
+four-pass,2,455292146
+four-pass,3,452733755
+dit,3,681126130
+dit,4,677480644
+four-pass,4,452336531
+four-pass,5,453100451
+dit,5,677047703
+dit,6,677874551
+four-pass,6,451157263
+four-pass,7,456107592
+dit,7,679472313
+dit,8,676582362
+four-pass,8,453042773
+four-pass,9,456112551
+dit,9,678241568
+dit,10,679158685
+four-pass,10,451520173
+
+f32 original_rerun:
+input_bytes=2147483648, points=268435456, setup_seconds=1.286578
+rayon_threads=16
+sampled_bins=4096, relative_l2_vs_dit=2.942930e-7
+algorithm,iteration,nanoseconds
+four-pass,1,603624174
+dit,1,677303583
+dit,2,682079916
+four-pass,2,599465367
+four-pass,3,600647250
+dit,3,678480245
+dit,4,681576433
+four-pass,4,600568452
+four-pass,5,603217192
+dit,5,687974674
+
+f32 final:
+input_bytes=2147483648, points=268435456, setup_seconds=1.284486
+rayon_threads=16
+four_pass_matrix=4096x65536
+sampled_bins=4096, relative_l2_vs_dit=3.023101e-7
+algorithm,iteration,nanoseconds
+four-pass,1,480805276
+dit,1,678365160
+dit,2,684178175
+four-pass,2,480731047
+four-pass,3,481316384
+dit,3,684384510
+dit,4,683673580
+four-pass,4,480972670
+four-pass,5,475960024
+dit,5,680301035
+dit,6,681006155
+four-pass,6,481094608
+four-pass,7,479830802
+dit,7,687188952
+dit,8,681889139
+four-pass,8,481589705
+four-pass,9,498293421
+dit,9,716918689
+dit,10,713733334
+four-pass,10,491434689

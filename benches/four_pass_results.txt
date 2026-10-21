@@ -1,0 +1,118 @@
+Four-pass FFT prototype benchmark
+
+Date: 2026-10-21
+Base commit: 51d97e3ac7425d35ed04ea64525c9148440d3c95
+CPU: AMD Ryzen 9 9950X, 16 cores / 16 online logical CPUs
+Memory: 30 GiB installed; approximately 23 GiB available before the run
+OS: Linux 6.8.0-138-generic, x86_64
+CPU governor: powersave (unchanged); affinity not pinned
+Compiler: rustc 1.99.1 (58cf8f9c3 2026-10-13)
+Build: cargo build --release --offline --example benchmark_four_pass
+Features: default (parallel), no RUSTFLAGS override
+Threads: RAYON_NUM_THREADS=16
+
+Each transform processes 2,147,483,648 bytes (2 GiB) of complex input.
+f64: 134,217,728 points, matrix 8192 x 16384.
+f32: 268,435,456 points, matrix 16384 x 16384.
+
+Commands (run sequentially, after compilation and tests finished):
+RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10
+RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 32 28 10
+
+Method:
+- Forward complex-to-complex FFT, natural-order input and output.
+- One untimed warm-up per implementation, then 10 measured transforms each.
+- Alternate which implementation runs first in each measured pair.
+- Same seeded random input regenerated before every transform, outside timing.
+- Exclude allocation, planning, input generation and initial page-touching.
+- Four-pass output remains in scratch; no copy back is included or required.
+- Retain DIT plan, four-pass plan, input and scratch in both mode (~6 GiB).
+- Each implementation separately needs about 4 GiB at these input sizes:
+  DIT uses ~2 GiB of twiddles; four-pass uses 2 GiB scratch and small plans.
+- Timings are from one host and one session, not a hardware-independent claim.
+
+Algorithm:
+1. Gather 16 adjacent columns per task, run local DIT FFTs, apply twiddles.
+2. Tiled transpose (32 x 32).
+3. Contiguous local DIT FFTs.
+4. Tiled transpose into natural frequency order in scratch.
+Four denotes full-array sweeps, not literal DRAM transactions: local FFTs
+make multiple cache passes. Twiddles use f64 recurrence, restarted every 256
+values. Plans take O(sqrt(N)) space. Execution is allocation-free and safe Rust.
+SIMD uses the existing DIT dispatch/vectorize entry points; the new scalar
+loops do not introduce additional fearless_simd inlining boundaries.
+
+Validation:
+- Full output compared against RustFFT for both directions and precisions,
+  all power-of-two sizes 2^0 through 2^20, with and without parallel feature.
+- At the actual 2 GiB size, compare 4096 distributed output bins against DIT.
+- cargo test --offline --all-features: 53 unit tests, 8 doctests passed;
+  1 doctest ignored.
+- cargo test --release --offline --example benchmark_four_pass: 2 passed.
+- cargo test --release --offline --no-default-features --example benchmark_four_pass:
+  2 passed.
+- cargo clippy --offline --example benchmark_four_pass -- -D warnings: passed.
+
+Summary (milliseconds, 10 samples per algorithm):
+f64 dit       median=691.412 min=685.611 max=704.624
+f64 four-pass median=543.537 min=534.687 max=559.298
+f64 speedup=1.272x, elapsed time reduction=21.39%
+f32 dit       median=686.365 min=677.069 max=702.086
+f32 four-pass median=601.484 min=597.142 max=614.583
+f32 speedup=1.141x, elapsed time reduction=12.37%
+
+f64 metadata / sampled correctness:
+input_bytes=2147483648, points=134217728, setup_seconds=1.604886
+rayon_threads=16
+sampled_bins=4096, relative_l2_vs_dit=4.862249e-15
+
+f64 raw samples:
+algorithm,iteration,nanoseconds
+four-pass,1,546900649
+dit,1,694853667
+dit,2,697360581
+four-pass,2,534687191
+four-pass,3,539906112
+dit,3,687146777
+dit,4,693965704
+four-pass,4,535309476
+four-pass,5,538527812
+dit,5,688716446
+dit,6,685610560
+four-pass,6,559297694
+four-pass,7,544830024
+dit,7,685968121
+dit,8,690057601
+four-pass,8,542244381
+four-pass,9,544920201
+dit,9,692767020
+dit,10,704623940
+four-pass,10,550929984
+
+f32 metadata / sampled correctness:
+input_bytes=2147483648, points=268435456, setup_seconds=1.301067
+rayon_threads=16
+sampled_bins=4096, relative_l2_vs_dit=2.942930e-7
+
+f32 raw samples:
+algorithm,iteration,nanoseconds
+four-pass,1,600140856
+dit,1,681667468
+dit,2,677068928
+four-pass,2,607057818
+four-pass,3,614583059
+dit,3,688330794
+dit,4,702085909
+four-pass,4,607913440
+four-pass,5,606330166
+dit,5,677580505
+dit,6,686177473
+four-pass,6,602480227
+four-pass,7,597142001
+dit,7,688118967
+dit,8,686553005
+four-pass,8,599485579
+four-pass,9,598912868
+dit,9,682959237
+dit,10,688952187
+four-pass,10,600488027
