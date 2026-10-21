@@ -71,7 +71,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install MSRV toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Cache cargo registry and build
         uses: Swatinem/rust-cache@v2
