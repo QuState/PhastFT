@@ -117,34 +117,6 @@ don't hesitate to create an issue.
 
 **Reuse planners.** If you're doing multiple FFTs of the same size, create the planner once and reuse it.
 
-**Twiddle storage.** All planners default to `TwiddleMode::Auto`: they store full
-twiddle tables for smaller transforms and generate twiddle vectors from compact
-factor tables for larger ones. Generating twiddles reduces plan storage from
-O(N) to O(log N) and can improve performance by reducing memory traffic.
-
-```rust
-use phastft::planner::{PlannerDit64, PlannerR2c64, TwiddleMode};
-
-let automatic = PlannerDit64::new(1 << 20);
-let compact = PlannerDit64::with_twiddle_mode(1 << 20, TwiddleMode::LowMemory);
-let stored = PlannerDit64::with_twiddle_mode(1 << 20, TwiddleMode::Precomputed);
-assert_eq!(compact.twiddle_mode(), TwiddleMode::LowMemory);
-assert_eq!(stored.twiddle_mode(), TwiddleMode::Precomputed);
-
-// Real plans apply the mode to both the inner FFT and the real twiddles.
-let real = PlannerR2c64::with_twiddle_mode(1 << 20, TwiddleMode::LowMemory);
-```
-
-`Auto` resolves once at plan construction; `twiddle_mode()` reports the resolved
-mode. The current heuristic selects low-memory mode at a complex input footprint
-of 32 MiB: `2^22` complex points for `f32`, or `2^21` for `f64`. Real transforms
-use their half-length complex FFT, so the real-input point thresholds are twice
-those values. This heuristic may change as more hardware is measured. Use an
-explicit mode to tune for your workload; the
-[mode comparison benchmark](https://github.com/smu160/PhastFT/blob/main/benches/README.md#twiddle-storage-modes) measures both.
-Low-memory mode changes twiddle storage; input, output, and C2R scratch sizes
-remain the same. Both modes reuse the same plan for forward and inverse FFTs.
-
 **Threading.** If the `parallel` feature is enabled, the library uses 2 threads for bit reversal and all available threads for FFT calculation when it seems profitable.
 
 **Complex numbers.** The separate real/imaginary array API is faster and uses less memory than the interleaved complex API which allocates temporary buffers.
@@ -190,11 +162,11 @@ if you want to understand the trade-offs on modern hardware. Its author is not a
 The trade-offs we chose are:
 
 - **In-place** FFT with a separate bit-reversal step reduces memory traffic and peak memory usage compared to out-of-place and auto-sorter FFTs
-- **Radix-2** Cooley-Tukey FFT: radix-4 and split-radix do less math, but require complex and slow bit reversals.
-  - We still need to experiment with fusing multiple radix-2 passes to reduce memory traffic in single-threaded scenarios
+- [**Radix-2^2**](https://csg.csail.mit.edu/6.375/6_375_2019_www/resources/He_A_New_Approach_to_Pipeline_FFT_Processor_IPPS_1996.pdf) Cooley-Tukey FFT: radix-4 and split-radix do less math, but require complex and slow bit reversals.
 - [**CO-BRAVO**](https://dl.acm.org/doi/abs/10.1145/1248377.1248411) cache-optimal, SIMD-accelerated bit reversal trounces other algorithms.
 - **Decimation in time** maps better to SIMD fused multiply-adds than decimation-in-frequency, and CO-BRAVO makes skipping bit reversal less appealing.
 - **Recursive formulation** enables cache-oblivious FFT and easy parallelism. We switch over to a loop when reaching L1 cache size.
+- **On-the-fly twiddle generation** at larger sizes does not require storing them in memory and improves performance by reducing memory bandwidth requirements. 
 
 All of this combined results in a fast and efficient FFT implementation competitive with
 the performance of existing Rust FFT crates on medium to large sizes, while using significantly less memory.
@@ -216,7 +188,7 @@ implementation in pure Rust. RustFFT and PhastFT make different trade-offs.
 
 ### PhastFT advantages
 
- - Up to 2x lower memory usage, letting you use laptops or cheaper cloud instances for large FFTs
+ - Up to 4x lower memory usage, letting you use laptops or cheaper cloud instances for large FFTs
  - Multi-threading support, much higher performance on large sizes when using multi-threading
  - No `unsafe` code
 
