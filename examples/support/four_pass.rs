@@ -22,7 +22,10 @@ use rayon::prelude::*;
 
 // Sixteen adjacent elements cover a cache line in either precision.
 const COLUMNS: usize = 16;
-const TILE: usize = 32;
+// Wide destination bands amortize source page walks. Pack the source rows
+// before transposing to avoid revisiting large-stride cache lines per element.
+const TILE: usize = 128;
+const TILE_ROWS: usize = 32;
 
 fn chunks<T: Send, F>(re: &mut [T], im: &mut [T], size: usize, f: F)
 where
@@ -40,6 +43,36 @@ where
         .for_each(|(i, (re, im))| f(i, re, im));
 }
 
+// A bounded stack tile makes all global reads contiguous. Transpose each
+// component separately so the two large-stride arrays do not compete for the
+// same cache sets. WIDTH is 16 for the gather, 128 for a full transpose.
+fn transpose_columns<T: Copy, const WIDTH: usize>(
+    re: &[T],
+    im: &[T],
+    dr: &mut [T],
+    di: &mut [T],
+    rows: usize,
+    cols: usize,
+    first_col: usize,
+) {
+    let width = dr.len() / rows;
+    let mut tile = [[re[0]; WIDTH]; TILE_ROWS];
+    for (src, dst) in [(re, dr), (im, di)] {
+        for r0 in (0..rows).step_by(TILE_ROWS) {
+            let height = (rows - r0).min(TILE_ROWS);
+            for (r, tile_row) in tile.iter_mut().take(height).enumerate() {
+                let source = (r0 + r) * cols + first_col;
+                tile_row[..width].copy_from_slice(&src[source..source + width]);
+            }
+            for c in 0..width {
+                for r in 0..height {
+                    dst[c * rows + r0 + r] = tile[r][c];
+                }
+            }
+        }
+    }
+}
+
 fn transpose<T: Copy + Send + Sync>(
     re: &[T],
     im: &[T],
@@ -49,15 +82,7 @@ fn transpose<T: Copy + Send + Sync>(
     cols: usize,
 ) {
     chunks(out_re, out_im, TILE * rows, |batch, dr, di| {
-        let first_col = batch * TILE;
-        for r0 in (0..rows).step_by(TILE) {
-            for c in 0..dr.len() / rows {
-                for r in r0..(r0 + TILE).min(rows) {
-                    dr[c * rows + r] = re[r * cols + first_col + c];
-                    di[c * rows + r] = im[r * cols + first_col + c];
-                }
-            }
-        }
+        transpose_columns::<T, TILE>(re, im, dr, di, rows, cols, batch * TILE);
     });
 }
 
@@ -76,7 +101,10 @@ macro_rules! implementation {
         impl $name {
             pub fn new(n: usize) -> Self {
                 assert!(n.is_power_of_two());
-                let rows = 1 << (n.ilog2() / 2);
+                // At 2 GiB this keeps each gathered batch at 512 KiB, leaving
+                // room in the 1 MiB L2 for local FFT work and its twiddle plan.
+                // Both dimensions still grow as O(sqrt(N)).
+                let rows = 1 << (n.ilog2() / 2).saturating_sub(2);
                 let cols = n / rows;
                 let mut opts = Options::default();
                 opts.smallest_parallel_chunk_size = usize::MAX;
@@ -96,6 +124,10 @@ macro_rules! implementation {
                 }
             }
 
+            pub fn dimensions(&self) -> (usize, usize) {
+                (self.rows, self.cols)
+            }
+
             /// Output is in `scratch_re` / `scratch_im`, in natural order.
             /// Inverse transforms are normalized by 1/N, like PhastFT's DIT.
             pub fn process(
@@ -110,25 +142,20 @@ macro_rules! implementation {
                 for len in [re.len(), im.len(), scratch_re.len(), scratch_im.len()] {
                     assert_eq!(len, n);
                 }
-                let rows = self.rows;
-                let cols = self.cols;
                 let sign = match direction {
                     Direction::Forward => -1.0,
                     Direction::Inverse => 1.0,
                 };
-
+                let rows = self.rows;
+                let cols = self.cols;
+                let profile = std::env::var_os("FOUR_PASS_PROFILE").is_some();
+                let started = profile.then(std::time::Instant::now);
+                let mut elapsed = [std::time::Duration::ZERO; 4];
                 // Sweep 1: tiled gather, local column FFTs and twiddles. Each
                 // task owns contiguous scratch rows, so no unsafe scatter is needed.
                 chunks(scratch_re, scratch_im, COLUMNS * rows, |batch, dr, di| {
                     let first_col = batch * COLUMNS;
-                    for r0 in (0..rows).step_by(TILE) {
-                        for c in 0..dr.len() / rows {
-                            for r in r0..(r0 + TILE).min(rows) {
-                                dr[c * rows + r] = re[r * cols + first_col + c];
-                                di[c * rows + r] = im[r * cols + first_col + c];
-                            }
-                        }
-                    }
+                    transpose_columns::<$float, COLUMNS>(re, im, dr, di, rows, cols, first_col);
                     for (c, (rr, ii)) in dr.chunks_mut(rows).zip(di.chunks_mut(rows)).enumerate() {
                         $fft(rr, ii, direction, &self.column_plan, &self.opts);
                         let j = first_col + c;
@@ -153,14 +180,34 @@ macro_rules! implementation {
                     }
                 });
 
+                if let Some(started) = started {
+                    elapsed[0] = started.elapsed();
+                }
+
                 // Sweep 2: A[j2][k1] -> B[k1][j2].
                 transpose(scratch_re, scratch_im, re, im, cols, rows);
+                if let Some(started) = started {
+                    elapsed[1] = started.elapsed();
+                }
                 // Sweep 3: local row FFTs. Parallelism is across rows only.
                 chunks(re, im, cols, |_, rr, ii| {
                     $fft(rr, ii, direction, &self.row_plan, &self.opts);
                 });
+                if let Some(started) = started {
+                    elapsed[2] = started.elapsed();
+                }
                 // Sweep 4: B[k1][k2] -> X[k2 * rows + k1].
                 transpose(re, im, scratch_re, scratch_im, rows, cols);
+                if let Some(started) = started {
+                    elapsed[3] = started.elapsed();
+                    eprintln!(
+                        "passes_ms={:.3},{:.3},{:.3},{:.3}",
+                        elapsed[0].as_secs_f64() * 1000.0,
+                        (elapsed[1] - elapsed[0]).as_secs_f64() * 1000.0,
+                        (elapsed[2] - elapsed[1]).as_secs_f64() * 1000.0,
+                        (elapsed[3] - elapsed[2]).as_secs_f64() * 1000.0
+                    );
+                }
             }
         }
     };
@@ -189,8 +236,8 @@ mod tests {
             #[test]
             fn $name() {
                 let mut reference = FftPlanner::<$float>::new();
-                // Square/rectangular matrices, partial tiles, and recurrence restarts.
-                for log_n in 0..=20 {
+                // Both exponent parities, partial tiles, and recurrence restarts.
+                for log_n in 0..=22 {
                     let n = 1 << log_n;
                     let input: Vec<_> = (0..n)
                         .map(|i| {

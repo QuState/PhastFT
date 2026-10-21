@@ -35,6 +35,10 @@ macro_rules! benchmark {
             );
             #[cfg(feature = "parallel")]
             eprintln!("rayon_threads={}", rayon::current_num_threads());
+            if let Some(plan) = &four {
+                let (rows, cols) = plan.dimensions();
+                eprintln!("four_pass_matrix={rows}x{cols}");
+            }
 
             let sample_count = n.min(4096);
             let mut reference_samples = Vec::new();

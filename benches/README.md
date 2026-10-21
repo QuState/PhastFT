@@ -237,14 +237,16 @@ Each input contains exactly 2,147,483,648 bytes across the real and imaginary
 arrays: 2^27 complex f64 values or 2^28 complex f32 values. The optional last
 argument is `both` (default), `dit`, or `four-pass`. CSV on stdout contains
 `algorithm,iteration,nanoseconds`; setup information and sampled correctness
-checks go to stderr. `RAYON_NUM_THREADS` controls both algorithms; building with
+checks and the selected matrix dimensions go to stderr. Set `FOUR_PASS_PROFILE=1`
+to also print the four individual pass times in milliseconds (including warm-up).
+Leave it unset for final timing runs. `RAYON_NUM_THREADS` controls both algorithms; building with
 `--no-default-features` also supports serial execution.
 
 The benchmark excludes planning, allocation, page-touching, and input generation.
 It warms up each implementation once, alternates their order, and regenerates
 the same seeded input before each transform. The `both` mode compares 4096
 distributed output bins during warm-up. For full forward/inverse comparisons
-against RustFFT at sizes 2^0 through 2^20, run:
+against RustFFT at sizes 2^0 through 2^22, run:
 
 ```bash
 cargo test --release --example benchmark_four_pass
@@ -257,9 +259,15 @@ cache passes within each sweep. The prototype destroys its input and returns
 output in caller-provided scratch, with no final copy back. It needs another
 2 GiB for scratch and O(sqrt(N)) planning storage. DIT instead needs about
 2 GiB for its full-size twiddle plan. `both` retains both plans and scratch,
-so allow roughly 6 GiB of RAM. No library API or default algorithm is changed.
+so allow roughly 6 GiB of RAM. The optimized matrix split uses 2048 x 65536 for
+f64 and 4096 x 65536 for f32 at 2 GiB, keeping the first-pass batches at 512 KiB.
+Transposes use packed stack tiles of 32 x 128 elements (32 KiB per worker for
+f64); the initial gather uses 32 x 16 tiles. No library API or default algorithm
+is changed.
 
-Measured results and raw samples are in [four_pass_results.txt](four_pass_results.txt).
+Original results are in [four_pass_results.txt](four_pass_results.txt); optimization
+experiments and final raw samples are in
+[four_pass_optimized_results.txt](four_pass_optimized_results.txt).
 
 ## Profiling
 
