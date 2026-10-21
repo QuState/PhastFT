@@ -222,6 +222,45 @@ median, normalized against RustFFT's median; whiskers are the IQR in
 that normalized space; the dashed `y = 1.0` line is RustFFT by
 construction. PNGs land in the current working directory.
 
+## Four-pass prototype at 2 GiB
+
+`examples/benchmark_four_pass.rs` compares the experimental implementation in
+`examples/support/four_pass.rs` with the existing DIT FFT. Run from the repo root:
+
+```bash
+cargo build --release --example benchmark_four_pass
+RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10
+RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 32 28 10
+```
+
+Each input contains exactly 2,147,483,648 bytes across the real and imaginary
+arrays: 2^27 complex f64 values or 2^28 complex f32 values. The optional last
+argument is `both` (default), `dit`, or `four-pass`. CSV on stdout contains
+`algorithm,iteration,nanoseconds`; setup information and sampled correctness
+checks go to stderr. `RAYON_NUM_THREADS` controls both algorithms; building with
+`--no-default-features` also supports serial execution.
+
+The benchmark excludes planning, allocation, page-touching, and input generation.
+It warms up each implementation once, alternates their order, and regenerates
+the same seeded input before each transform. The `both` mode compares 4096
+distributed output bins during warm-up. For full forward/inverse comparisons
+against RustFFT at sizes 2^0 through 2^20, run:
+
+```bash
+cargo test --release --example benchmark_four_pass
+cargo test --release --no-default-features --example benchmark_four_pass
+```
+
+The four sweeps are column gather/FFT/twiddle multiplication, transpose, row
+FFTs, and a final transpose to natural output order. Small FFTs perform multiple
+cache passes within each sweep. The prototype destroys its input and returns
+output in caller-provided scratch, with no final copy back. It needs another
+2 GiB for scratch and O(sqrt(N)) planning storage. DIT instead needs about
+2 GiB for its full-size twiddle plan. `both` retains both plans and scratch,
+so allow roughly 6 GiB of RAM. No library API or default algorithm is changed.
+
+Measured results and raw samples are in [four_pass_results.txt](four_pass_results.txt).
+
 ## Profiling
 
 From the repo root:
