@@ -362,7 +362,7 @@ mod tests {
                 // and the default parallel threshold. Test each direction against
                 // an independent FFT rather than relying only on a round trip.
                 // 2^18 is the default fused-kernel cutoff; 2^19 is above it.
-                for log_n in 8..=19 {
+                for log_n in 0..=19 {
                     let n = 1 << log_n;
                     let input: Vec<_> = (0..n)
                         .map(|i| {
@@ -372,7 +372,8 @@ mod tests {
                             )
                         })
                         .collect();
-                    let planner = <$planner>::new(n);
+                    for mode in [crate::planner::TwiddleMode::Precomputed, crate::planner::TwiddleMode::LowMemory, crate::planner::TwiddleMode::Auto] {
+                    let planner = <$planner>::with_twiddle_mode(n, mode);
                     let opts = Options::guess_options(n);
                     for direction in [Direction::Forward, Direction::Inverse] {
                         let mut expected = input.clone();
@@ -414,9 +415,10 @@ mod tests {
                             let relative_error = (error_sq / reference_sq).sqrt();
                             assert!(
                                 relative_error < $tolerance,
-                                "n={n}, {direction:?}, cutoff={threshold}: relative L2 error {relative_error}"
+                                "n={n}, {mode:?}, {direction:?}, cutoff={threshold}: relative L2 error {relative_error}"
                             );
                         }
+                    }
                     }
                 }
             }
@@ -448,7 +450,8 @@ mod tests {
                 // parities, and parallel fused passes. Reuse the plan both ways.
                 for log_n in [9, 11, 16, 19, 20] {
                     let n = 1 << log_n;
-                    let mut planner = <$planner>::new(n);
+                    for mode in [crate::planner::TwiddleMode::Precomputed, crate::planner::TwiddleMode::LowMemory, crate::planner::TwiddleMode::Auto] {
+                    let mut planner = <$planner>::with_twiddle_mode(n, mode);
                     // Also exercise the baseline backend (without FMA on x86).
                     if matches!(log_n, 11 | 16) {
                         planner.simd_level = fearless_simd::Level::baseline();
@@ -481,9 +484,10 @@ mod tests {
                             let relative_l2 = (error_sq / n as f64).sqrt();
                             assert!(
                                 relative_l2 < $l2_limit && max_error < $max_limit,
-                                "n={n}, {direction:?}, cutoff={threshold}: L2={relative_l2}, max={max_error}"
+                                "n={n}, {mode:?}, {direction:?}, cutoff={threshold}: L2={relative_l2}, max={max_error}"
                             );
                         }
+                    }
                     }
                 }
             }

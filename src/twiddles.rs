@@ -21,6 +21,67 @@ pub(crate) trait TwiddleSource<S: Simd, V>: Sync {
 pub(crate) const COARSE_LEN: usize = 64;
 
 #[derive(Clone)]
+pub(crate) struct StoredTwiddles<T> {
+    re: Vec<T>,
+    im: Vec<T>,
+}
+
+macro_rules! impl_stored_twiddles {
+    ($float:ty) => {
+        impl StoredTwiddles<$float> {
+            pub(crate) fn new(num_points: usize) -> Self {
+                let angle_step = -std::f64::consts::TAU / num_points as f64;
+                let mut re = Vec::with_capacity(num_points / 2);
+                let mut im = Vec::with_capacity(num_points / 2);
+                for k in 0..num_points / 2 {
+                    // Independent angles in f64 also keep f32 tables accurate.
+                    let (s, c) = (angle_step * k as f64).sin_cos();
+                    re.push(c as $float);
+                    im.push(s as $float);
+                }
+                Self { re, im }
+            }
+        }
+    };
+}
+
+impl_stored_twiddles!(f64);
+impl_stored_twiddles!(f32);
+
+macro_rules! impl_stored_source {
+    ($float:ty, $vector:ident, $lanes:literal, $block_len:expr) => {
+        impl<S: Simd> TwiddleSource<S, $vector<S>> for StoredTwiddles<$float> {
+            const BLOCK_LEN: usize = $block_len;
+            type Block = usize;
+
+            #[inline(always)]
+            fn block(&self, _simd: S, offset: usize) -> Self::Block {
+                offset
+            }
+
+            #[inline(always)]
+            fn vector(
+                &self,
+                simd: S,
+                block: &Self::Block,
+                offset: usize,
+            ) -> ($vector<S>, $vector<S>) {
+                let k = block + offset;
+                (
+                    $vector::from_slice(simd, &self.re[k..k + $lanes]),
+                    $vector::from_slice(simd, &self.im[k..k + $lanes]),
+                )
+            }
+        }
+    };
+}
+
+impl_stored_source!(f64, f64x8, 8, TwiddleTable64::BLOCK_LEN);
+impl_stored_source!(f64, f64x4, 4, TwiddleTable64::BLOCK_LEN);
+impl_stored_source!(f32, f32x16, 16, TwiddleTable32::BLOCK_LEN);
+impl_stored_source!(f32, f32x8, 8, TwiddleTable32::BLOCK_LEN);
+
+#[derive(Clone)]
 pub(crate) struct TwiddleTable<T, const LANES: usize> {
     pub(crate) fine_re: [T; LANES],
     pub(crate) fine_im: [T; LANES],
