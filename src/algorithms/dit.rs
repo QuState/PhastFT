@@ -26,12 +26,12 @@ use crate::parallel::run_maybe_in_parallel;
 use crate::planner::{Direction, PlannerDit32, PlannerDit64};
 
 /// Maximum leaf size in complex elements (8KB for f32, 16KB for f64).
-/// Four-way recursion intentionally gives 1024-point leaves for even exponents
-/// and 512-point leaves for odd exponents. Forcing equal leaves introduces an
+/// Grouped four-way recursion gives 1024-point leaves for even exponents and
+/// 512-point leaves for odd exponents. Forcing equal leaves introduces an
 /// unfused merge stage without a consistent benefit in the parity benchmarks.
 const L1_BLOCK_SIZE: usize = 1024;
 
-/// Two fused passes, each consuming two radix-2 stages.
+/// Distribute at most the last four radix-2 stages across workers.
 #[cfg(feature = "parallel")]
 const PARALLEL_STAGES: usize = 4;
 
@@ -40,16 +40,20 @@ const PARALLEL_STAGES: usize = 4;
 #[cfg(feature = "parallel")]
 const PARALLEL_KERNEL_CHUNKS: usize = 16;
 
+#[derive(Debug, PartialEq, Eq)]
 enum GeneralStage {
     Single,
-    Fused,
+    Fused2,
+    Fused4,
     #[cfg(feature = "parallel")]
-    FusedParallel,
+    Fused2Parallel,
+    #[cfg(feature = "parallel")]
+    Fused4Parallel,
 }
 
 /// Shared scheduling policy for both precisions. Keep an unmatched stage at
 /// the beginning so the larger stages remain fused. Only distribute the last
-/// two fused passes across workers, and require 16 times the caller's minimum
+/// four stages across workers, and require 16 times the caller's minimum
 /// chunk size so each worker has enough work.
 #[inline]
 #[allow(unused_variables)] // Parallel policy inputs are unused without the feature.
@@ -59,6 +63,7 @@ fn general_stage(
     size: usize,
     opts: &Options,
 ) -> GeneralStage {
+    debug_assert!(!stages.is_empty());
     if stages.len() % 2 == 1 {
         return GeneralStage::Single;
     }
@@ -69,14 +74,56 @@ fn general_stage(
                 .smallest_parallel_chunk_size
                 .saturating_mul(PARALLEL_KERNEL_CHUNKS)
     {
-        return GeneralStage::FusedParallel;
+        return if stages.len().is_multiple_of(4) {
+            GeneralStage::Fused4Parallel
+        } else {
+            GeneralStage::Fused2Parallel
+        };
     }
-    GeneralStage::Fused
+    if stages.len().is_multiple_of(4) {
+        GeneralStage::Fused4
+    } else {
+        GeneralStage::Fused2
+    }
+}
+
+/// Group two four-way recursion levels when both are above the leaf cutoff.
+/// Keeping a two-stage merge immediately above leaves preserves leaf sizes.
+fn merge_stages(size: usize) -> usize {
+    if size / 4 > L1_BLOCK_SIZE {
+        4
+    } else {
+        2
+    }
+}
+
+/// Visit equal-sized recursive children using balanced binary splits. This
+/// preserves the existing parallel threshold at every split, including the
+/// intermediate levels of a sixteen-child merge.
+fn for_each_dit_child<T: Send, F: Fn(&mut [T], &mut [T]) + Sync>(
+    reals: &mut [T],
+    imags: &mut [T],
+    child_size: usize,
+    opts: &Options,
+    process: &F,
+) {
+    let size = reals.len();
+    if size == child_size {
+        process(reals, imags);
+    } else {
+        let (re_lo, re_hi) = reals.split_at_mut(size / 2);
+        let (im_lo, im_hi) = imags.split_at_mut(size / 2);
+        run_maybe_in_parallel(
+            size > opts.smallest_parallel_chunk_size,
+            || for_each_dit_child(re_lo, im_lo, child_size, opts, process),
+            || for_each_dit_child(re_hi, im_hi, child_size, opts, process),
+        );
+    }
 }
 
 /// Recursive cache-blocked DIT FFT for f64 using post-order traversal.
 ///
-/// Recursively divides by 4 until reaching L1 cache size, processes stages within
+/// Recursively divides by 16 (or 4 near leaves), processes stages within
 /// each block, then processes cross-block stages on return.
 fn recursive_dit_fft_f64<S: Simd>(
     simd: S,
@@ -115,42 +162,17 @@ fn recursive_dit_fft_f64<S: Simd>(
         }
         stage_twiddle_idx
     } else {
-        let quarter = size / 4;
-        let log_quarter = quarter.ilog2() as usize;
+        let child_size = size >> merge_stages(size);
+        let log_child = child_size.ilog2() as usize;
+        for_each_dit_child(reals, imags, child_size, opts, &|re, im| {
+            recursive_dit_fft_f64(simd, re, im, child_size, planner, opts, 0);
+        });
 
-        let (re_lo, re_hi) = reals.split_at_mut(size / 2);
-        let (im_lo, im_hi) = imags.split_at_mut(size / 2);
-        let (re_q0, re_q1) = re_lo.split_at_mut(quarter);
-        let (im_q0, im_q1) = im_lo.split_at_mut(quarter);
-        let (re_q2, re_q3) = re_hi.split_at_mut(quarter);
-        let (im_q2, im_q3) = im_hi.split_at_mut(quarter);
+        // Children completed stages below log_child. Merge the remaining two
+        // or four stages; planner tables begin at stage 6.
+        stage_twiddle_idx = log_child.saturating_sub(6);
 
-        // Recursively process all 4 quarters (parallel across pairs)
-        run_maybe_in_parallel(
-            size > opts.smallest_parallel_chunk_size,
-            || {
-                run_maybe_in_parallel(
-                    size / 2 > opts.smallest_parallel_chunk_size,
-                    || recursive_dit_fft_f64(simd, re_q0, im_q0, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f64(simd, re_q1, im_q1, quarter, planner, opts, 0),
-                )
-            },
-            || {
-                run_maybe_in_parallel(
-                    size / 2 > opts.smallest_parallel_chunk_size,
-                    || recursive_dit_fft_f64(simd, re_q2, im_q2, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f64(simd, re_q3, im_q3, quarter, planner, opts, 0),
-                )
-            },
-        );
-
-        // All 4 quarters completed stages 0..log_quarter-1.
-        // Now process the 2 remaining cross-block stages (log_quarter and log_quarter+1)
-        // using the fused kernel.
-        // Stages 0-5 use hardcoded twiddles, 6+ use planner
-        stage_twiddle_idx = log_quarter.saturating_sub(6);
-
-        let mut stage = log_quarter;
+        let mut stage = log_child;
         while stage < log_size {
             let (new_idx, consumed) = execute_dit_stages_f64(
                 simd,
@@ -207,42 +229,17 @@ fn recursive_dit_fft_f32<S: Simd>(
         }
         stage_twiddle_idx
     } else {
-        let quarter = size / 4;
-        let log_quarter = quarter.ilog2() as usize;
+        let child_size = size >> merge_stages(size);
+        let log_child = child_size.ilog2() as usize;
+        for_each_dit_child(reals, imags, child_size, opts, &|re, im| {
+            recursive_dit_fft_f32(simd, re, im, child_size, planner, opts, 0);
+        });
 
-        let (re_lo, re_hi) = reals.split_at_mut(size / 2);
-        let (im_lo, im_hi) = imags.split_at_mut(size / 2);
-        let (re_q0, re_q1) = re_lo.split_at_mut(quarter);
-        let (im_q0, im_q1) = im_lo.split_at_mut(quarter);
-        let (re_q2, re_q3) = re_hi.split_at_mut(quarter);
-        let (im_q2, im_q3) = im_hi.split_at_mut(quarter);
+        // Children completed stages below log_child. Merge the remaining two
+        // or four stages; planner tables begin at stage 6.
+        stage_twiddle_idx = log_child.saturating_sub(6);
 
-        // Recursively process all 4 quarters (parallel across pairs)
-        run_maybe_in_parallel(
-            size > opts.smallest_parallel_chunk_size,
-            || {
-                run_maybe_in_parallel(
-                    size / 2 > opts.smallest_parallel_chunk_size,
-                    || recursive_dit_fft_f32(simd, re_q0, im_q0, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f32(simd, re_q1, im_q1, quarter, planner, opts, 0),
-                )
-            },
-            || {
-                run_maybe_in_parallel(
-                    size / 2 > opts.smallest_parallel_chunk_size,
-                    || recursive_dit_fft_f32(simd, re_q2, im_q2, quarter, planner, opts, 0),
-                    || recursive_dit_fft_f32(simd, re_q3, im_q3, quarter, planner, opts, 0),
-                )
-            },
-        );
-
-        // All 4 quarters completed stages 0..log_quarter-1.
-        // Now process the 2 remaining cross-block stages (log_quarter and log_quarter+1)
-        // using the fused kernel.
-        // Stages 0-5 use hardcoded twiddles, 6+ use planner
-        stage_twiddle_idx = log_quarter.saturating_sub(6);
-
-        let mut stage = log_quarter;
+        let mut stage = log_child;
         while stage < log_size {
             let (new_idx, consumed) = execute_dit_stages_f32(
                 simd,
@@ -261,7 +258,7 @@ fn recursive_dit_fft_f32<S: Simd>(
     }
 }
 
-/// Execute one or two stages within the current recursive subproblem.
+/// Execute one, two, or four stages within the current recursive subproblem.
 /// Returns (updated stage_twiddle_idx, number of stages consumed).
 fn execute_dit_stages_f64<S: Simd>(
     simd: S,
@@ -300,7 +297,36 @@ fn execute_dit_stages_f64<S: Simd>(
                 fft_dit_chunk_n_f64(simd, reals, imags, twiddles_re, twiddles_im, dist);
                 (stage_twiddle_idx + 1, 1)
             }
-            GeneralStage::Fused => {
+            GeneralStage::Fused4 => {
+                let (base_re, base_im) = &planner.stage_twiddles[stage_twiddle_idx + 3];
+                fft_dit_fused_4stage_f64_narrow(
+                    simd,
+                    reals,
+                    imags,
+                    Fused4Twiddles {
+                        re: base_re,
+                        im: base_im,
+                    },
+                    dist,
+                );
+                (stage_twiddle_idx + 4, 4)
+            }
+            #[cfg(feature = "parallel")]
+            GeneralStage::Fused4Parallel => {
+                let (base_re, base_im) = &planner.stage_twiddles[stage_twiddle_idx + 3];
+                fft_dit_fused_4stage_f64_narrow_parallel(
+                    simd,
+                    reals,
+                    imags,
+                    Fused4Twiddles {
+                        re: base_re,
+                        im: base_im,
+                    },
+                    dist,
+                );
+                (stage_twiddle_idx + 4, 4)
+            }
+            GeneralStage::Fused2 => {
                 let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
                 fft_dit_fused_2stage_f64_narrow(
                     simd,
@@ -317,7 +343,7 @@ fn execute_dit_stages_f64<S: Simd>(
                 (stage_twiddle_idx + 2, 2)
             }
             #[cfg(feature = "parallel")]
-            GeneralStage::FusedParallel => {
+            GeneralStage::Fused2Parallel => {
                 let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
                 fft_dit_fused_2stage_f64_narrow_parallel(
                     simd,
@@ -337,7 +363,7 @@ fn execute_dit_stages_f64<S: Simd>(
     }
 }
 
-/// Execute one or two stages within the current recursive subproblem.
+/// Execute one, two, or four stages within the current recursive subproblem.
 /// Returns (updated stage_twiddle_idx, number of stages consumed).
 fn execute_dit_stages_f32<S: Simd>(
     simd: S,
@@ -376,7 +402,36 @@ fn execute_dit_stages_f32<S: Simd>(
                 fft_dit_chunk_n_f32(simd, reals, imags, twiddles_re, twiddles_im, dist);
                 (stage_twiddle_idx + 1, 1)
             }
-            GeneralStage::Fused => {
+            GeneralStage::Fused4 => {
+                let (base_re, base_im) = &planner.stage_twiddles[stage_twiddle_idx + 3];
+                fft_dit_fused_4stage_f32_narrow(
+                    simd,
+                    reals,
+                    imags,
+                    Fused4Twiddles {
+                        re: base_re,
+                        im: base_im,
+                    },
+                    dist,
+                );
+                (stage_twiddle_idx + 4, 4)
+            }
+            #[cfg(feature = "parallel")]
+            GeneralStage::Fused4Parallel => {
+                let (base_re, base_im) = &planner.stage_twiddles[stage_twiddle_idx + 3];
+                fft_dit_fused_4stage_f32_narrow_parallel(
+                    simd,
+                    reals,
+                    imags,
+                    Fused4Twiddles {
+                        re: base_re,
+                        im: base_im,
+                    },
+                    dist,
+                );
+                (stage_twiddle_idx + 4, 4)
+            }
+            GeneralStage::Fused2 => {
                 let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
                 fft_dit_fused_2stage_f32_narrow(
                     simd,
@@ -393,7 +448,7 @@ fn execute_dit_stages_f32<S: Simd>(
                 (stage_twiddle_idx + 2, 2)
             }
             #[cfg(feature = "parallel")]
-            GeneralStage::FusedParallel => {
+            GeneralStage::Fused2Parallel => {
                 let (twiddles_re2, twiddles_im2) = &planner.stage_twiddles[stage_twiddle_idx + 1];
                 fft_dit_fused_2stage_f32_narrow_parallel(
                     simd,
@@ -580,4 +635,141 @@ const fn power_of_two(power: usize) -> usize {
     // 2.pow() requires a lot of ugly type annotations so here's a helper function
     debug_assert!(power < usize::BITS as usize);
     1 << power
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn general_stage_remainders() {
+        let opts = Options {
+            smallest_parallel_chunk_size: usize::MAX,
+            ..Options::default()
+        };
+        let expected: &[&[usize]] = &[
+            &[1],
+            &[2],
+            &[1, 2],
+            &[4],
+            &[1, 4],
+            &[2, 4],
+            &[1, 2, 4],
+            &[4, 4],
+            &[1, 4, 4],
+            &[2, 4, 4],
+        ];
+        for (index, expected) in expected.iter().enumerate() {
+            let end = 6 + index + 1;
+            let mut stage = 6;
+            let mut actual = Vec::new();
+            while stage < end {
+                let consumed = match general_stage(stage..end, end, 1 << end, &opts) {
+                    GeneralStage::Single => 1,
+                    GeneralStage::Fused2 => 2,
+                    GeneralStage::Fused4 => 4,
+                    #[cfg(feature = "parallel")]
+                    _ => panic!("parallelism was disabled"),
+                };
+                actual.push(consumed);
+                stage += consumed;
+            }
+            assert_eq!(&actual, expected);
+        }
+    }
+
+    #[test]
+    fn recursion_preserves_leaf_sizes() {
+        assert_eq!(merge_stages(2048), 2);
+        assert_eq!(merge_stages(4096), 2);
+        assert_eq!(merge_stages(8192), 4);
+        assert_eq!(merge_stages(16384), 4);
+        for exponent in 11..=24 {
+            let mut size = 1 << exponent;
+            while size > L1_BLOCK_SIZE {
+                size >>= merge_stages(size);
+            }
+            assert_eq!(size, if exponent % 2 == 0 { 1024 } else { 512 });
+        }
+    }
+
+    #[test]
+    fn fused_parallel_thresholds() {
+        let mut opts = Options::default();
+        let cutoff = opts.smallest_parallel_chunk_size * 16;
+        for (stages, serial) in [
+            (15..19, GeneralStage::Fused4),
+            (17..19, GeneralStage::Fused2),
+        ] {
+            assert_eq!(general_stage(stages.clone(), 19, cutoff, &opts), serial);
+            let selected = general_stage(stages.clone(), 19, cutoff + 1, &opts);
+            #[cfg(feature = "parallel")]
+            assert_eq!(
+                selected,
+                if stages.len() == 4 {
+                    GeneralStage::Fused4Parallel
+                } else {
+                    GeneralStage::Fused2Parallel
+                }
+            );
+            #[cfg(not(feature = "parallel"))]
+            assert_eq!(selected, serial);
+            opts.smallest_parallel_chunk_size = 0;
+            assert_eq!(general_stage(stages.clone(), 24, cutoff + 1, &opts), serial);
+            opts.smallest_parallel_chunk_size = usize::MAX;
+            assert_eq!(general_stage(stages, 19, usize::MAX, &opts), serial);
+            opts = Options::default();
+        }
+        opts.smallest_parallel_chunk_size = 0;
+        assert_eq!(
+            general_stage(18..19, 19, 1 << 19, &opts),
+            GeneralStage::Single
+        );
+        #[cfg(feature = "parallel")]
+        assert_eq!(
+            general_stage(6..10, 10, 1024, &opts),
+            GeneralStage::Fused4Parallel
+        );
+    }
+
+    macro_rules! test_twiddle_indices {
+        ($name:ident, $float:ty, $planner:ty, $execute:ident) => {
+            #[test]
+            fn $name() {
+                let planner = <$planner>::new(1 << 13);
+                let mut reals = vec![0.0 as $float; 1 << 13];
+                let mut imags = reals.clone();
+                for threshold in [0, usize::MAX] {
+                    let opts = Options {
+                        smallest_parallel_chunk_size: threshold,
+                        ..Options::default()
+                    };
+                    // Seven general stages must execute as 1 + 2 + 4, including
+                    // a four-stage kernel starting at a nonzero planner index.
+                    for (stage, index, expected) in [
+                        (6, 0, (1, 1)), (7, 1, (3, 2)), (9, 3, (7, 4)),
+                    ] {
+                        let result = dispatch!(planner.simd_level, simd => $execute(
+                            simd, &mut reals, &mut imags, stage..13,
+                            &planner, &opts, index,
+                        ));
+                        assert_eq!(result, expected);
+                    }
+                }
+            }
+        };
+    }
+
+    test_twiddle_indices!(
+        twiddle_indices_f32,
+        f32,
+        PlannerDit32,
+        execute_dit_stages_f32
+    );
+    test_twiddle_indices!(
+        twiddle_indices_f64,
+        f64,
+        PlannerDit64,
+        execute_dit_stages_f64
+    );
 }

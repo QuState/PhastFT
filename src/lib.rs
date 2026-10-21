@@ -385,11 +385,11 @@ mod tests {
                                 *z /= n as $float;
                             }
                         }
-                        // Also force and disable parallel FFT compute work at selected odd
-                        // sizes and on both sides of the kernel cutoff. MAX
+                        // Also force and disable parallel FFT compute work at leaf and
+                        // merge boundaries and on both sides of the kernel cutoff. MAX
                         // exercises saturating threshold multiplication.
                         let thresholds = [opts.smallest_parallel_chunk_size, 0, usize::MAX];
-                        let configurations = if matches!(log_n, 9 | 11 | 18 | 19) {
+                        let configurations = if matches!(log_n, 9..=14 | 18 | 19) {
                             3
                         } else {
                             1
