@@ -151,56 +151,21 @@ impl_planner_dit_for!(PlannerDit32, f32, TwiddleTable32);
 // R2C / C2R planners
 // ---------------------------------------------------------------------------
 
-fn compute_r2c_twiddles_f64(n: usize) -> (Vec<f64>, Vec<f64>) {
-    let half = n / 2;
-    let mut w_re = vec![0.0f64; half];
-    let mut w_im = vec![0.0f64; half];
-
-    // Forward R2C twiddles 0.5 * W_N^k = 0.5 * exp(-2 * pi * i * k / N).
-    // The 0.5 factor is folded in here so the untangle / c2r-preprocess hot
-    // loops avoid one multiply per bin. C2R conjugates at use time.
-    let angle_step = -std::f64::consts::PI / half as f64;
-    let (st, ct) = angle_step.sin_cos();
-    let (mut wr, mut wi) = (1.0f64, 0.0f64);
-
-    for k in 0..half {
-        w_re[k] = 0.5 * wr;
-        w_im[k] = 0.5 * wi;
-        let tmp = wr;
-        wr = tmp * ct - wi * st;
-        wi = tmp * st + wi * ct;
-    }
-
-    (w_re, w_im)
-}
-
-fn compute_r2c_twiddles_f32(n: usize) -> (Vec<f32>, Vec<f32>) {
-    let half = n / 2;
-    let mut w_re = vec![0.0f32; half];
-    let mut w_im = vec![0.0f32; half];
-
-    // 0.5 folded in (see f64 variant). Compute in f64 to avoid recurrence drift, then cast.
-    let angle_step = -std::f64::consts::PI / half as f64;
-    let (st, ct) = angle_step.sin_cos();
-    let (mut wr, mut wi) = (1.0f64, 0.0f64);
-
-    for k in 0..half {
-        w_re[k] = (0.5 * wr) as f32;
-        w_im[k] = (0.5 * wi) as f32;
-        let tmp = wr;
-        wr = tmp * ct - wi * st;
-        wi = tmp * st + wi * ct;
-    }
-
-    (w_re, w_im)
+/// Real-transform post/pre-processing uses the same sources, with 0.5 folded in.
+#[derive(Clone)]
+pub(crate) enum RealTwiddles<T, Compact> {
+    Precomputed(StoredTwiddles<T>),
+    LowMemory(Box<Compact>),
 }
 
 macro_rules! impl_planner_r2c_for {
-    ($struct_name:ident, $precision:ident, $dit_planner:ident, $twiddle_fn:ident) => {
+    ($struct_name:ident, $precision:ident, $dit_planner:ident, $compact:ident) => {
         /// Planner for real-to-complex (R2C) and complex-to-real (C2R) FFTs.
         ///
-        /// Pre-computes the inner DIT planner for the half-length complex FFT
-        /// and the untangle twiddle factors for the post-processing step.
+        /// Uses the selected twiddle mode for both the inner half-length complex
+        /// FFT and the real-transform post/pre-processing. In low-memory mode,
+        /// total twiddle storage is O(log N). Input, output, and C2R scratch
+        /// requirements are unchanged.
         ///
         /// The planner is direction-agnostic. Namely, the same instance can drive both
         /// R2C and C2R transforms.
@@ -208,11 +173,8 @@ macro_rules! impl_planner_r2c_for {
         pub struct $struct_name {
             /// Inner DIT planner for the N/2 complex FFT
             pub(crate) dit_planner: $dit_planner,
-            /// Pre-computed untangle twiddle factors (real parts).
-            /// 0.5 is pre-folded in so the hot loops avoid a per-bin multiply.
-            pub(crate) w_re: Vec<$precision>,
-            /// Pre-computed untangle twiddle factors (imaginary parts), 0.5 folded in.
-            pub(crate) w_im: Vec<$precision>,
+            /// Untangle/preprocess twiddles, including the 0.5 scale factor.
+            pub(crate) twiddles: RealTwiddles<$precision, $compact>,
             /// Full real signal length N
             pub(crate) n: usize,
         }
@@ -224,15 +186,38 @@ macro_rules! impl_planner_r2c_for {
             ///
             /// Panics if `n` is not a power of 2 or `n < 4`.
             pub fn new(n: usize) -> Self {
-                assert!(n >= 4 && n.is_power_of_two(), "n must be a power of 2 >= 4");
-                let (w_re, w_im) = $twiddle_fn(n);
+                Self::with_twiddle_mode(n, TwiddleMode::Auto)
+            }
 
+            /// Create a real-transform planner with selectable twiddle storage.
+            ///
+            /// `Auto` resolves using the half-length complex FFT's working-set
+            /// size. The resolved mode applies to both parts of the real plan.
+            ///
+            /// # Panics
+            ///
+            /// Panics if `n` is not a power of 2 or `n < 4`.
+            pub fn with_twiddle_mode(n: usize, mode: TwiddleMode) -> Self {
+                assert!(n >= 4 && n.is_power_of_two(), "n must be a power of 2 >= 4");
+                let dit_planner = $dit_planner::with_twiddle_mode(n / 2, mode);
+                let twiddles = match &dit_planner.stage_twiddles {
+                    PlanTwiddles::Precomputed(_) => {
+                        RealTwiddles::Precomputed(StoredTwiddles::<$precision>::new_scaled(n, 0.5))
+                    }
+                    PlanTwiddles::LowMemory(_) => {
+                        RealTwiddles::LowMemory(Box::new($compact::new_scaled(n, 0.5)))
+                    }
+                };
                 Self {
-                    dit_planner: $dit_planner::new(n / 2),
-                    w_re,
-                    w_im,
+                    dit_planner,
+                    twiddles,
                     n,
                 }
+            }
+
+            /// The resolved mode used by both the inner FFT and real twiddles.
+            pub fn twiddle_mode(&self) -> TwiddleMode {
+                self.dit_planner.twiddle_mode()
             }
         }
 
@@ -240,14 +225,15 @@ macro_rules! impl_planner_r2c_for {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 f.debug_struct(stringify!($struct_name))
                     .field("n", &self.n)
+                    .field("twiddle_mode", &self.twiddle_mode())
                     .finish_non_exhaustive()
             }
         }
     };
 }
 
-impl_planner_r2c_for!(PlannerR2c64, f64, PlannerDit64, compute_r2c_twiddles_f64);
-impl_planner_r2c_for!(PlannerR2c32, f32, PlannerDit32, compute_r2c_twiddles_f32);
+impl_planner_r2c_for!(PlannerR2c64, f64, PlannerDit64, TwiddleTable64);
+impl_planner_r2c_for!(PlannerR2c32, f32, PlannerDit32, TwiddleTable32);
 
 #[cfg(test)]
 mod tests {
@@ -285,4 +271,36 @@ mod tests {
 
     test_modes!(dit_modes_f64, PlannerDit64, f64);
     test_modes!(dit_modes_f32, PlannerDit32, f32);
+
+    macro_rules! test_real_modes {
+        ($name:ident, $planner:ident, $float:ty) => {
+            #[test]
+            fn $name() {
+                let threshold = AUTO_LOW_MEMORY_BYTES / size_of::<$float>();
+                for (n, expected) in [
+                    (4, TwiddleMode::Precomputed),
+                    (threshold / 2, TwiddleMode::Precomputed),
+                    (threshold, TwiddleMode::LowMemory),
+                ] {
+                    assert_eq!($planner::new(n).twiddle_mode(), expected);
+                    for mode in [TwiddleMode::Precomputed, TwiddleMode::LowMemory] {
+                        let plan = $planner::with_twiddle_mode(n, mode);
+                        assert_eq!(plan.twiddle_mode(), mode);
+                        assert_eq!(plan.clone().twiddle_mode(), mode);
+                        assert_eq!(plan.dit_planner.twiddle_mode(), mode);
+                        assert_eq!(
+                            matches!(plan.twiddles, RealTwiddles::LowMemory(_)),
+                            mode == TwiddleMode::LowMemory
+                        );
+                    }
+                }
+                // Also covers the real post-processing table: no O(N) allocation.
+                let plan = $planner::with_twiddle_mode(1 << 30, TwiddleMode::LowMemory);
+                assert!(matches!(plan.twiddles, RealTwiddles::LowMemory(_)));
+            }
+        };
+    }
+
+    test_real_modes!(real_modes_f64, PlannerR2c64, f64);
+    test_real_modes!(real_modes_f32, PlannerR2c32, f32);
 }

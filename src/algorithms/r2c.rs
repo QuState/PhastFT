@@ -48,7 +48,8 @@ use crate::algorithms::dit::{
     fft_f32_dit_with_planner_and_opts, fft_f64_dit_with_planner_and_opts,
 };
 use crate::options::Options;
-use crate::planner::{Direction, PlannerR2c32, PlannerR2c64};
+use crate::planner::{Direction, PlannerR2c32, PlannerR2c64, RealTwiddles};
+use crate::twiddles::{ScalarTwiddleSource, TwiddleSource};
 
 // ---------------------------------------------------------------------------
 // SIMD helpers
@@ -156,12 +157,11 @@ fn simd_deinterleave_f32<S: Simd>(
 macro_rules! impl_simd_untangle_inplace {
     ($name:ident, $T:ty, $V:ident, $rev:ident, $lanes:expr) => {
         #[inline(always)] // required by fearless_simd
-        fn $name<S: Simd>(
+        fn $name<S: Simd, T: TwiddleSource<S, $V<S>> + ScalarTwiddleSource<$T>>(
             simd: S,
             output_re: &mut [$T],
             output_im: &mut [$T],
-            w_re: &[$T],
-            w_im: &[$T],
+            twiddles: &T,
             half: usize,
         ) {
             let a0 = output_re[0];
@@ -178,36 +178,42 @@ macro_rules! impl_simd_untangle_inplace {
             let mut k = 1;
             // Process while a full LANES-block stays strictly below the self-pair at q.
             while k + LANES <= q {
-                let mirror_low = half - k - (LANES - 1);
+                let start = k;
+                let block_end = (start + T::BLOCK_LEN).min(q);
+                let block = twiddles.block(simd, start);
+                while k + LANES <= block_end {
+                    let mirror_low = half - k - (LANES - 1);
 
-                let a = $V::from_slice(simd, &output_re[k..k + LANES]);
-                let b = $V::from_slice(simd, &output_im[k..k + LANES]);
-                let c_loaded = $V::from_slice(simd, &output_re[mirror_low..mirror_low + LANES]);
-                let d_loaded = $V::from_slice(simd, &output_im[mirror_low..mirror_low + LANES]);
-                let c = $rev(simd, c_loaded);
-                let d = $rev(simd, d_loaded);
+                    let a = $V::from_slice(simd, &output_re[k..k + LANES]);
+                    let b = $V::from_slice(simd, &output_im[k..k + LANES]);
+                    let c_loaded = $V::from_slice(simd, &output_re[mirror_low..mirror_low + LANES]);
+                    let d_loaded = $V::from_slice(simd, &output_im[mirror_low..mirror_low + LANES]);
+                    let c = $rev(simd, c_loaded);
+                    let d = $rev(simd, d_loaded);
 
-                let s_re = half_v * (a + c);
-                let s_im = half_v * (b - d);
-                let t_re = b + d;
-                let t_im = c - a;
+                    let s_re = half_v * (a + c);
+                    let s_im = half_v * (b - d);
+                    let t_re = b + d;
+                    let t_im = c - a;
 
-                let wkr_h = $V::from_slice(simd, &w_re[k..k + LANES]);
-                let wki_h = $V::from_slice(simd, &w_im[k..k + LANES]);
-                let wzr = wkr_h * t_re - wki_h * t_im;
-                let wzi = wkr_h * t_im + wki_h * t_re;
+                    let (wkr_h, wki_h) = twiddles.vector(simd, &block, k - start);
+                    let wzr = wkr_h * t_re - wki_h * t_im;
+                    let wzi = wkr_h * t_im + wki_h * t_re;
 
-                let out_re_k = s_re + wzr;
-                let out_im_k = s_im + wzi;
-                let out_re_m = s_re - wzr;
-                let out_im_m = wzi - s_im;
+                    let out_re_k = s_re + wzr;
+                    let out_im_k = s_im + wzi;
+                    let out_re_m = s_re - wzr;
+                    let out_im_m = wzi - s_im;
 
-                out_re_k.store_slice(&mut output_re[k..k + LANES]);
-                out_im_k.store_slice(&mut output_im[k..k + LANES]);
-                $rev(simd, out_re_m).store_slice(&mut output_re[mirror_low..mirror_low + LANES]);
-                $rev(simd, out_im_m).store_slice(&mut output_im[mirror_low..mirror_low + LANES]);
+                    out_re_k.store_slice(&mut output_re[k..k + LANES]);
+                    out_im_k.store_slice(&mut output_im[k..k + LANES]);
+                    $rev(simd, out_re_m)
+                        .store_slice(&mut output_re[mirror_low..mirror_low + LANES]);
+                    $rev(simd, out_im_m)
+                        .store_slice(&mut output_im[mirror_low..mirror_low + LANES]);
 
-                k += LANES;
+                    k += LANES;
+                }
             }
 
             // Scalar tail (k in [k, q)) — typically <LANES iterations.
@@ -223,8 +229,7 @@ macro_rules! impl_simd_untangle_inplace {
                 let t_re = b + d;
                 let t_im = c - a;
 
-                let wkr_h = w_re[k];
-                let wki_h = w_im[k];
+                let (wkr_h, wki_h) = twiddles.value(k);
                 let wzr = wkr_h * t_re - wki_h * t_im;
                 let wzi = wkr_h * t_im + wki_h * t_re;
 
@@ -238,8 +243,9 @@ macro_rules! impl_simd_untangle_inplace {
             // Self-pair at k = q (always exists since N >= 4 ⇒ q >= 1).
             let a = output_re[q];
             let b = output_im[q];
-            output_re[q] = a + 2.0 * w_re[q] * b;
-            output_im[q] = 2.0 * w_im[q] * b;
+            let (w_re, w_im) = twiddles.value(q);
+            output_re[q] = a + 2.0 * w_re * b;
+            output_im[q] = 2.0 * w_im * b;
         }
     };
 }
@@ -266,12 +272,11 @@ impl_simd_untangle_inplace!(simd_untangle_inplace_f32, f32, f32x8, rev_f32x8, 8)
 // which is the Nyquist slot) is handled scalar-first.
 
 #[inline(always)] // required by fearless_simd
-fn simd_c2r_preprocess_f64<S: Simd>(
+fn simd_c2r_preprocess_f64<S: Simd, T: TwiddleSource<S, f64x4<S>> + ScalarTwiddleSource<f64>>(
     simd: S,
     input_re: &[f64],
     input_im: &[f64],
-    w_re: &[f64],
-    w_im: &[f64],
+    twiddles: &T,
     z_re: &mut [f64],
     z_im: &mut [f64],
 ) {
@@ -290,8 +295,7 @@ fn simd_c2r_preprocess_f64<S: Simd>(
         let zx_im = 0.5 * (im_first + im_second);
         let dr = re_first - re_second;
         let di = im_first - im_second;
-        let c_h = w_re[0];
-        let s_h = w_im[0];
+        let (c_h, s_h) = twiddles.value(0);
         let zy_re = c_h * dr + s_h * di;
         let zy_im = c_h * di - s_h * dr;
         z_re[0] = zx_re - zy_im;
@@ -303,30 +307,34 @@ fn simd_c2r_preprocess_f64<S: Simd>(
 
     let mut k = 1;
     while k + LANES <= half {
-        let mirror_low = half - k - (LANES - 1);
+        let start = k;
+        let block_end = (start + T::BLOCK_LEN).min(half);
+        let block = twiddles.block(simd, start);
+        while k + LANES <= block_end {
+            let mirror_low = half - k - (LANES - 1);
 
-        let re_f = f64x4::from_slice(simd, &input_re[k..k + LANES]);
-        let im_f = f64x4::from_slice(simd, &input_im[k..k + LANES]);
-        let re_s_loaded = f64x4::from_slice(simd, &input_re[mirror_low..mirror_low + LANES]);
-        let im_s_loaded = f64x4::from_slice(simd, &input_im[mirror_low..mirror_low + LANES]);
-        // Reverse to align with front-lane convention; im is also negated for conjugate.
-        let re_s = rev_f64x4(simd, re_s_loaded);
-        let im_s = -rev_f64x4(simd, im_s_loaded);
+            let re_f = f64x4::from_slice(simd, &input_re[k..k + LANES]);
+            let im_f = f64x4::from_slice(simd, &input_im[k..k + LANES]);
+            let re_s_loaded = f64x4::from_slice(simd, &input_re[mirror_low..mirror_low + LANES]);
+            let im_s_loaded = f64x4::from_slice(simd, &input_im[mirror_low..mirror_low + LANES]);
+            // Reverse to align with front-lane convention; im is also negated for conjugate.
+            let re_s = rev_f64x4(simd, re_s_loaded);
+            let im_s = -rev_f64x4(simd, im_s_loaded);
 
-        let zx_re = half_v * (re_f + re_s);
-        let zx_im = half_v * (im_f + im_s);
-        let dr = re_f - re_s;
-        let di = im_f - im_s;
+            let zx_re = half_v * (re_f + re_s);
+            let zx_im = half_v * (im_f + im_s);
+            let dr = re_f - re_s;
+            let di = im_f - im_s;
 
-        let c_h = f64x4::from_slice(simd, &w_re[k..k + LANES]);
-        let s_h = f64x4::from_slice(simd, &w_im[k..k + LANES]);
-        let zy_re = c_h * dr + s_h * di;
-        let zy_im = c_h * di - s_h * dr;
+            let (c_h, s_h) = twiddles.vector(simd, &block, k - start);
+            let zy_re = c_h * dr + s_h * di;
+            let zy_im = c_h * di - s_h * dr;
 
-        (zx_re - zy_im).store_slice(&mut z_re[k..k + LANES]);
-        (zx_im + zy_re).store_slice(&mut z_im[k..k + LANES]);
+            (zx_re - zy_im).store_slice(&mut z_re[k..k + LANES]);
+            (zx_im + zy_re).store_slice(&mut z_im[k..k + LANES]);
 
-        k += LANES;
+            k += LANES;
+        }
     }
 
     while k < half {
@@ -341,8 +349,7 @@ fn simd_c2r_preprocess_f64<S: Simd>(
         let dr = re_first - re_second;
         let di = im_first - im_second;
 
-        let c_h = w_re[k];
-        let s_h = w_im[k];
+        let (c_h, s_h) = twiddles.value(k);
         let zy_re = c_h * dr + s_h * di;
         let zy_im = c_h * di - s_h * dr;
 
@@ -353,12 +360,11 @@ fn simd_c2r_preprocess_f64<S: Simd>(
 }
 
 #[inline(always)] // required by fearless_simd
-fn simd_c2r_preprocess_f32<S: Simd>(
+fn simd_c2r_preprocess_f32<S: Simd, T: TwiddleSource<S, f32x8<S>> + ScalarTwiddleSource<f32>>(
     simd: S,
     input_re: &[f32],
     input_im: &[f32],
-    w_re: &[f32],
-    w_im: &[f32],
+    twiddles: &T,
     z_re: &mut [f32],
     z_im: &mut [f32],
 ) {
@@ -376,8 +382,7 @@ fn simd_c2r_preprocess_f32<S: Simd>(
         let zx_im = 0.5 * (im_first + im_second);
         let dr = re_first - re_second;
         let di = im_first - im_second;
-        let c_h = w_re[0];
-        let s_h = w_im[0];
+        let (c_h, s_h) = twiddles.value(0);
         let zy_re = c_h * dr + s_h * di;
         let zy_im = c_h * di - s_h * dr;
         z_re[0] = zx_re - zy_im;
@@ -389,29 +394,33 @@ fn simd_c2r_preprocess_f32<S: Simd>(
 
     let mut k = 1;
     while k + LANES <= half {
-        let mirror_low = half - k - (LANES - 1);
+        let start = k;
+        let block_end = (start + T::BLOCK_LEN).min(half);
+        let block = twiddles.block(simd, start);
+        while k + LANES <= block_end {
+            let mirror_low = half - k - (LANES - 1);
 
-        let re_f = f32x8::from_slice(simd, &input_re[k..k + LANES]);
-        let im_f = f32x8::from_slice(simd, &input_im[k..k + LANES]);
-        let re_s_loaded = f32x8::from_slice(simd, &input_re[mirror_low..mirror_low + LANES]);
-        let im_s_loaded = f32x8::from_slice(simd, &input_im[mirror_low..mirror_low + LANES]);
-        let re_s = rev_f32x8(simd, re_s_loaded);
-        let im_s = -rev_f32x8(simd, im_s_loaded);
+            let re_f = f32x8::from_slice(simd, &input_re[k..k + LANES]);
+            let im_f = f32x8::from_slice(simd, &input_im[k..k + LANES]);
+            let re_s_loaded = f32x8::from_slice(simd, &input_re[mirror_low..mirror_low + LANES]);
+            let im_s_loaded = f32x8::from_slice(simd, &input_im[mirror_low..mirror_low + LANES]);
+            let re_s = rev_f32x8(simd, re_s_loaded);
+            let im_s = -rev_f32x8(simd, im_s_loaded);
 
-        let zx_re = half_v * (re_f + re_s);
-        let zx_im = half_v * (im_f + im_s);
-        let dr = re_f - re_s;
-        let di = im_f - im_s;
+            let zx_re = half_v * (re_f + re_s);
+            let zx_im = half_v * (im_f + im_s);
+            let dr = re_f - re_s;
+            let di = im_f - im_s;
 
-        let c_h = f32x8::from_slice(simd, &w_re[k..k + LANES]);
-        let s_h = f32x8::from_slice(simd, &w_im[k..k + LANES]);
-        let zy_re = c_h * dr + s_h * di;
-        let zy_im = c_h * di - s_h * dr;
+            let (c_h, s_h) = twiddles.vector(simd, &block, k - start);
+            let zy_re = c_h * dr + s_h * di;
+            let zy_im = c_h * di - s_h * dr;
 
-        (zx_re - zy_im).store_slice(&mut z_re[k..k + LANES]);
-        (zx_im + zy_re).store_slice(&mut z_im[k..k + LANES]);
+            (zx_re - zy_im).store_slice(&mut z_re[k..k + LANES]);
+            (zx_im + zy_re).store_slice(&mut z_im[k..k + LANES]);
 
-        k += LANES;
+            k += LANES;
+        }
     }
 
     while k < half {
@@ -426,8 +435,7 @@ fn simd_c2r_preprocess_f32<S: Simd>(
         let dr = re_first - re_second;
         let di = im_first - im_second;
 
-        let c_h = w_re[k];
-        let s_h = w_im[k];
+        let (c_h, s_h) = twiddles.value(k);
         let zy_re = c_h * dr + s_h * di;
         let zy_im = c_h * di - s_h * dr;
 
@@ -581,7 +589,10 @@ pub fn r2c_fft_f64_with_planner_and_opts(
         simd => {
             simd.vectorize(
                 #[inline(always)]
-                || simd_untangle_inplace_f64(simd, output_re, output_im, &planner.w_re, &planner.w_im, half),
+                || match &planner.twiddles {
+                    RealTwiddles::Precomputed(twiddles) => simd_untangle_inplace_f64(simd, output_re, output_im, twiddles, half),
+                    RealTwiddles::LowMemory(twiddles) => simd_untangle_inplace_f64(simd, output_re, output_im, twiddles.as_ref(), half),
+                },
             );
         }
     );
@@ -646,7 +657,10 @@ pub fn r2c_fft_f32_with_planner_and_opts(
         simd => {
             simd.vectorize(
                 #[inline(always)]
-                || simd_untangle_inplace_f32(simd, output_re, output_im, &planner.w_re, &planner.w_im, half),
+                || match &planner.twiddles {
+                    RealTwiddles::Precomputed(twiddles) => simd_untangle_inplace_f32(simd, output_re, output_im, twiddles, half),
+                    RealTwiddles::LowMemory(twiddles) => simd_untangle_inplace_f32(simd, output_re, output_im, twiddles.as_ref(), half),
+                },
             );
         }
     );
@@ -734,15 +748,10 @@ pub fn c2r_fft_f64_with_planner_and_opts(
         simd => {
             simd.vectorize(
                 #[inline(always)]
-                || simd_c2r_preprocess_f64(
-                    simd,
-                    input_re,
-                    input_im,
-                    &planner.w_re,
-                    &planner.w_im,
-                    scratch_re,
-                    scratch_im,
-                ),
+                || match &planner.twiddles {
+                    RealTwiddles::Precomputed(twiddles) => simd_c2r_preprocess_f64(simd, input_re, input_im, twiddles, scratch_re, scratch_im),
+                    RealTwiddles::LowMemory(twiddles) => simd_c2r_preprocess_f64(simd, input_re, input_im, twiddles.as_ref(), scratch_re, scratch_im),
+                },
             );
         }
     );
@@ -802,15 +811,10 @@ pub fn c2r_fft_f32_with_planner_and_opts(
         simd => {
             simd.vectorize(
                 #[inline(always)]
-                || simd_c2r_preprocess_f32(
-                    simd,
-                    input_re,
-                    input_im,
-                    &planner.w_re,
-                    &planner.w_im,
-                    scratch_re,
-                    scratch_im,
-                ),
+                || match &planner.twiddles {
+                    RealTwiddles::Precomputed(twiddles) => simd_c2r_preprocess_f32(simd, input_re, input_im, twiddles, scratch_re, scratch_im),
+                    RealTwiddles::LowMemory(twiddles) => simd_c2r_preprocess_f32(simd, input_re, input_im, twiddles.as_ref(), scratch_re, scratch_im),
+                },
             );
         }
     );
@@ -1080,6 +1084,86 @@ mod tests {
             &mut scratch_im,
         );
     }
+
+    macro_rules! test_twiddle_modes {
+        ($name:ident, $float:ty, $planner:ident, $r2c:ident, $c2r:ident, $tolerance:expr) => {
+            #[test]
+            fn $name() {
+                use crate::planner::TwiddleMode;
+                use utilities::rustfft::{num_complex::Complex, FftPlanner};
+
+                let mut reference_planner = FftPlanner::<$float>::new();
+                // Tiny scalar-only cases, unaligned vector tails, anchor
+                // boundaries, both stage parities, and large parallel passes.
+                for log_n in [2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 18, 20] {
+                    let n = 1 << log_n;
+                    let half = n / 2;
+                    let input: Vec<$float> = (0..n)
+                        .map(|i| ((i * 17 % 257) as $float - 128.0) / 128.0)
+                        .collect();
+                    let mut expected: Vec<_> = input.iter().map(|&x| Complex::new(x, 0.0)).collect();
+                    reference_planner.plan_fft_forward(n).process(&mut expected);
+
+                    // Feed the independent spectrum to C2R so paired forward /
+                    // inverse mistakes cannot cancel out in a round trip.
+                    let expected_re: Vec<_> = expected[..=half].iter().map(|z| z.re).collect();
+                    let expected_im: Vec<_> = expected[..=half].iter().map(|z| z.im).collect();
+                    let reference_sq: f64 = expected[..=half].iter()
+                        .map(|z| (z.re as f64).powi(2) + (z.im as f64).powi(2)).sum();
+                    for mode in [TwiddleMode::Precomputed, TwiddleMode::LowMemory, TwiddleMode::Auto] {
+                        let mut planner = $planner::with_twiddle_mode(n, mode);
+                        if matches!(log_n, 5 | 11 | 12) {
+                            planner.dit_planner.simd_level = fearless_simd::Level::baseline();
+                        }
+                        for threshold in [usize::MAX, 0] {
+                            let mut opts = Options::default();
+                            opts.smallest_parallel_chunk_size = threshold;
+                            let mut re = vec![0.0; half + 1];
+                            let mut im = vec![0.0; half + 1];
+                            $r2c(&input, &mut re, &mut im, &planner, &opts);
+                            let mut error_sq = 0.0;
+                            for k in 0..=half {
+                                assert!(re[k].is_finite() && im[k].is_finite());
+                                error_sq += (re[k] as f64 - expected_re[k] as f64).powi(2)
+                                    + (im[k] as f64 - expected_im[k] as f64).powi(2);
+                            }
+                            assert!((error_sq / reference_sq).sqrt() < $tolerance,
+                                "R2C n={n}, {mode:?}, cutoff={threshold}");
+                            assert_eq!(im[0], 0.0);
+                            assert_eq!(im[half], 0.0);
+
+                            let mut output = vec![0.0; n];
+                            let mut scratch_re = vec![0.0; half];
+                            let mut scratch_im = vec![0.0; half];
+                            $c2r(&expected_re, &expected_im, &mut output, &planner, &opts,
+                                &mut scratch_re, &mut scratch_im);
+                            for (actual, expected) in output.iter().zip(&input) {
+                                assert!((*actual as f64 - *expected as f64).abs() < $tolerance,
+                                    "C2R n={n}, {mode:?}, cutoff={threshold}: {actual} vs {expected}");
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    test_twiddle_modes!(
+        real_twiddle_modes_f64,
+        f64,
+        PlannerR2c64,
+        r2c_fft_f64_with_planner_and_opts,
+        c2r_fft_f64_with_planner_and_opts,
+        1e-12
+    );
+    test_twiddle_modes!(
+        real_twiddle_modes_f32,
+        f32,
+        PlannerR2c32,
+        r2c_fft_f32_with_planner_and_opts,
+        c2r_fft_f32_with_planner_and_opts,
+        2e-6
+    );
 
     // The convenience tiers are pure delegations to identical inner calls, so
     // their results are bit-identical to the full tier — exact assert_eq! holds.

@@ -10,12 +10,19 @@ use fearless_simd::{f32x16, f32x8, f64x4, f64x8, Simd, SimdBase, SimdFloat};
 /// A statically dispatched source of SIMD twiddles. Each block is independent,
 /// so serial and Rayon traversals can use the same interface without sharing
 /// mutable state. Vector offsets are relative to the start of the block.
+/// A block may start at any absolute index; vector offsets within it must be
+/// multiples of the vector width, with the whole vector inside `BLOCK_LEN`.
 pub(crate) trait TwiddleSource<S: Simd, V>: Sync {
     const BLOCK_LEN: usize;
     type Block;
 
     fn block(&self, simd: S, offset: usize) -> Self::Block;
     fn vector(&self, simd: S, block: &Self::Block, offset: usize) -> (V, V);
+}
+
+/// Scalar access for real-transform endpoints and tails (at most one vector).
+pub(crate) trait ScalarTwiddleSource<T> {
+    fn value(&self, offset: usize) -> (T, T);
 }
 
 pub(crate) const COARSE_LEN: usize = 64;
@@ -30,16 +37,27 @@ macro_rules! impl_stored_twiddles {
     ($float:ty) => {
         impl StoredTwiddles<$float> {
             pub(crate) fn new(num_points: usize) -> Self {
+                Self::new_scaled(num_points, 1.0)
+            }
+
+            pub(crate) fn new_scaled(num_points: usize, scale: f64) -> Self {
                 let angle_step = -std::f64::consts::TAU / num_points as f64;
                 let mut re = Vec::with_capacity(num_points / 2);
                 let mut im = Vec::with_capacity(num_points / 2);
                 for k in 0..num_points / 2 {
                     // Independent angles in f64 also keep f32 tables accurate.
                     let (s, c) = (angle_step * k as f64).sin_cos();
-                    re.push(c as $float);
-                    im.push(s as $float);
+                    re.push((scale * c) as $float);
+                    im.push((scale * s) as $float);
                 }
                 Self { re, im }
+            }
+        }
+
+        impl ScalarTwiddleSource<$float> for StoredTwiddles<$float> {
+            #[inline(always)]
+            fn value(&self, offset: usize) -> ($float, $float) {
+                (self.re[offset], self.im[offset])
             }
         }
     };
@@ -88,6 +106,7 @@ pub(crate) struct TwiddleTable<T, const LANES: usize> {
     pub(crate) coarse_re: [T; COARSE_LEN],
     pub(crate) coarse_im: [T; COARSE_LEN],
     angle_step: f64,
+    scale: f64,
 }
 
 pub(crate) type TwiddleTable64 = TwiddleTable<f64, 8>;
@@ -102,6 +121,10 @@ macro_rules! impl_twiddle_table {
     ($float:ty, $lanes:literal) => {
         impl TwiddleTable<$float, $lanes> {
             pub(crate) fn new(num_points: usize) -> Self {
+                Self::new_scaled(num_points, 1.0)
+            }
+
+            pub(crate) fn new_scaled(num_points: usize, scale: f64) -> Self {
                 let angle_step = -std::f64::consts::TAU / num_points as f64;
                 let mut table = Self {
                     fine_re: [0.0; $lanes],
@@ -109,11 +132,14 @@ macro_rules! impl_twiddle_table {
                     coarse_re: [0.0; COARSE_LEN],
                     coarse_im: [0.0; COARSE_LEN],
                     angle_step,
+                    scale,
                 };
                 for k in 0..$lanes {
                     let (s, c) = (angle_step * k as f64).sin_cos();
-                    table.fine_re[k] = c as $float;
-                    table.fine_im[k] = s as $float;
+                    // Fold real-transform scaling into the fine table, keeping
+                    // the vector hot loop identical to the complex transform.
+                    table.fine_re[k] = (scale * c) as $float;
+                    table.fine_im[k] = (scale * s) as $float;
                 }
                 for q in 0..COARSE_LEN {
                     let (s, c) = (angle_step * (q * $lanes) as f64).sin_cos();
@@ -132,6 +158,14 @@ macro_rules! impl_twiddle_table {
                 }
                 let (s, c) = (self.angle_step * offset as f64).sin_cos();
                 (c as $float, s as $float)
+            }
+        }
+
+        impl ScalarTwiddleSource<$float> for TwiddleTable<$float, $lanes> {
+            #[inline]
+            fn value(&self, offset: usize) -> ($float, $float) {
+                let (s, c) = (self.angle_step * offset as f64).sin_cos();
+                ((self.scale * c) as $float, (self.scale * s) as $float)
             }
         }
     };
