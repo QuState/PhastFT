@@ -1,0 +1,115 @@
+Scalar transpose disassembly in the measured four-pass benchmark
+
+Binary: target/release/examples/benchmark_four_pass
+SHA-256: 5b27454c9c9950db6e98bab8cd639663b8e39ea08050687b1354fd9bf926dcb5
+Command: objdump -d -C -Mintel target/release/examples/benchmark_four_pass
+
+The full transpose uses WIDTH=128 and a 32-row stack tile. The generic Rust
+loop is inlined into FourPass32/64::transpose_columns<128>. Its scalar branch
+contains no AVX instructions, but LLVM does use SSE/SSE2 vector instructions.
+The scalar branch starts at 0x69f7f (f32) / 0x6ca41 (f64), selected when the
+optional SIMD level is absent. The same wrappers also contain calls to the
+explicit SIMD implementation, which are bypassed in scalar mode.
+
+Packing source rows uses memcpy calls (GOT 0x139838, verified with objdump -R).
+The instructions executed inside libc memcpy are not determined by these
+static excerpts and may themselves use wider vectors through libc dispatch.
+
+Transposing the packed tile:
+- f32: eight separate movss loads, four unpcklps and two movlhps instructions
+  assemble two XMM vectors; two movups stores write eight f32 values.
+- f64: two movsd plus two movhps memory loads assemble two XMM vectors;
+  two movups stores write four f64 values. movhps here just copies 64 bits;
+  it does not convert the doubles to floats.
+- Scalar remainder paths use movss/movsd load-store pairs.
+- Address arithmetic, bounds checks and loop control use integer instructions.
+- Tile initialization uses shufps/movlhps broadcasts followed by fully unrolled
+  movaps stores (1024 stores for f32's 16 KiB tile, 2048 for f64's 32 KiB tile).
+  These are static counts, not a measurement of their performance cost.
+
+Thus 'scalar' describes the source implementation, not a ban on compiler SIMD.
+The vectorized inner loop still loads one element at a time from different
+rows, then combines them into contiguous 128-bit output stores. This differs
+from the explicit 512-bit register-transpose network.
+
+Selected contiguous disassembly excerpts (addresses from the measured binary):
+
+
+f32 tile initialization, beginning:
+   69fcd:	f3 0f 10 01          	movss  xmm0,DWORD PTR [rcx]
+   69fd1:	0f c6 c0 00          	shufps xmm0,xmm0,0x0
+   69fd5:	0f 29 84 24 b0 00 00 	movaps XMMWORD PTR [rsp+0xb0],xmm0
+   69fdc:	00
+   69fdd:	0f 29 84 24 c0 00 00 	movaps XMMWORD PTR [rsp+0xc0],xmm0
+   69fe4:	00
+   69fe5:	0f 29 84 24 d0 00 00 	movaps XMMWORD PTR [rsp+0xd0],xmm0
+   69fec:	00
+
+f32 row packing call:
+   6c2bb:	48 8b 44 24 18       	mov    rax,QWORD PTR [rsp+0x18]
+   6c2c0:	4a 8d 34 a8          	lea    rsi,[rax+r13*4]
+   6c2c4:	48 8b 54 24 78       	mov    rdx,QWORD PTR [rsp+0x78]
+   6c2c9:	ff 15 69 d5 0c 00    	call   QWORD PTR [rip+0xcd569]        # 139838
+   6c2cf:	48 8b 44 24 40       	mov    rax,QWORD PTR [rsp+0x40]
+
+f32 packed tile transpose loop:
+   6c3c0:	f3 41 0f 10 86 00 f8 	movss  xmm0,DWORD PTR [r14-0x800]
+   6c3c7:	ff ff
+   6c3c9:	f3 41 0f 10 8e 00 f6 	movss  xmm1,DWORD PTR [r14-0xa00]
+   6c3d0:	ff ff
+   6c3d2:	0f 14 c8             	unpcklps xmm1,xmm0
+   6c3d5:	f3 41 0f 10 86 00 f2 	movss  xmm0,DWORD PTR [r14-0xe00]
+   6c3dc:	ff ff
+   6c3de:	f3 41 0f 10 96 00 f4 	movss  xmm2,DWORD PTR [r14-0xc00]
+   6c3e5:	ff ff
+   6c3e7:	0f 14 c2             	unpcklps xmm0,xmm2
+   6c3ea:	0f 16 c1             	movlhps xmm0,xmm1
+   6c3ed:	f3 41 0f 10 0e       	movss  xmm1,DWORD PTR [r14]
+   6c3f2:	f3 41 0f 10 96 00 fe 	movss  xmm2,DWORD PTR [r14-0x200]
+   6c3f9:	ff ff
+   6c3fb:	0f 14 d1             	unpcklps xmm2,xmm1
+   6c3fe:	f3 41 0f 10 8e 00 fc 	movss  xmm1,DWORD PTR [r14-0x400]
+   6c405:	ff ff
+   6c407:	f3 41 0f 10 9e 00 fa 	movss  xmm3,DWORD PTR [r14-0x600]
+   6c40e:	ff ff
+   6c410:	0f 14 d9             	unpcklps xmm3,xmm1
+   6c413:	0f 16 da             	movlhps xmm3,xmm2
+   6c416:	43 0f 11 44 b9 f0    	movups XMMWORD PTR [r9+r15*4-0x10],xmm0
+   6c41c:	43 0f 11 1c b9       	movups XMMWORD PTR [r9+r15*4],xmm3
+   6c421:	49 83 c7 08          	add    r15,0x8
+   6c425:	49 81 c6 00 10 00 00 	add    r14,0x1000
+   6c42c:	4c 39 ff             	cmp    rdi,r15
+   6c42f:	75 8f                	jne    6c3c0
+   6c431:	4c 8b 3c 24          	mov    r15,QWORD PTR [rsp]
+
+f64 tile initialization, beginning:
+   6ca85:	f2 0f 10 01          	movsd  xmm0,QWORD PTR [rcx]
+   6ca89:	0f 16 c0             	movlhps xmm0,xmm0
+   6ca8c:	0f 29 84 24 c0 00 00 	movaps XMMWORD PTR [rsp+0xc0],xmm0
+   6ca93:	00
+   6ca94:	0f 29 84 24 d0 00 00 	movaps XMMWORD PTR [rsp+0xd0],xmm0
+   6ca9b:	00
+   6ca9c:	0f 29 84 24 e0 00 00 	movaps XMMWORD PTR [rsp+0xe0],xmm0
+   6caa3:	00
+
+f64 row packing call:
+   70d81:	4a 8d 34 e8          	lea    rsi,[rax+r13*8]
+   70d85:	49 89 d6             	mov    r14,rdx
+   70d88:	48 8b 94 24 80 00 00 	mov    rdx,QWORD PTR [rsp+0x80]
+   70d8f:	00
+   70d90:	ff 15 a2 8a 0c 00    	call   QWORD PTR [rip+0xc8aa2]        # 139838
+
+f64 packed tile transpose loop:
+   70e80:	f2 0f 10 83 00 f4 ff 	movsd  xmm0,QWORD PTR [rbx-0xc00]
+   70e87:	ff
+   70e88:	0f 16 83 00 f8 ff ff 	movhps xmm0,QWORD PTR [rbx-0x800]
+   70e8f:	f2 0f 10 8b 00 fc ff 	movsd  xmm1,QWORD PTR [rbx-0x400]
+   70e96:	ff
+   70e97:	0f 16 0b             	movhps xmm1,QWORD PTR [rbx]
+   70e9a:	43 0f 11 44 f9 f0    	movups XMMWORD PTR [r9+r15*8-0x10],xmm0
+   70ea0:	43 0f 11 0c f9       	movups XMMWORD PTR [r9+r15*8],xmm1
+   70ea5:	49 83 c7 04          	add    r15,0x4
+   70ea9:	48 81 c3 00 10 00 00 	add    rbx,0x1000
+   70eb0:	4c 39 ff             	cmp    rdi,r15
+   70eb3:	75 cb                	jne    70e80
+   70eb5:	4c 8b bc 24 08 81 00 	mov    r15,QWORD PTR [rsp+0x8108]

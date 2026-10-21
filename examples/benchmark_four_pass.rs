@@ -37,7 +37,7 @@ macro_rules! benchmark {
             eprintln!("rayon_threads={}", rayon::current_num_threads());
             if let Some(plan) = &four {
                 let (rows, cols) = plan.dimensions();
-                eprintln!("four_pass_matrix={rows}x{cols}");
+                eprintln!("four_pass_matrix={rows}x{cols}, transpose_backend={:?}", plan.transpose_backend());
             }
 
             let sample_count = n.min(4096);

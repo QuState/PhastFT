@@ -1,0 +1,123 @@
+Dispatched scalar transpose: AVX-512 disassembly
+
+Historical experiment: the dispatch wrapper, forced inlining and auto mode
+were subsequently removed. This disassembly describes the measured experimental
+binary identified below, not the current source.
+
+Build: cargo build --release --offline --example benchmark_four_pass
+No RUSTFLAGS or target-cpu override.
+Command: objdump -d -C -Mintel target/release/examples/benchmark_four_pass
+Binary SHA-256: 18ab282fe31d87df3bcff0b32c22ae8d602c87024b6ea0478cabf3d736ea1c60
+
+Experiment: mark the original generic scalar transpose_columns loop
+#[inline(always)] and call it inside fearless_simd::dispatch!(Level::new(), ...).
+The loop, packing buffer, indexing, tiling and matrix dimensions are unchanged.
+No vector types, intrinsics or hand-written shuffles appear in this variant.
+
+LLVM vectorizes the transposed reads as gathers from the packed stack tile:
+- f64: vgatherqpd zmm (eight doubles), followed by vmovupd zmm stores.
+- f32: two vgatherqps ymm (eight floats each, with 64-bit indices in zmm),
+  vinsertf64x4 to combine them, then a vmovups zmm store (16 floats).
+This is AVX-512 code but does not form the hand-written register transpose.
+The hand-written implementation instead uses contiguous full-width loads
+and vpermt2ps/pd permutations in registers.
+
+Tile initialization is still present, using 512-bit vmovdqu64 stores;
+packing may call memcpy. SIMD feature availability alone does not eliminate
+packing or initialization, or guarantee that gather vectorization is faster.
+
+The following are excerpts from the named dispatch wrappers, including
+all instructions around the first gather loop. Counts are static, not dynamic.
+
+
+00000000000841f0 <<fearless_simd::generated::avx512::Avx512 as fearless_simd::generated::simd_trait::Simd>::vectorize::vectorize_avx512::<benchmark_four_pass::four_pass::transpose_columns_dispatched<f64, 16>::{closure#3}, ()>>:
+Gather instruction count: 16; register-permutation instruction count: 0
+   85d75:	31 c0                	xor    eax,eax
+   85d77:	62 f1 fd 48 6f 05 bf 	vmovdqa64 zmm0,ZMMWORD PTR [rip+0xfffffffffffa50bf]        # 2ae40
+   85d81:	48 8b 8c 24 70 01 00 	mov    rcx,QWORD PTR [rsp+0x170]
+   85d89:	0f 1f 80 00 00 00 00 	nop    DWORD PTR [rax+0x0]
+   85d90:	62 f1 f5 48 73 f0 07 	vpsllq zmm1,zmm0,0x7
+   85d97:	c5 e9 57 d2          	vxorpd xmm2,xmm2,xmm2
+   85d9b:	c5 fd 46 c8          	kxnorb k1,k0,k0
+   85d9f:	62 f2 fd 49 93 14 0a 	vgatherqpd zmm2{k1},QWORD PTR [rdx+zmm1*1]
+   85da6:	62 f1 fd 48 11 14 c1 	vmovupd ZMMWORD PTR [rcx+rax*8],zmm2
+   85dad:	48 83 c0 08          	add    rax,0x8
+   85db1:	62 f1 fd 48 d4 c3    	vpaddq zmm0,zmm0,zmm3
+   85db7:	49 39 c5             	cmp    r13,rax
+   85dba:	75 d4                	jne    85d90
+   85dbc:	48 8b 4c 24 20       	mov    rcx,QWORD PTR [rsp+0x20]
+   85dc1:	4c 89 f0             	mov    rax,r14
+   85dc4:	48 c1 e0 07          	shl    rax,0x7
+   85dc8:	48 01 e0             	add    rax,rsp
+   85dcb:	48 05 98 07 00 00    	add    rax,0x798
+   85dd1:	48 8b 94 24 70 01 00 	mov    rdx,QWORD PTR [rsp+0x170]
+   85dd9:	0f 1f 80 00 00 00 00 	nop    DWORD PTR [rax+0x0]
+
+0000000000087090 <<fearless_simd::generated::avx512::Avx512 as fearless_simd::generated::simd_trait::Simd>::vectorize::vectorize_avx512::<benchmark_four_pass::four_pass::transpose_columns_dispatched<f64, 128>::{closure#3}, ()>>:
+Gather instruction count: 2; register-permutation instruction count: 0
+   88af5:	48 ff c7             	inc    rdi
+   88af8:	45 31 db             	xor    r11d,r11d
+   88afb:	62 f1 fd 48 6f 05 7b 	vmovdqa64 zmm0,ZMMWORD PTR [rip+0xfffffffffffa237b]        # 2ae80
+   88b05:	66 66 2e 0f 1f 84 00 	data16 cs nop WORD PTR [rax+rax*1+0x0]
+   88b10:	62 f1 f5 48 73 f0 0a 	vpsllq zmm1,zmm0,0xa
+   88b17:	c5 fd 46 c8          	kxnorb k1,k0,k0
+   88b1b:	c5 e9 57 d2          	vxorpd xmm2,xmm2,xmm2
+   88b1f:	62 d2 fd 49 93 14 0a 	vgatherqpd zmm2{k1},QWORD PTR [r10+zmm1*1]
+   88b26:	62 b1 fd 48 11 14 de 	vmovupd ZMMWORD PTR [rsi+r11*8],zmm2
+   88b2d:	49 83 c3 08          	add    r11,0x8
+   88b31:	62 f1 fd 48 d4 c3    	vpaddq zmm0,zmm0,zmm3
+   88b37:	4c 39 df             	cmp    rdi,r11
+   88b3a:	75 d4                	jne    88b10
+   88b3c:	4c 8b 6c 24 10       	mov    r13,QWORD PTR [rsp+0x10]
+   88b41:	49 ff c0             	inc    r8
+   88b44:	4d 89 ca             	mov    r10,r9
+   88b47:	49 c1 e2 0a          	shl    r10,0xa
+   88b4b:	49 01 c2             	add    r10,rax
+   88b4e:	4d 89 fb             	mov    r11,r15
+   88b51:	66 66 66 66 66 66 2e 	data16 data16 data16 data16 data16 cs nop WORD PTR [rax+rax*1+0x0]
+
+00000000000890b0 <<fearless_simd::generated::avx512::Avx512 as fearless_simd::generated::simd_trait::Simd>::vectorize::vectorize_avx512::<benchmark_four_pass::four_pass::transpose_columns_dispatched<f32, 16>::{closure#3}, ()>>:
+Gather instruction count: 32; register-permutation instruction count: 0
+   8aa41:	62 f1 fd 48 6f 0d 75 	vmovdqa64 zmm1,ZMMWORD PTR [rip+0xfffffffffffa0475]        # 2aec0
+   8aa4b:	48 8b 8c 24 68 01 00 	mov    rcx,QWORD PTR [rsp+0x168]
+   8aa53:	66 66 66 66 2e 0f 1f 	data16 data16 data16 cs nop WORD PTR [rax+rax*1+0x0]
+   8aa60:	62 f1 ed 48 73 f0 06 	vpsllq zmm2,zmm0,0x6
+   8aa67:	62 f1 e5 48 73 f1 06 	vpsllq zmm3,zmm1,0x6
+   8aa6e:	c5 fd 46 c8          	kxnorb k1,k0,k0
+   8aa72:	c5 d8 57 e4          	vxorps xmm4,xmm4,xmm4
+   8aa76:	62 f2 7d 49 93 24 1a 	vgatherqps ymm4{k1},DWORD PTR [rdx+zmm3*1]
+   8aa7d:	c5 fd 46 c8          	kxnorb k1,k0,k0
+   8aa81:	c5 e0 57 db          	vxorps xmm3,xmm3,xmm3
+   8aa85:	62 f2 7d 49 93 1c 12 	vgatherqps ymm3{k1},DWORD PTR [rdx+zmm2*1]
+   8aa8c:	62 f3 e5 48 1a d4 01 	vinsertf64x4 zmm2,zmm3,ymm4,0x1
+   8aa93:	62 f1 7c 48 11 14 81 	vmovups ZMMWORD PTR [rcx+rax*4],zmm2
+   8aa9a:	48 83 c0 10          	add    rax,0x10
+   8aa9e:	62 f1 fd 48 d4 c5    	vpaddq zmm0,zmm0,zmm5
+   8aaa4:	62 f1 f5 48 d4 cd    	vpaddq zmm1,zmm1,zmm5
+   8aaaa:	49 39 c2             	cmp    r10,rax
+   8aaad:	75 b1                	jne    8aa60
+   8aaaf:	48 8b 4c 24 08       	mov    rcx,QWORD PTR [rsp+0x8]
+   8aab4:	48 89 d8             	mov    rax,rbx
+
+000000000008bfe0 <<fearless_simd::generated::avx512::Avx512 as fearless_simd::generated::simd_trait::Simd>::vectorize::vectorize_avx512::<benchmark_four_pass::four_pass::transpose_columns_dispatched<f32, 128>::{closure#3}, ()>>:
+Gather instruction count: 4; register-permutation instruction count: 0
+   8cf5b:	62 f1 fd 48 6f 05 1b 	vmovdqa64 zmm0,ZMMWORD PTR [rip+0xfffffffffff9e01b]        # 2af80
+   8cf65:	62 f1 fd 48 6f 0d d1 	vmovdqa64 zmm1,ZMMWORD PTR [rip+0xfffffffffff9dfd1]        # 2af40
+   8cf6f:	90                   	nop
+   8cf70:	62 f1 ed 48 73 f0 09 	vpsllq zmm2,zmm0,0x9
+   8cf77:	62 f1 e5 48 73 f1 09 	vpsllq zmm3,zmm1,0x9
+   8cf7e:	c5 fd 46 c8          	kxnorb k1,k0,k0
+   8cf82:	c5 d8 57 e4          	vxorps xmm4,xmm4,xmm4
+   8cf86:	62 d2 7d 49 93 24 1a 	vgatherqps ymm4{k1},DWORD PTR [r10+zmm3*1]
+   8cf8d:	c5 fd 46 c8          	kxnorb k1,k0,k0
+   8cf91:	c5 e0 57 db          	vxorps xmm3,xmm3,xmm3
+   8cf95:	62 d2 7d 49 93 1c 12 	vgatherqps ymm3{k1},DWORD PTR [r10+zmm2*1]
+   8cf9c:	62 f3 e5 48 1a d4 01 	vinsertf64x4 zmm2,zmm3,ymm4,0x1
+   8cfa3:	62 b1 7c 48 11 14 9e 	vmovups ZMMWORD PTR [rsi+r11*4],zmm2
+   8cfaa:	49 83 c3 10          	add    r11,0x10
+   8cfae:	62 f1 fd 48 d4 c5    	vpaddq zmm0,zmm0,zmm5
+   8cfb4:	62 f1 f5 48 d4 cd    	vpaddq zmm1,zmm1,zmm5
+   8cfba:	4c 39 df             	cmp    rdi,r11
+   8cfbd:	75 b1                	jne    8cf70
+   8cfbf:	4c 8b 64 24 10       	mov    r12,QWORD PTR [rsp+0x10]
+   8cfc4:	49 ff c0             	inc    r8

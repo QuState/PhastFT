@@ -13,6 +13,9 @@
 //! The two small DIT plans and twiddle steps take O(sqrt(N)) space; scratch
 //! takes N complex elements. No allocations occur during execution.
 
+#[path = "simd_transpose.rs"]
+mod simd_transpose;
+
 use phastft::options::Options;
 use phastft::planner::{Direction, PlannerDit32, PlannerDit64};
 use phastft::{fft_f32_dit_with_planner_and_opts, fft_f64_dit_with_planner_and_opts};
@@ -73,22 +76,11 @@ fn transpose_columns<T: Copy, const WIDTH: usize>(
     }
 }
 
-fn transpose<T: Copy + Send + Sync>(
-    re: &[T],
-    im: &[T],
-    out_re: &mut [T],
-    out_im: &mut [T],
-    rows: usize,
-    cols: usize,
-) {
-    chunks(out_re, out_im, TILE * rows, |batch, dr, di| {
-        transpose_columns::<T, TILE>(re, im, dr, di, rows, cols, batch * TILE);
-    });
-}
-
 macro_rules! implementation {
-    ($name:ident, $float:ty, $dit:ident, $fft:ident) => {
+    ($name:ident, $float:ty, $dit:ident, $fft:ident, $simd_transpose:ident) => {
         pub struct $name {
+            transpose_level: Option<fearless_simd::Level>,
+            packed: bool,
             rows: usize,
             cols: usize,
             column_plan: $dit,
@@ -109,7 +101,14 @@ macro_rules! implementation {
                 let mut opts = Options::default();
                 opts.smallest_parallel_chunk_size = usize::MAX;
                 opts.multithreaded_bit_reversal = false;
+                let transpose_level = match std::env::var("FOUR_PASS_TRANSPOSE").as_deref() {
+                    Ok("scalar") | Err(std::env::VarError::NotPresent) => None,
+                    Ok("simd" | "direct") => Some(fearless_simd::Level::new()),
+                    _ => panic!("FOUR_PASS_TRANSPOSE must be scalar, simd, or direct"),
+                };
                 Self {
+                    transpose_level,
+                    packed: std::env::var("FOUR_PASS_TRANSPOSE").as_deref() != Ok("direct"),
                     rows,
                     cols,
                     column_plan: $dit::new(rows),
@@ -121,6 +120,48 @@ macro_rules! implementation {
                         })
                         .collect(),
                     opts,
+                }
+            }
+
+            pub fn transpose_backend(&self) -> (&'static str, Option<fearless_simd::Level>) {
+                let layout = if self.transpose_level.is_none() {
+                    "scalar"
+                } else if self.packed {
+                    "simd-packed"
+                } else {
+                    "simd-direct"
+                };
+                (layout, self.transpose_level)
+            }
+
+            fn transpose_columns<const WIDTH: usize>(
+                &self,
+                re: &[$float],
+                im: &[$float],
+                dr: &mut [$float],
+                di: &mut [$float],
+                columns: simd_transpose::Columns,
+            ) {
+                if let Some(level) = self.transpose_level {
+                    if self.packed {
+                        simd_transpose::$simd_transpose::<WIDTH, true>(
+                            level, re, im, dr, di, columns,
+                        );
+                    } else {
+                        simd_transpose::$simd_transpose::<WIDTH, false>(
+                            level, re, im, dr, di, columns,
+                        );
+                    }
+                } else {
+                    transpose_columns::<$float, WIDTH>(
+                        re,
+                        im,
+                        dr,
+                        di,
+                        columns.rows,
+                        columns.cols,
+                        columns.first_col,
+                    );
                 }
             }
 
@@ -155,7 +196,17 @@ macro_rules! implementation {
                 // task owns contiguous scratch rows, so no unsafe scatter is needed.
                 chunks(scratch_re, scratch_im, COLUMNS * rows, |batch, dr, di| {
                     let first_col = batch * COLUMNS;
-                    transpose_columns::<$float, COLUMNS>(re, im, dr, di, rows, cols, first_col);
+                    self.transpose_columns::<COLUMNS>(
+                        re,
+                        im,
+                        dr,
+                        di,
+                        simd_transpose::Columns {
+                            rows,
+                            cols,
+                            first_col,
+                        },
+                    );
                     for (c, (rr, ii)) in dr.chunks_mut(rows).zip(di.chunks_mut(rows)).enumerate() {
                         $fft(rr, ii, direction, &self.column_plan, &self.opts);
                         let j = first_col + c;
@@ -185,7 +236,19 @@ macro_rules! implementation {
                 }
 
                 // Sweep 2: A[j2][k1] -> B[k1][j2].
-                transpose(scratch_re, scratch_im, re, im, cols, rows);
+                chunks(re, im, TILE * cols, |batch, dr, di| {
+                    self.transpose_columns::<TILE>(
+                        scratch_re,
+                        scratch_im,
+                        dr,
+                        di,
+                        simd_transpose::Columns {
+                            rows: cols,
+                            cols: rows,
+                            first_col: batch * TILE,
+                        },
+                    );
+                });
                 if let Some(started) = started {
                     elapsed[1] = started.elapsed();
                 }
@@ -197,7 +260,19 @@ macro_rules! implementation {
                     elapsed[2] = started.elapsed();
                 }
                 // Sweep 4: B[k1][k2] -> X[k2 * rows + k1].
-                transpose(re, im, scratch_re, scratch_im, rows, cols);
+                chunks(scratch_re, scratch_im, TILE * rows, |batch, dr, di| {
+                    self.transpose_columns::<TILE>(
+                        re,
+                        im,
+                        dr,
+                        di,
+                        simd_transpose::Columns {
+                            rows,
+                            cols,
+                            first_col: batch * TILE,
+                        },
+                    );
+                });
                 if let Some(started) = started {
                     elapsed[3] = started.elapsed();
                     eprintln!(
@@ -217,13 +292,15 @@ implementation!(
     FourPass32,
     f32,
     PlannerDit32,
-    fft_f32_dit_with_planner_and_opts
+    fft_f32_dit_with_planner_and_opts,
+    columns_f32
 );
 implementation!(
     FourPass64,
     f64,
     PlannerDit64,
-    fft_f64_dit_with_planner_and_opts
+    fft_f64_dit_with_planner_and_opts,
+    columns_f64
 );
 
 #[cfg(test)]
@@ -247,7 +324,9 @@ mod tests {
                             )
                         })
                         .collect();
-                    let plan = $plan::new(n);
+                    let mut plan = $plan::new(n);
+                    plan.transpose_level = Some(fearless_simd::Level::new());
+                    plan.packed = true;
                     for direction in [Direction::Forward, Direction::Inverse] {
                         let mut expected = input.clone();
                         match direction {

@@ -269,6 +269,50 @@ Original results are in [four_pass_results.txt](four_pass_results.txt); optimiza
 experiments and final raw samples are in
 [four_pass_optimized_results.txt](four_pass_optimized_results.txt).
 
+The optional SIMD transpose experiment preserves that matrix split and batching:
+
+```bash
+# Default: the existing packed scalar transpose.
+FOUR_PASS_TRANSPOSE=scalar RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10 four-pass
+# Packed tiles, then an 8x8 f64 / 16x16 f32 register transpose.
+FOUR_PASS_TRANSPOSE=simd RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10 four-pass
+# Same register transpose, loading directly from the source instead of packing.
+FOUR_PASS_TRANSPOSE=direct RAYON_NUM_THREADS=16 target/release/examples/benchmark_four_pass 64 27 10 four-pass
+```
+
+For f32, substitute `32 28` for `64 27`. The benchmark reports the selected
+transpose layout and detected SIMD backend. The experiment uses normal
+`fearless_simd` runtime dispatch and safe Rust; it does not require native CPU
+build flags. The scalar path remains the default because the SIMD variants did
+not consistently improve whole-FFT timings on the Ryzen 9950X. Measurements are
+in [four_pass_simd_results.txt](four_pass_simd_results.txt), with named-kernel
+AVX-512 instruction evidence in
+[four_pass_simd_disassembly.txt](four_pass_simd_disassembly.txt).
+
+The same comparison at **64 MiB of input** uses `64 22` or `32 23` as the
+precision/exponent arguments. It retains the current matrix split and tiling;
+scratch adds another 64 MiB. See
+[four_pass_64mib_results.txt](four_pass_64mib_results.txt) for 120 samples per
+variant, pass timings and correctness checks. SIMD did not improve total FFT
+time at this size either.
+
+With **one Rayon worker pinned to one CPU core**, direct SIMD transposes do
+improve total FFT time: 11.0%/10.8% less time at 64 MiB and 9.0%/4.3% less
+at 2 GiB, for f64/f32 respectively. Packed SIMD helps only f32 at 64 MiB
+(3.0%) in this comparison. See
+[four_pass_single_thread_results.txt](four_pass_single_thread_results.txt)
+for timings, run order, reproduction commands and sampled correctness checks.
+These measurements use the same executable and layout as the 16-thread runs;
+the scalar default is unchanged.
+
+An experiment force-inlined the original scalar formulation into `dispatch!`,
+with no explicit vector operations. LLVM emitted AVX-512 gathers from the packed
+tile and 512-bit stores. It took 6.2–9.6% longer than scalar on one thread,
+and showed no improvement with 16 threads. The wrapper, forced inlining and
+`auto` mode have been removed; the measurements remain as historical records.
+See [four_pass_auto_results.txt](four_pass_auto_results.txt) and
+[four_pass_auto_disassembly.txt](four_pass_auto_disassembly.txt).
+
 ## Profiling
 
 From the repo root:

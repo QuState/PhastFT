@@ -1,0 +1,2535 @@
+Dispatched scalar formulation versus explicit SIMD: four-pass FFT
+
+Historical experiment: the dispatch wrapper, forced inlining and auto mode
+were subsequently removed. Commands and validation below describe the measured
+experimental version, not the current source.
+
+Date: 2026-10-21
+CPU: AMD Ryzen 9 9950X, 16 cores / 16 online logical CPUs
+Binary SHA-256: 18ab282fe31d87df3bcff0b32c22ae8d602c87024b6ea0478cabf3d736ea1c60
+Build: cargo build --release --offline --example benchmark_four_pass
+No RUSTFLAGS or target-cpu override.
+
+Conclusion:
+The dispatch context enables AVX-512 auto-vectorization but does not improve
+whole-FFT performance here. Auto is 6.2-9.6% slower than scalar on one thread.
+At 16 threads, auto is 4.5%/1.0% slower at 64 MiB (f64/f32), and effectively
+tied with scalar at 2 GiB (+0.06%/+0.46%, within observed run variation).
+Hand-written direct SIMD remains clearly faster than scalar on one thread at
+64 MiB (8.9%/8.8% less time) and at 2 GiB for f64 (5.0% less time). Its 0.47%
+advantage for f32 at 2 GiB is small. Keep the hand-written implementation and
+the scalar default. The auto experiment was subsequently removed.
+
+Change:
+- Force-inline the original generic transpose_columns loop, without modifying
+  its packing, initialization, indexing or loop structure.
+- FOUR_PASS_TRANSPOSE=auto calls that loop inside fearless_simd::dispatch!,
+  using the detected SIMD level. This enables LLVM's target-specific optimizations
+  without introducing explicit vector types or operations in the loop.
+- The same force-inlined loop is also used by the scalar baseline outside dispatch.
+- All four variants are remeasured in this rebuilt executable; results are not
+  pooled with the previous executable. Default remains scalar.
+- Disassembly of the actual benchmark executable confirms AVX-512 gathers and
+  512-bit stores, not a register transpose. See four_pass_auto_disassembly.txt.
+
+Input sizes and layout:
+64 MiB = 67,108,864 bytes: f64 2^22, matrix 512 x 8192;
+                         f32 2^23, matrix 512 x 16384.
+2 GiB = 2,147,483,648 bytes: f64 2^27, matrix 2048 x 65536;
+                           f32 2^28, matrix 4096 x 65536.
+Bytes count real plus imaginary arrays. Scratch adds the same size again,
+plus small plans and local temporary storage. Matrix split and tiling unchanged.
+
+Method:
+- RAYON_NUM_THREADS=1, taskset -c 2; then RAYON_NUM_THREADS=16, taskset -c 0-15.
+- Same parallel build for both thread counts. Local FFT parallelism disabled
+  by the existing prototype; one-worker runs are confined to one CPU core.
+- Four rotating blocks: scalar/auto/simd/direct, auto/simd/direct/scalar,
+  simd/direct/scalar/auto, direct/scalar/auto/simd.
+- Each process has one excluded warm-up, followed by measured transforms.
+- 64 MiB: 4 x 20 = 80 samples per precision/variant/thread count.
+- 2 GiB: 4 x 4 = 16 samples per precision/variant at one thread;
+         4 x 5 = 20 samples at 16 threads.
+- For each thread count: 64 MiB f64, 64 MiB f32, 2 GiB f64, 2 GiB f32.
+- Input regenerated from the same seed outside each timed region. Planning,
+  allocation, input generation and initial scratch page touching excluded.
+- FOUR_PASS_PROFILE unset. All runs sequential, no concurrent tests or builds.
+- Every SIMD variant reports Avx512. All use the same executable.
+- Separate both-mode auto checks compare 4096 output bins against DIT for
+  every size/precision/thread count; those timings are excluded here.
+
+Validation:
+- Release example tests: 8 passed with default features; 8 passed without
+  default features. Full FFTs (forward/inverse, powers 0 through 22) use auto
+  and hand-written packed SIMD and compare against RustFFT. Exact bit permutation tests include partial
+  tiles, offsets, NaNs and signed zero on baseline and detected SIMD levels.
+- Existing hand-written SIMD bit-permutation tests also pass.
+- cargo clippy --offline --release --example benchmark_four_pass -- -D warnings passed.
+
+Reproduce a timing block (MODE = scalar, auto, simd, direct):
+FOUR_PASS_TRANSPOSE=MODE RAYON_NUM_THREADS=1 taskset -c 2 target/release/examples/benchmark_four_pass 64 22 20 four-pass
+FOUR_PASS_TRANSPOSE=MODE RAYON_NUM_THREADS=1 taskset -c 2 target/release/examples/benchmark_four_pass 64 27 4 four-pass
+For f32 use 32 23 or 32 28. For 16 threads use RAYON_NUM_THREADS=16,
+taskset -c 0-15, and 5 measured iterations at 2 GiB.
+
+Final timings, milliseconds; change is elapsed time relative to scalar:
+
+1T 64MiB f64 scalar n=80 median=43.655608, Q1=43.558813, Q3=43.714475, min=43.370839, max=47.509567, change=+0.00%
+  Block medians: 43.674963, 43.663392, 43.683580, 43.560915
+1T 64MiB f64 auto   n=80 median=46.374958, Q1=46.285684, Q3=46.464728, min=46.072006, max=46.705893, change=+6.23%
+  Block medians: 46.445145, 46.401358, 46.383223, 46.270457
+1T 64MiB f64 simd   n=80 median=45.210929, Q1=45.149421, Q3=45.279467, min=44.950776, max=45.481891, change=+3.56%
+  Block medians: 45.214210, 45.209882, 45.173564, 45.263607
+1T 64MiB f64 direct n=80 median=39.770824, Q1=39.698984, Q3=39.839680, min=39.524308, max=40.198129, change=-8.90%
+  Block medians: 39.745145, 39.694691, 39.783738, 39.892792
+
+1T 64MiB f32 scalar n=80 median=59.827614, Q1=59.646726, Q3=60.038336, min=59.287538, max=61.799321, change=+0.00%
+  Block medians: 59.910184, 59.584865, 60.000498, 59.891234
+1T 64MiB f32 auto   n=80 median=64.137362, Q1=63.923927, Q3=64.346116, min=63.535421, max=65.355810, change=+7.20%
+  Block medians: 64.128536, 63.975064, 64.217082, 64.169147
+1T 64MiB f32 simd   n=80 median=59.102757, Q1=58.930515, Q3=59.235626, min=58.616752, max=59.712013, change=-1.21%
+  Block medians: 58.795377, 59.031038, 59.306775, 59.075787
+1T 64MiB f32 direct n=80 median=54.581182, Q1=54.470295, Q3=54.744150, min=53.985812, max=55.939259, change=-8.77%
+  Block medians: 54.341082, 54.544744, 54.775306, 54.570031
+
+1T 2GiB f64 scalar n=16 median=1437.844656, Q1=1435.817327, Q3=1440.093492, min=1433.659207, max=1459.007124, change=+0.00%
+  Block medians: 1435.594471, 1436.546426, 1440.279975, 1438.313267
+1T 2GiB f64 auto   n=16 median=1576.270086, Q1=1574.755017, Q3=1582.281588, min=1570.717683, max=1591.091502, change=+9.63%
+  Block medians: 1575.686381, 1575.110134, 1580.543003, 1582.772026
+1T 2GiB f64 simd   n=16 median=1524.872611, Q1=1522.172932, Q3=1528.147729, min=1516.518496, max=1533.212641, change=+6.05%
+  Block medians: 1523.556583, 1524.258116, 1523.425892, 1529.619239
+1T 2GiB f64 direct n=16 median=1365.488756, Q1=1363.715684, Q3=1368.162226, min=1355.869018, max=1376.320617, change=-5.03%
+  Block medians: 1362.786154, 1364.834758, 1371.040671, 1365.901427
+
+1T 2GiB f32 scalar n=16 median=2082.221078, Q1=2079.491179, Q3=2083.502553, min=2072.916071, max=2115.790422, change=+0.00%
+  Block medians: 2082.767110, 2082.755426, 2081.264884, 2078.724942
+1T 2GiB f32 auto   n=16 median=2229.655742, Q1=2225.862249, Q3=2235.848420, min=2220.614567, max=2252.311974, change=+7.08%
+  Block medians: 2236.457897, 2228.904186, 2227.097196, 2227.494462
+1T 2GiB f32 simd   n=16 median=2208.771655, Q1=2203.400048, Q3=2211.158614, min=2195.277693, max=2217.786504, change=+6.08%
+  Block medians: 2209.562529, 2209.542967, 2210.085652, 2197.422468
+1T 2GiB f32 direct n=16 median=2072.424839, Q1=2069.444663, Q3=2074.342537, min=2057.329436, max=2081.443840, change=-0.47%
+  Block medians: 2071.367924, 2072.804457, 2073.928987, 2070.237471
+
+16T 64MiB f64 scalar n=80 median=12.551966, Q1=12.233719, Q3=12.753924, min=11.767923, max=14.594785, change=+0.00%
+  Block medians: 12.425510, 12.343851, 12.800617, 12.351952
+16T 64MiB f64 auto   n=80 median=13.118120, Q1=12.800907, Q3=13.366834, min=11.997382, max=14.614773, change=+4.51%
+  Block medians: 13.254772, 13.235485, 13.349388, 12.863224
+16T 64MiB f64 simd   n=80 median=13.085164, Q1=12.704034, Q3=13.922965, min=12.122126, max=15.557929, change=+4.25%
+  Block medians: 14.636449, 12.789070, 13.205820, 12.669977
+16T 64MiB f64 direct n=80 median=13.670450, Q1=13.375260, Q3=13.892787, min=12.986023, max=15.908275, change=+8.91%
+  Block medians: 13.948586, 13.656053, 13.734666, 13.379615
+
+16T 64MiB f32 scalar n=80 median=13.463888, Q1=13.070557, Q3=13.709380, min=12.475678, max=19.168960, change=+0.00%
+  Block medians: 13.197500, 13.519206, 13.720719, 13.110731
+16T 64MiB f32 auto   n=80 median=13.598074, Q1=13.388933, Q3=14.022509, min=12.592086, max=15.517964, change=+1.00%
+  Block medians: 13.561632, 13.667485, 13.435845, 13.979453
+16T 64MiB f32 simd   n=80 median=14.072181, Q1=13.844182, Q3=14.279413, min=13.458368, max=15.662143, change=+4.52%
+  Block medians: 14.035944, 13.952068, 14.231130, 14.124064
+16T 64MiB f32 direct n=80 median=14.274981, Q1=13.950972, Q3=14.563314, min=13.454541, max=16.446562, change=+6.02%
+  Block medians: 14.432878, 14.186762, 14.384733, 14.104698
+
+16T 2GiB f64 scalar n=20 median=457.379413, Q1=456.363210, Q3=459.064980, min=455.868003, max=463.949215, change=+0.00%
+  Block medians: 457.890829, 456.733183, 457.615235, 458.952620
+16T 2GiB f64 auto   n=20 median=457.655939, Q1=456.380248, Q3=459.144758, min=455.568071, max=460.847595, change=+0.06%
+  Block medians: 456.396732, 457.690885, 457.767501, 458.772774
+16T 2GiB f64 simd   n=20 median=467.310583, Q1=466.471539, Q3=468.446549, min=465.162587, max=473.594421, change=+2.17%
+  Block medians: 467.576805, 467.844236, 468.331278, 465.835337
+16T 2GiB f64 direct n=20 median=475.326190, Q1=474.837608, Q3=476.578223, min=473.571981, max=483.677069, change=+3.92%
+  Block medians: 475.014139, 476.975372, 475.218754, 475.378003
+
+16T 2GiB f32 scalar n=20 median=488.265946, Q1=485.316747, Q3=493.682298, min=481.909316, max=497.350214, change=+0.00%
+  Block medians: 486.205927, 491.607552, 486.494851, 494.118505
+16T 2GiB f32 auto   n=20 median=490.526653, Q1=487.096220, Q3=492.734577, min=478.337738, max=503.283655, change=+0.46%
+  Block medians: 486.318849, 491.539584, 488.638555, 492.610723
+16T 2GiB f32 simd   n=20 median=491.485160, Q1=487.583578, Q3=492.557101, min=484.085519, max=506.569654, change=+0.66%
+  Block medians: 492.356263, 492.232121, 486.130207, 491.686001
+16T 2GiB f32 direct n=20 median=498.155290, Q1=496.591451, Q3=503.056959, min=493.285523, max=506.825044, change=+2.03%
+  Block medians: 497.709986, 501.649133, 496.200813, 503.910408
+
+Correctness metadata (all assertions passed):
+
+1T 64MiB f64 auto:
+input_bytes=67108864, points=4194304, setup_seconds=0.050289
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=4.749855e-15
+
+1T 64MiB f32 auto:
+input_bytes=67108864, points=8388608, setup_seconds=0.040678
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=2.760805e-7
+
+1T 2GiB f64 auto:
+input_bytes=2147483648, points=134217728, setup_seconds=1.610725
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=4.911463e-15
+
+1T 2GiB f32 auto:
+input_bytes=2147483648, points=268435456, setup_seconds=1.297827
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=3.023101e-7
+
+16T 64MiB f64 auto:
+input_bytes=67108864, points=4194304, setup_seconds=0.051254
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=4.749855e-15
+
+16T 64MiB f32 auto:
+input_bytes=67108864, points=8388608, setup_seconds=0.040941
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=2.760805e-7
+
+16T 2GiB f64 auto:
+input_bytes=2147483648, points=134217728, setup_seconds=1.613507
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=4.911463e-15
+
+16T 2GiB f32 auto:
+input_bytes=2147483648, points=268435456, setup_seconds=1.294473
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+sampled_bins=4096, relative_l2_vs_dit=3.023101e-7
+
+Raw timing blocks (CSV nanoseconds), in execution order:
+
+1T 64MiB f64 scalar block 1:
+input_bytes=67108864, points=4194304, setup_seconds=0.010887
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,47509567
+four-pass,2,43624784
+four-pass,3,43612020
+four-pass,4,43674858
+four-pass,5,43940716
+four-pass,6,43605228
+four-pass,7,43632077
+four-pass,8,43580241
+four-pass,9,43702931
+four-pass,10,44076921
+four-pass,11,43852420
+four-pass,12,43639431
+four-pass,13,43697260
+four-pass,14,43693894
+four-pass,15,43469424
+four-pass,16,43419650
+four-pass,17,43529686
+four-pass,18,43717829
+four-pass,19,43675068
+four-pass,20,44018511
+
+1T 64MiB f64 auto block 1:
+input_bytes=67108864, points=4194304, setup_seconds=0.008882
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,46343233
+four-pass,2,46475902
+four-pass,3,46555932
+four-pass,4,46679333
+four-pass,5,46604873
+four-pass,6,46441007
+four-pass,7,46414227
+four-pass,8,46466514
+four-pass,9,46413916
+four-pass,10,46449283
+four-pass,11,46484758
+four-pass,12,46382036
+four-pass,13,46523932
+four-pass,14,46383168
+four-pass,15,46258214
+four-pass,16,46342312
+four-pass,17,46372378
+four-pass,18,46216667
+four-pass,19,46512881
+four-pass,20,46502131
+
+1T 64MiB f64 simd block 1:
+input_bytes=67108864, points=4194304, setup_seconds=0.008804
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,45323404
+four-pass,2,45261178
+four-pass,3,45333463
+four-pass,4,45252011
+four-pass,5,45219540
+four-pass,6,45158766
+four-pass,7,45144910
+four-pass,8,45278470
+four-pass,9,45178704
+four-pass,10,45220492
+four-pass,11,45014917
+four-pass,12,45333293
+four-pass,13,44950776
+four-pass,14,45194102
+four-pass,15,45230009
+four-pass,16,45069078
+four-pass,17,45208880
+four-pass,18,45225922
+four-pass,19,45170579
+four-pass,20,45185195
+
+1T 64MiB f64 direct block 1:
+input_bytes=67108864, points=4194304, setup_seconds=0.008882
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,39845038
+four-pass,2,39864795
+four-pass,3,39771981
+four-pass,4,39834087
+four-pass,5,39805083
+four-pass,6,39684136
+four-pass,7,40091169
+four-pass,8,39753276
+four-pass,9,39795836
+four-pass,10,39699355
+four-pass,11,39837894
+four-pass,12,39623393
+four-pass,13,39830220
+four-pass,14,39737015
+four-pass,15,39662125
+four-pass,16,39578329
+four-pass,17,39570484
+four-pass,18,39713411
+four-pass,19,39683385
+four-pass,20,39683625
+
+1T 64MiB f64 auto block 2:
+input_bytes=67108864, points=4194304, setup_seconds=0.008850
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,46357059
+four-pass,2,46353203
+four-pass,3,46278652
+four-pass,4,46464500
+four-pass,5,46444293
+four-pass,6,46287400
+four-pass,7,46093957
+four-pass,8,46240271
+four-pass,9,46354375
+four-pass,10,46420669
+four-pass,11,46705893
+four-pass,12,46382046
+four-pass,13,46569498
+four-pass,14,46675115
+four-pass,15,46512540
+four-pass,16,46550241
+four-pass,17,46453410
+four-pass,18,46334287
+four-pass,19,46442029
+four-pass,20,46369473
+
+1T 64MiB f64 simd block 2:
+input_bytes=67108864, points=4194304, setup_seconds=0.008827
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,45323153
+four-pass,2,45237393
+four-pass,3,45036537
+four-pass,4,45258453
+four-pass,5,45299650
+four-pass,6,45090578
+four-pass,7,45175588
+four-pass,8,45076742
+four-pass,9,44961657
+four-pass,10,45251519
+four-pass,11,45105617
+four-pass,12,45224669
+four-pass,13,45202348
+four-pass,14,45112780
+four-pass,15,45172913
+four-pass,16,45222335
+four-pass,17,45320790
+four-pass,18,45272810
+four-pass,19,45212978
+four-pass,20,45206786
+
+1T 64MiB f64 direct block 2:
+input_bytes=67108864, points=4194304, setup_seconds=0.008822
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,39674168
+four-pass,2,39674178
+four-pass,3,39779895
+four-pass,4,39587796
+four-pass,5,39706548
+four-pass,6,39627600
+four-pass,7,39769847
+four-pass,8,39544675
+four-pass,9,39766390
+four-pass,10,39524308
+four-pass,11,39736685
+four-pass,12,39691511
+four-pass,13,39752865
+four-pass,14,39808709
+four-pass,15,39697872
+four-pass,16,39685068
+four-pass,17,39672535
+four-pass,18,39659801
+four-pass,19,39702200
+four-pass,20,39734501
+
+1T 64MiB f64 scalar block 2:
+input_bytes=67108864, points=4194304, setup_seconds=0.008846
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,43370839
+four-pass,2,43500371
+four-pass,3,43564351
+four-pass,4,43527993
+four-pass,5,43937019
+four-pass,6,43395826
+four-pass,7,43514046
+four-pass,8,43534946
+four-pass,9,43716676
+four-pass,10,43774956
+four-pass,11,43743617
+four-pass,12,43705356
+four-pass,13,43621017
+four-pass,14,43724241
+four-pass,15,43652587
+four-pass,16,43631387
+four-pass,17,43674196
+four-pass,18,43751271
+four-pass,19,43690046
+four-pass,20,43680108
+
+1T 64MiB f64 simd block 3:
+input_bytes=67108864, points=4194304, setup_seconds=0.008866
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,45238215
+four-pass,2,45168775
+four-pass,3,44977517
+four-pass,4,45101208
+four-pass,5,45283580
+four-pass,6,45026288
+four-pass,7,45360013
+four-pass,8,45243515
+four-pass,9,45360213
+four-pass,10,45270015
+four-pass,11,45279202
+four-pass,12,45397653
+four-pass,13,45172312
+four-pass,14,45133740
+four-pass,15,45111297
+four-pass,16,45168734
+four-pass,17,45164857
+four-pass,18,45154719
+four-pass,19,45174816
+four-pass,20,45185767
+
+1T 64MiB f64 direct block 3:
+input_bytes=67108864, points=4194304, setup_seconds=0.008865
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,40002663
+four-pass,2,39821203
+four-pass,3,39789504
+four-pass,4,39767422
+four-pass,5,39762263
+four-pass,6,39716928
+four-pass,7,39727618
+four-pass,8,39771801
+four-pass,9,39799953
+four-pass,10,39820892
+four-pass,11,39784654
+four-pass,12,39894951
+four-pass,13,39731545
+four-pass,14,39782822
+four-pass,15,39759748
+four-pass,16,39660372
+four-pass,17,39781799
+four-pass,18,39935658
+four-pass,19,39856619
+four-pass,20,39892516
+
+1T 64MiB f64 scalar block 3:
+input_bytes=67108864, points=4194304, setup_seconds=0.008793
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,43712448
+four-pass,2,43766620
+four-pass,3,43688193
+four-pass,4,43694535
+four-pass,5,43678966
+four-pass,6,43573718
+four-pass,7,43818236
+four-pass,8,43583928
+four-pass,9,43658628
+four-pass,10,43638940
+four-pass,11,43693082
+four-pass,12,43773813
+four-pass,13,43743356
+four-pass,14,43666242
+four-pass,15,43614996
+four-pass,16,43721686
+four-pass,17,43706397
+four-pass,18,43624804
+four-pass,19,43608403
+four-pass,20,43457942
+
+1T 64MiB f64 auto block 3:
+input_bytes=67108864, points=4194304, setup_seconds=0.008818
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,46272832
+four-pass,2,46236163
+four-pass,3,46381385
+four-pass,4,46265468
+four-pass,5,46083587
+four-pass,6,46385062
+four-pass,7,46351460
+four-pass,8,46465412
+four-pass,9,46377538
+four-pass,10,46545051
+four-pass,11,46292429
+four-pass,12,46416240
+four-pass,13,46355607
+four-pass,14,46466364
+four-pass,15,46649527
+four-pass,16,46359193
+four-pass,17,46454362
+four-pass,18,46444614
+four-pass,19,46532528
+four-pass,20,46466184
+
+1T 64MiB f64 direct block 4:
+input_bytes=67108864, points=4194304, setup_seconds=0.008816
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,40141723
+four-pass,2,40008534
+four-pass,3,40198129
+four-pass,4,40002383
+four-pass,5,39932782
+four-pass,6,39865536
+four-pass,7,39678967
+four-pass,8,39744810
+four-pass,9,39785346
+four-pass,10,39799453
+four-pass,11,39835410
+four-pass,12,39705356
+four-pass,13,39785026
+four-pass,14,39949263
+four-pass,15,39959302
+four-pass,16,39892667
+four-pass,17,39767863
+four-pass,18,39978979
+four-pass,19,39938283
+four-pass,20,39892917
+
+1T 64MiB f64 scalar block 4:
+input_bytes=67108864, points=4194304, setup_seconds=0.008917
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,43531199
+four-pass,2,43689766
+four-pass,3,43433717
+four-pass,4,43502645
+four-pass,5,43721265
+four-pass,6,43444417
+four-pass,7,43422826
+four-pass,8,43535568
+four-pass,9,43585752
+four-pass,10,43385055
+four-pass,11,43613113
+four-pass,12,43501553
+four-pass,13,43713741
+four-pass,14,43767912
+four-pass,15,43740761
+four-pass,16,43683554
+four-pass,17,43579630
+four-pass,18,43542200
+four-pass,19,43539164
+four-pass,20,43602964
+
+1T 64MiB f64 auto block 4:
+input_bytes=67108864, points=4194304, setup_seconds=0.008803
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,46257113
+four-pass,2,46364093
+four-pass,3,46314339
+four-pass,4,46159069
+four-pass,5,46308278
+four-pass,6,46192341
+four-pass,7,46332323
+four-pass,8,46324559
+four-pass,9,46260378
+four-pass,10,46072006
+four-pass,11,46102764
+four-pass,12,46158958
+four-pass,13,46319098
+four-pass,14,46221345
+four-pass,15,46280536
+four-pass,16,46320161
+four-pass,17,46406502
+four-pass,18,46454662
+four-pass,19,46216767
+four-pass,20,46194465
+
+1T 64MiB f64 simd block 4:
+input_bytes=67108864, points=4194304, setup_seconds=0.008808
+rayon_threads=1
+four_pass_matrix=512x8192, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,45314679
+four-pass,2,45207708
+four-pass,3,45281356
+four-pass,4,45146032
+four-pass,5,45136906
+four-pass,6,45150551
+four-pass,7,45246952
+four-pass,8,45306192
+four-pass,9,45120114
+four-pass,10,45370713
+four-pass,11,45481891
+four-pass,12,45128901
+four-pass,13,45392183
+four-pass,14,45280263
+four-pass,15,45229589
+four-pass,16,45291665
+four-pass,17,45204742
+four-pass,18,45318365
+four-pass,19,45366345
+four-pass,20,45127027
+
+1T 64MiB f32 scalar block 1:
+input_bytes=67108864, points=8388608, setup_seconds=0.008902
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,59795920
+four-pass,2,59817500
+four-pass,3,59655888
+four-pass,4,59816459
+four-pass,5,59590295
+four-pass,6,59997247
+four-pass,7,59732240
+four-pass,8,59690172
+four-pass,9,59704548
+four-pass,10,59813513
+four-pass,11,59831567
+four-pass,12,60393458
+four-pass,13,60472597
+four-pass,14,60714359
+four-pass,15,61799321
+four-pass,16,59988801
+four-pass,17,60680586
+four-pass,18,60993001
+four-pass,19,60623689
+four-pass,20,60401734
+
+1T 64MiB f32 auto block 1:
+input_bytes=67108864, points=8388608, setup_seconds=0.008977
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,64081473
+four-pass,2,64114194
+four-pass,3,64292709
+four-pass,4,63985514
+four-pass,5,64142879
+four-pass,6,63853536
+four-pass,7,63824622
+four-pass,8,63955217
+four-pass,9,64712265
+four-pass,10,64219762
+four-pass,11,64663544
+four-pass,12,64538809
+four-pass,13,64345818
+four-pass,14,63842977
+four-pass,15,63983570
+four-pass,16,63807380
+four-pass,17,64500558
+four-pass,18,64387947
+four-pass,19,64266510
+four-pass,20,63828680
+
+1T 64MiB f32 simd block 1:
+input_bytes=67108864, points=8388608, setup_seconds=0.008929
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,59197389
+four-pass,2,59126256
+four-pass,3,59019807
+four-pass,4,59108263
+four-pass,5,58985723
+four-pass,6,59218108
+four-pass,7,58732138
+four-pass,8,58714456
+four-pass,9,58736577
+four-pass,10,58629747
+four-pass,11,58788895
+four-pass,12,58692914
+four-pass,13,58733090
+four-pass,14,58761794
+four-pass,15,59041398
+four-pass,16,58963532
+four-pass,17,58715808
+four-pass,18,58801859
+four-pass,19,58914660
+four-pass,20,58630578
+
+1T 64MiB f32 direct block 1:
+input_bytes=67108864, points=8388608, setup_seconds=0.009051
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,54655867
+four-pass,2,54385580
+four-pass,3,54531964
+four-pass,4,54665384
+four-pass,5,54345486
+four-pass,6,54107550
+four-pass,7,53985812
+four-pass,8,54224329
+four-pass,9,54336679
+four-pass,10,54232354
+four-pass,11,54144780
+four-pass,12,54299370
+four-pass,13,55117901
+four-pass,14,55277030
+four-pass,15,54843017
+four-pass,16,54606224
+four-pass,17,54414565
+four-pass,18,54264745
+four-pass,19,54335076
+four-pass,20,54065181
+
+1T 64MiB f32 auto block 2:
+input_bytes=67108864, points=8388608, setup_seconds=0.008975
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,63805176
+four-pass,2,63535421
+four-pass,3,63538838
+four-pass,4,63598650
+four-pass,5,64655799
+four-pass,6,63863436
+four-pass,7,64093586
+four-pass,8,63634707
+four-pass,9,63991144
+four-pass,10,64228269
+four-pass,11,63958984
+four-pass,12,64506910
+four-pass,13,64475211
+four-pass,14,63855921
+four-pass,15,64242464
+four-pass,16,64402615
+four-pass,17,64022203
+four-pass,18,64222278
+four-pass,19,63745474
+four-pass,20,63766103
+
+1T 64MiB f32 simd block 2:
+input_bytes=67108864, points=8388608, setup_seconds=0.008873
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,58616752
+four-pass,2,58695149
+four-pass,3,59106138
+four-pass,4,59336931
+four-pass,5,59099376
+four-pass,6,58923857
+four-pass,7,59179907
+four-pass,8,59109886
+four-pass,9,59171972
+four-pass,10,58858054
+four-pass,11,59003797
+four-pass,12,59263373
+four-pass,13,59222606
+four-pass,14,58987176
+four-pass,15,59058279
+four-pass,16,59136986
+four-pass,17,58919069
+four-pass,18,58995782
+four-pass,19,58998627
+four-pass,20,58932735
+
+1T 64MiB f32 direct block 2:
+input_bytes=67108864, points=8388608, setup_seconds=0.008918
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,54643624
+four-pass,2,54522607
+four-pass,3,54731117
+four-pass,4,54738782
+four-pass,5,54499464
+four-pass,6,54884365
+four-pass,7,54577661
+four-pass,8,54491138
+four-pass,9,54457966
+four-pass,10,54689450
+four-pass,11,54396452
+four-pass,12,54517418
+four-pass,13,54543256
+four-pass,14,54537916
+four-pass,15,54510955
+four-pass,16,54451254
+four-pass,17,54568453
+four-pass,18,54546232
+four-pass,19,54787374
+four-pass,20,54664754
+
+1T 64MiB f32 scalar block 2:
+input_bytes=67108864, points=8388608, setup_seconds=0.008889
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,59493864
+four-pass,2,59648734
+four-pass,3,59475470
+four-pass,4,59407853
+four-pass,5,59546383
+four-pass,6,59438120
+four-pass,7,59695652
+four-pass,8,59498122
+four-pass,9,59611856
+four-pass,10,59627866
+four-pass,11,59709629
+four-pass,12,59735207
+four-pass,13,59414126
+four-pass,14,59850272
+four-pass,15,59647823
+four-pass,16,59511648
+four-pass,17,59619009
+four-pass,18,59557875
+four-pass,19,59772186
+four-pass,20,59287538
+
+1T 64MiB f32 simd block 3:
+input_bytes=67108864, points=8388608, setup_seconds=0.008847
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,59174066
+four-pass,2,59314068
+four-pass,3,59228959
+four-pass,4,59247052
+four-pass,5,59237354
+four-pass,6,59293239
+four-pass,7,59235050
+four-pass,8,59712013
+four-pass,9,59265087
+four-pass,10,59176551
+four-pass,11,59299481
+four-pass,12,59510135
+four-pass,13,59359473
+four-pass,14,59209803
+four-pass,15,59351969
+four-pass,16,59616154
+four-pass,17,59445925
+four-pass,18,59438150
+four-pass,19,59567763
+four-pass,20,59589303
+
+1T 64MiB f32 direct block 3:
+input_bytes=67108864, points=8388608, setup_seconds=0.009055
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,54738402
+four-pass,2,55047460
+four-pass,3,54874837
+four-pass,4,54731900
+four-pass,5,54763839
+four-pass,6,55939259
+four-pass,7,54585886
+four-pass,8,54583351
+four-pass,9,54584814
+four-pass,10,55220334
+four-pass,11,55011904
+four-pass,12,54787904
+four-pass,13,54786772
+four-pass,14,55236083
+four-pass,15,54849609
+four-pass,16,54753039
+four-pass,17,54600563
+four-pass,18,54575036
+four-pass,19,54555729
+four-pass,20,54924410
+
+1T 64MiB f32 scalar block 3:
+input_bytes=67108864, points=8388608, setup_seconds=0.009064
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,60090953
+four-pass,2,59843610
+four-pass,3,59766625
+four-pass,4,60108636
+four-pass,5,59823662
+four-pass,6,60033375
+four-pass,7,60044596
+four-pass,8,61307731
+four-pass,9,60812353
+four-pass,10,59909673
+four-pass,11,59749032
+four-pass,12,59379731
+four-pass,13,59852947
+four-pass,14,60252244
+four-pass,15,60122622
+four-pass,16,60036250
+four-pass,17,60030930
+four-pass,18,59942294
+four-pass,19,59970066
+four-pass,20,59655287
+
+1T 64MiB f32 auto block 3:
+input_bytes=67108864, points=8388608, setup_seconds=0.008874
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,63914812
+four-pass,2,64081954
+four-pass,3,65011214
+four-pass,4,65355810
+four-pass,5,64676337
+four-pass,6,64281338
+four-pass,7,64129493
+four-pass,8,64075102
+four-pass,9,63850441
+four-pass,10,64441387
+four-pass,11,64542597
+four-pass,12,64337553
+four-pass,13,64217708
+four-pass,14,63860891
+four-pass,15,64430588
+four-pass,16,64239299
+four-pass,17,63926965
+four-pass,18,63932174
+four-pass,19,64216456
+four-pass,20,64185188
+
+1T 64MiB f32 direct block 4:
+input_bytes=67108864, points=8388608, setup_seconds=0.008886
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,54774589
+four-pass,2,54773978
+four-pass,3,54473736
+four-pass,4,54636070
+four-pass,5,54669943
+four-pass,6,54509904
+four-pass,7,54518340
+four-pass,8,54702013
+four-pass,9,54579013
+four-pass,10,54423422
+four-pass,11,54459970
+four-pass,12,54365403
+four-pass,13,54536524
+four-pass,14,54650346
+four-pass,15,54442527
+four-pass,16,54585775
+four-pass,17,54831636
+four-pass,18,54543396
+four-pass,19,54561049
+four-pass,20,54741187
+
+1T 64MiB f32 scalar block 4:
+input_bytes=67108864, points=8388608, setup_seconds=0.008947
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,59358732
+four-pass,2,59643435
+four-pass,3,59598741
+four-pass,4,59854941
+four-pass,5,59541374
+four-pass,6,60009561
+four-pass,7,59872995
+four-pass,8,59509113
+four-pass,9,59947193
+four-pass,10,59902841
+four-pass,11,60051268
+four-pass,12,60221297
+four-pass,13,59811570
+four-pass,14,59814716
+four-pass,15,59910013
+four-pass,16,59883715
+four-pass,17,59898753
+four-pass,18,60115148
+four-pass,19,60211559
+four-pass,20,60307899
+
+1T 64MiB f32 auto block 4:
+input_bytes=67108864, points=8388608, setup_seconds=0.008954
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,64219963
+four-pass,2,64079901
+four-pass,3,64252504
+four-pass,4,64059272
+four-pass,5,64033334
+four-pass,6,63991074
+four-pass,7,64347011
+four-pass,8,64495879
+four-pass,9,64399199
+four-pass,10,64283402
+four-pass,11,63764630
+four-pass,12,64137568
+four-pass,13,63880637
+four-pass,14,64406372
+four-pass,15,64050666
+four-pass,16,64200727
+four-pass,17,64412764
+four-pass,18,63817730
+four-pass,19,64233068
+four-pass,20,64137157
+
+1T 64MiB f32 simd block 4:
+input_bytes=67108864, points=8388608, setup_seconds=0.008860
+rayon_threads=1
+four_pass_matrix=512x16384, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,59172443
+four-pass,2,58952041
+four-pass,3,58881959
+four-pass,4,59042860
+four-pass,5,58978841
+four-pass,6,59063519
+four-pass,7,58936200
+four-pass,8,59088055
+four-pass,9,58969904
+four-pass,10,58898490
+four-pass,11,58800587
+four-pass,12,59190758
+four-pass,13,59397665
+four-pass,14,59130945
+four-pass,15,59150292
+four-pass,16,59241372
+four-pass,17,59097583
+four-pass,18,59136025
+four-pass,19,59060774
+four-pass,20,59644297
+
+1T 2GiB f64 scalar block 1:
+input_bytes=2147483648, points=134217728, setup_seconds=0.302885
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,1435328913
+four-pass,2,1433659207
+four-pass,3,1437044206
+four-pass,4,1435860029
+
+1T 2GiB f64 auto block 1:
+input_bytes=2147483648, points=134217728, setup_seconds=0.305122
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1570717683
+four-pass,2,1575217498
+four-pass,3,1578948194
+four-pass,4,1576155265
+
+1T 2GiB f64 simd block 1:
+input_bytes=2147483648, points=134217728, setup_seconds=0.310926
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1529482716
+four-pass,2,1518308126
+four-pass,3,1521785327
+four-pass,4,1525327840
+
+1T 2GiB f64 direct block 1:
+input_bytes=2147483648, points=134217728, setup_seconds=0.305436
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1366314263
+four-pass,2,1355869018
+four-pass,3,1362427016
+four-pass,4,1363145292
+
+1T 2GiB f64 auto block 2:
+input_bytes=2147483648, points=134217728, setup_seconds=0.304982
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1572562568
+four-pass,2,1573835361
+four-pass,3,1576971904
+four-pass,4,1576384906
+
+1T 2GiB f64 simd block 2:
+input_bytes=2147483648, points=134217728, setup_seconds=0.305137
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1522132025
+four-pass,2,1525167368
+four-pass,3,1523348864
+four-pass,4,1527980415
+
+1T 2GiB f64 direct block 2:
+input_bytes=2147483648, points=134217728, setup_seconds=0.304682
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1361626336
+four-pass,2,1363905814
+four-pass,3,1367910282
+four-pass,4,1365763703
+
+1T 2GiB f64 scalar block 2:
+input_bytes=2147483648, points=134217728, setup_seconds=0.305778
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,1435689220
+four-pass,2,1433723431
+four-pass,3,1440062489
+four-pass,4,1437403632
+
+1T 2GiB f64 simd block 3:
+input_bytes=2147483648, points=134217728, setup_seconds=0.306707
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1526288807
+four-pass,2,1524577854
+four-pass,3,1522273931
+four-pass,4,1516518496
+
+1T 2GiB f64 direct block 3:
+input_bytes=2147483648, points=134217728, setup_seconds=0.304944
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1373163284
+four-pass,2,1364396741
+four-pass,3,1368918057
+four-pass,4,1376320617
+
+1T 2GiB f64 scalar block 3:
+input_bytes=2147483648, points=134217728, setup_seconds=0.307061
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,1440373450
+four-pass,2,1438864816
+four-pass,3,1440186500
+four-pass,4,1444048963
+
+1T 2GiB f64 auto block 3:
+input_bytes=2147483648, points=134217728, setup_seconds=0.305391
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1575061569
+four-pass,2,1573073538
+four-pass,3,1589440822
+four-pass,4,1586024437
+
+1T 2GiB f64 direct block 4:
+input_bytes=2147483648, points=134217728, setup_seconds=0.307388
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1365213809
+four-pass,2,1371084541
+four-pass,3,1366589045
+four-pass,4,1364854237
+
+1T 2GiB f64 scalar block 4:
+input_bytes=2147483648, points=134217728, setup_seconds=0.304926
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,1459007124
+four-pass,2,1438285680
+four-pass,3,1436538760
+four-pass,4,1438340854
+
+1T 2GiB f64 auto block 4:
+input_bytes=2147483648, points=134217728, setup_seconds=0.307043
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1575825770
+four-pass,2,1581791149
+four-pass,3,1591091502
+four-pass,4,1583752903
+
+1T 2GiB f64 simd block 4:
+input_bytes=2147483648, points=134217728, setup_seconds=0.305301
+rayon_threads=1
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,1533212641
+four-pass,2,1522186568
+four-pass,3,1530588809
+four-pass,4,1528649669
+
+1T 2GiB f32 scalar block 1:
+input_bytes=2147483648, points=268435456, setup_seconds=0.308196
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,2087828389
+four-pass,2,2078789015
+four-pass,3,2083141305
+four-pass,4,2082392915
+
+1T 2GiB f32 auto block 1:
+input_bytes=2147483648, points=268435456, setup_seconds=0.305312
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2249537402
+four-pass,2,2235238944
+four-pass,3,2230836122
+four-pass,4,2237676850
+
+1T 2GiB f32 simd block 1:
+input_bytes=2147483648, points=268435456, setup_seconds=0.306863
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2210901232
+four-pass,2,2217786504
+four-pass,3,2200556516
+four-pass,4,2208223825
+
+1T 2GiB f32 direct block 1:
+input_bytes=2147483648, points=268435456, setup_seconds=0.307604
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2072811068
+four-pass,2,2062343191
+four-pass,3,2070339263
+four-pass,4,2072396586
+
+1T 2GiB f32 auto block 2:
+input_bytes=2147483648, points=268435456, setup_seconds=0.307553
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2252311974
+four-pass,2,2225939259
+four-pass,3,2230515157
+four-pass,4,2227293216
+
+1T 2GiB f32 simd block 2:
+input_bytes=2147483648, points=268435456, setup_seconds=0.305993
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2217732849
+four-pass,2,2213259865
+four-pass,3,2205826068
+four-pass,4,2204347892
+
+1T 2GiB f32 direct block 2:
+input_bytes=2147483648, points=268435456, setup_seconds=0.306645
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2077350542
+four-pass,2,2072453093
+four-pass,3,2070747541
+four-pass,4,2073155821
+
+1T 2GiB f32 scalar block 2:
+input_bytes=2147483648, points=268435456, setup_seconds=0.306491
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,2083360749
+four-pass,2,2082150103
+four-pass,3,2079539326
+four-pass,4,2086303823
+
+1T 2GiB f32 simd block 3:
+input_bytes=2147483648, points=268435456, setup_seconds=0.307826
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2210089643
+four-pass,2,2211930761
+four-pass,3,2210081661
+four-pass,4,2209319485
+
+1T 2GiB f32 direct block 3:
+input_bytes=2147483648, points=268435456, setup_seconds=0.306986
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2065041059
+four-pass,2,2081443840
+four-pass,3,2076227905
+four-pass,4,2071630068
+
+1T 2GiB f32 scalar block 3:
+input_bytes=2147483648, points=268435456, setup_seconds=0.310279
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,2079346737
+four-pass,2,2080237716
+four-pass,3,2082292053
+four-pass,4,2115790422
+
+1T 2GiB f32 auto block 3:
+input_bytes=2147483648, points=268435456, setup_seconds=0.310033
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2229953778
+four-pass,2,2225230235
+four-pass,3,2228964157
+four-pass,4,2224312098
+
+1T 2GiB f32 direct block 4:
+input_bytes=2147483648, points=268435456, setup_seconds=0.309086
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2066760861
+four-pass,2,2073714081
+four-pass,3,2078122205
+four-pass,4,2057329436
+
+1T 2GiB f32 scalar block 4:
+input_bytes=2147483648, points=268435456, setup_seconds=0.309116
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,2083927967
+four-pass,2,2076187736
+four-pass,3,2081262147
+four-pass,4,2072916071
+
+1T 2GiB f32 auto block 4:
+input_bytes=2147483648, points=268435456, setup_seconds=0.307024
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2225631218
+four-pass,2,2240120897
+four-pass,3,2229357706
+four-pass,4,2220614567
+
+1T 2GiB f32 simd block 4:
+input_bytes=2147483648, points=268435456, setup_seconds=0.305563
+rayon_threads=1
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,2197936470
+four-pass,2,2196908466
+four-pass,3,2195277693
+four-pass,4,2206923629
+
+16T 64MiB f64 scalar block 1:
+input_bytes=67108864, points=4194304, setup_seconds=0.009402
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,12561088
+four-pass,2,12870818
+four-pass,3,12399145
+four-pass,4,11904949
+four-pass,5,12556279
+four-pass,6,12317843
+four-pass,7,12607665
+four-pass,8,12705739
+four-pass,9,11962437
+four-pass,10,12295420
+four-pass,11,12317292
+four-pass,12,11889660
+four-pass,13,12290220
+four-pass,14,12235798
+four-pass,15,12694868
+four-pass,16,13146503
+four-pass,17,12547653
+four-pass,18,12680401
+four-pass,19,12227484
+four-pass,20,12451874
+
+16T 64MiB f64 auto block 1:
+input_bytes=67108864, points=4194304, setup_seconds=0.009443
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13332442
+four-pass,2,12575956
+four-pass,3,11997382
+four-pass,4,12840581
+four-pass,5,12697473
+four-pass,6,12343270
+four-pass,7,13224179
+four-pass,8,14020200
+four-pass,9,13250619
+four-pass,10,13274884
+four-pass,11,13383678
+four-pass,12,13595074
+four-pass,13,13285644
+four-pass,14,13029976
+four-pass,15,14231876
+four-pass,16,13691034
+four-pass,17,13022261
+four-pass,18,12752276
+four-pass,19,13258924
+four-pass,20,13327623
+
+16T 64MiB f64 simd block 1:
+input_bytes=67108864, points=4194304, setup_seconds=0.009482
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13557042
+four-pass,2,13504544
+four-pass,3,14392156
+four-pass,4,15557929
+four-pass,5,13911355
+four-pass,6,13961039
+four-pass,7,14519264
+four-pass,8,14885921
+four-pass,9,14748513
+four-pass,10,14950651
+four-pass,11,14821971
+four-pass,12,15277934
+four-pass,13,14000183
+four-pass,14,14896250
+four-pass,15,15350330
+four-pass,16,14626315
+four-pass,17,14646583
+four-pass,18,14969958
+four-pass,19,13541182
+four-pass,20,13799978
+
+16T 64MiB f64 direct block 1:
+input_bytes=67108864, points=4194304, setup_seconds=0.009218
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,14490871
+four-pass,2,14140235
+four-pass,3,13732531
+four-pass,4,13800859
+four-pass,5,15400614
+four-pass,6,15908275
+four-pass,7,14297690
+four-pass,8,13829863
+four-pass,9,15382039
+four-pass,10,15032285
+four-pass,11,14127571
+four-pass,12,13803764
+four-pass,13,14058982
+four-pass,14,13198562
+four-pass,15,13445474
+four-pass,16,14436780
+four-pass,17,13764090
+four-pass,18,13772296
+four-pass,19,13838189
+four-pass,20,13463207
+
+16T 64MiB f64 auto block 2:
+input_bytes=67108864, points=4194304, setup_seconds=0.012013
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13334165
+four-pass,2,13241712
+four-pass,3,12967509
+four-pass,4,13229259
+four-pass,5,13517889
+four-pass,6,12572278
+four-pass,7,13272791
+four-pass,8,13198902
+four-pass,9,13322563
+four-pass,10,13531555
+four-pass,11,12905362
+four-pass,12,13407813
+four-pass,13,13245098
+four-pass,14,12187708
+four-pass,15,13004739
+four-pass,16,12953313
+four-pass,17,12626250
+four-pass,18,13414365
+four-pass,19,13100347
+four-pass,20,13313056
+
+16T 64MiB f64 simd block 2:
+input_bytes=67108864, points=4194304, setup_seconds=0.009700
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13548116
+four-pass,2,12454268
+four-pass,3,12756855
+four-pass,4,12536211
+four-pass,5,12947741
+four-pass,6,12970124
+four-pass,7,12821285
+four-pass,8,12128578
+four-pass,9,12910221
+four-pass,10,12726838
+four-pass,11,12365271
+four-pass,12,13053429
+four-pass,13,14397967
+four-pass,14,13957793
+four-pass,15,13238205
+four-pass,16,12511325
+four-pass,17,12714426
+four-pass,18,12564534
+four-pass,19,12842845
+four-pass,20,12622232
+
+16T 64MiB f64 direct block 2:
+input_bytes=67108864, points=4194304, setup_seconds=0.009415
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13387024
+four-pass,2,14549641
+four-pass,3,13252592
+four-pass,4,14286098
+four-pass,5,13650939
+four-pass,6,15130789
+four-pass,7,14183045
+four-pass,8,14402646
+four-pass,9,14357371
+four-pass,10,13732380
+four-pass,11,13481030
+four-pass,12,13324347
+four-pass,13,13370864
+four-pass,14,13406981
+four-pass,15,13138830
+four-pass,16,13661167
+four-pass,17,13368369
+four-pass,18,13303848
+four-pass,19,13687818
+four-pass,20,13668972
+
+16T 64MiB f64 scalar block 2:
+input_bytes=67108864, points=4194304, setup_seconds=0.011036
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,12298156
+four-pass,2,12710708
+four-pass,3,12206444
+four-pass,4,12358429
+four-pass,5,12129109
+four-pass,6,13263573
+four-pass,7,13001292
+four-pass,8,11825841
+four-pass,9,12310358
+four-pass,10,11806064
+four-pass,11,12348289
+four-pass,12,12196284
+four-pass,13,12189813
+four-pass,14,12813380
+four-pass,15,12603428
+four-pass,16,12622723
+four-pass,17,12757456
+four-pass,18,12094815
+four-pass,19,12557562
+four-pass,20,12339412
+
+16T 64MiB f64 simd block 3:
+input_bytes=67108864, points=4194304, setup_seconds=0.010950
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,12529268
+four-pass,2,12356355
+four-pass,3,13381735
+four-pass,4,13227756
+four-pass,5,12834851
+four-pass,6,13334055
+four-pass,7,13342200
+four-pass,8,12883151
+four-pass,9,13029275
+four-pass,10,12808050
+four-pass,11,12792942
+four-pass,12,12957550
+four-pass,13,12810235
+four-pass,14,13183884
+four-pass,15,14713007
+four-pass,16,14903453
+four-pass,17,13258544
+four-pass,18,13536905
+four-pass,19,14726362
+four-pass,20,13371575
+
+16T 64MiB f64 direct block 3:
+input_bytes=67108864, points=4194304, setup_seconds=0.009133
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13820376
+four-pass,2,13436827
+four-pass,3,13102711
+four-pass,4,13072355
+four-pass,5,13739985
+four-pass,6,13884536
+four-pass,7,13741398
+four-pass,8,13235902
+four-pass,9,13456294
+four-pass,10,14121039
+four-pass,11,14080873
+four-pass,12,13966830
+four-pass,13,13777315
+four-pass,14,13398936
+four-pass,15,13400249
+four-pass,16,13729346
+four-pass,17,13813643
+four-pass,18,13917538
+four-pass,19,13534851
+four-pass,20,13292447
+
+16T 64MiB f64 scalar block 3:
+input_bytes=67108864, points=4194304, setup_seconds=0.010510
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,12925610
+four-pass,2,12848486
+four-pass,3,12638683
+four-pass,4,12752747
+four-pass,5,13084107
+four-pass,6,12615480
+four-pass,7,12657839
+four-pass,8,12469206
+four-pass,9,12311711
+four-pass,10,13300031
+four-pass,11,13134491
+four-pass,12,12863364
+four-pass,13,12247261
+four-pass,14,12546821
+four-pass,15,13749503
+four-pass,16,14594785
+four-pass,17,12951809
+four-pass,18,12718192
+four-pass,19,12617103
+four-pass,20,13616324
+
+16T 64MiB f64 auto block 3:
+input_bytes=67108864, points=4194304, setup_seconds=0.009284
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,12974071
+four-pass,2,12873884
+four-pass,3,13629077
+four-pass,4,12647700
+four-pass,5,13874307
+four-pass,6,14614773
+four-pass,7,13366746
+four-pass,8,13493744
+four-pass,9,12379198
+four-pass,10,14165932
+four-pass,11,12877450
+four-pass,12,12801127
+four-pass,13,13135894
+four-pass,14,13016520
+four-pass,15,13587309
+four-pass,16,13332031
+four-pass,17,13522629
+four-pass,18,13802041
+four-pass,19,13367097
+four-pass,20,12367075
+
+16T 64MiB f64 direct block 4:
+input_bytes=67108864, points=4194304, setup_seconds=0.009811
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13777946
+four-pass,2,13447578
+four-pass,3,13507159
+four-pass,4,12986023
+four-pass,5,13324557
+four-pass,6,13744874
+four-pass,7,13167293
+four-pass,8,13419885
+four-pass,9,13416800
+four-pass,10,13671927
+four-pass,11,13750014
+four-pass,12,13182501
+four-pass,13,13242855
+four-pass,14,13382505
+four-pass,15,13376725
+four-pass,16,13347881
+four-pass,17,13278120
+four-pass,18,13293789
+four-pass,19,13452326
+four-pass,20,13204012
+
+16T 64MiB f64 scalar block 4:
+input_bytes=67108864, points=4194304, setup_seconds=0.009504
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,12888972
+four-pass,2,12222173
+four-pass,3,12397201
+four-pass,4,13032921
+four-pass,5,12058026
+four-pass,6,12701791
+four-pass,7,12116094
+four-pass,8,12223035
+four-pass,9,11955243
+four-pass,10,12837956
+four-pass,11,11910981
+four-pass,12,12653110
+four-pass,13,12776782
+four-pass,14,12121054
+four-pass,15,12628294
+four-pass,16,12720236
+four-pass,17,11767923
+four-pass,18,12306702
+four-pass,19,12036164
+four-pass,20,12468033
+
+16T 64MiB f64 auto block 4:
+input_bytes=67108864, points=4194304, setup_seconds=0.009653
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,12456362
+four-pass,2,12868985
+four-pass,3,12422399
+four-pass,4,13701043
+four-pass,5,12749140
+four-pass,6,12231220
+four-pass,7,13080079
+four-pass,8,12476179
+four-pass,9,12998166
+four-pass,10,12438158
+four-pass,11,12905683
+four-pass,12,12430734
+four-pass,13,13079018
+four-pass,14,13304811
+four-pass,15,13236282
+four-pass,16,12562731
+four-pass,17,12913588
+four-pass,18,12800246
+four-pass,19,12857462
+four-pass,20,13606545
+
+16T 64MiB f64 simd block 4:
+input_bytes=67108864, points=4194304, setup_seconds=0.009288
+rayon_threads=16
+four_pass_matrix=512x8192, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13413734
+four-pass,2,13388898
+four-pass,3,12400017
+four-pass,4,12279170
+four-pass,5,12833497
+four-pass,6,13496178
+four-pass,7,13116899
+four-pass,8,12938384
+four-pass,9,13163536
+four-pass,10,12498882
+four-pass,11,12840481
+four-pass,12,12222473
+four-pass,13,12374980
+four-pass,14,12672857
+four-pass,15,12125482
+four-pass,16,12122126
+four-pass,17,12667096
+four-pass,18,12506546
+four-pass,19,12822117
+four-pass,20,12621862
+
+16T 64MiB f32 scalar block 1:
+input_bytes=67108864, points=8388608, setup_seconds=0.009979
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,13595915
+four-pass,2,13070922
+four-pass,3,13222607
+four-pass,4,13481771
+four-pass,5,13319458
+four-pass,6,14182724
+four-pass,7,14089039
+four-pass,8,13369171
+four-pass,9,13172393
+four-pass,10,12823359
+four-pass,11,13111659
+four-pass,12,13163205
+four-pass,13,13053069
+four-pass,14,13040645
+four-pass,15,12900334
+four-pass,16,13708406
+four-pass,17,13826818
+four-pass,18,12957540
+four-pass,19,13036378
+four-pass,20,13457977
+
+16T 64MiB f32 auto block 1:
+input_bytes=67108864, points=8388608, setup_seconds=0.009205
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13565569
+four-pass,2,12802660
+four-pass,3,13448429
+four-pass,4,13639657
+four-pass,5,13503583
+four-pass,6,14470763
+four-pass,7,13107160
+four-pass,8,13122670
+four-pass,9,14422373
+four-pass,10,13732090
+four-pass,11,13557694
+four-pass,12,14227939
+four-pass,13,13836045
+four-pass,14,13266799
+four-pass,15,12806507
+four-pass,16,14232377
+four-pass,17,13185577
+four-pass,18,13388527
+four-pass,19,13579425
+four-pass,20,14216527
+
+16T 64MiB f32 simd block 1:
+input_bytes=67108864, points=8388608, setup_seconds=0.009595
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13588381
+four-pass,2,14354225
+four-pass,3,14349175
+four-pass,4,14011864
+four-pass,5,14247886
+four-pass,6,14125346
+four-pass,7,13892771
+four-pass,8,13710660
+four-pass,9,13663712
+four-pass,10,15662143
+four-pass,11,14489939
+four-pass,12,13785400
+four-pass,13,13569977
+four-pass,14,14131297
+four-pass,15,13771354
+four-pass,16,14719068
+four-pass,17,14159550
+four-pass,18,13751878
+four-pass,19,14060025
+four-pass,20,13972470
+
+16T 64MiB f32 direct block 1:
+input_bytes=67108864, points=8388608, setup_seconds=0.010643
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,14444204
+four-pass,2,14062739
+four-pass,3,14450966
+four-pass,4,15378422
+four-pass,5,14341672
+four-pass,6,14421551
+four-pass,7,14513213
+four-pass,8,13897489
+four-pass,9,14579717
+four-pass,10,14457268
+four-pass,11,14561393
+four-pass,12,13821988
+four-pass,13,13882633
+four-pass,14,13885447
+four-pass,15,14843772
+four-pass,16,14260360
+four-pass,17,14971711
+four-pass,18,14136908
+four-pass,19,14993302
+four-pass,20,13693128
+
+16T 64MiB f32 auto block 2:
+input_bytes=67108864, points=8388608, setup_seconds=0.011015
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,14364164
+four-pass,2,13701102
+four-pass,3,13980756
+four-pass,4,13498012
+four-pass,5,13750244
+four-pass,6,13621553
+four-pass,7,13584955
+four-pass,8,13635860
+four-pass,9,13611194
+four-pass,10,13565809
+four-pass,11,13689290
+four-pass,12,13822629
+four-pass,13,14184417
+four-pass,14,15047934
+four-pass,15,13645679
+four-pass,16,14303830
+four-pass,17,13566250
+four-pass,18,13807181
+four-pass,19,13378639
+four-pass,20,13248405
+
+16T 64MiB f32 simd block 2:
+input_bytes=67108864, points=8388608, setup_seconds=0.010082
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13494896
+four-pass,2,13580647
+four-pass,3,14138822
+four-pass,4,13705110
+four-pass,5,14001575
+four-pass,6,13872584
+four-pass,7,13930723
+four-pass,8,14140324
+four-pass,9,13973412
+four-pass,10,13458368
+four-pass,11,13873315
+four-pass,12,14024868
+four-pass,13,14171914
+four-pass,14,14069842
+four-pass,15,14052621
+four-pass,16,14140525
+four-pass,17,13602497
+four-pass,18,13518030
+four-pass,19,13647933
+four-pass,20,14472266
+
+16T 64MiB f32 direct block 2:
+input_bytes=67108864, points=8388608, setup_seconds=0.009396
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,14120758
+four-pass,2,14164430
+four-pass,3,14209094
+four-pass,4,14284174
+four-pass,5,13526416
+four-pass,6,14118043
+four-pass,7,14082607
+four-pass,8,14324329
+four-pass,9,14956703
+four-pass,10,14281309
+four-pass,11,14095350
+four-pass,12,14214634
+four-pass,13,14079000
+four-pass,14,13911366
+four-pass,15,14507782
+four-pass,16,14096262
+four-pass,17,14561473
+four-pass,18,14568837
+four-pass,19,14456747
+four-pass,20,13976678
+
+16T 64MiB f32 scalar block 2:
+input_bytes=67108864, points=8388608, setup_seconds=0.009677
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,13910985
+four-pass,2,12930450
+four-pass,3,14441609
+four-pass,4,13571239
+four-pass,5,13447758
+four-pass,6,13032801
+four-pass,7,14422522
+four-pass,8,13469248
+four-pass,9,12828258
+four-pass,10,13608278
+four-pass,11,13762597
+four-pass,12,13619830
+four-pass,13,13375613
+four-pass,14,13537827
+four-pass,15,12956348
+four-pass,16,13345075
+four-pass,17,12800817
+four-pass,18,13500586
+four-pass,19,13572402
+four-pass,20,19168960
+
+16T 64MiB f32 simd block 3:
+input_bytes=67108864, points=8388608, setup_seconds=0.010550
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,14571171
+four-pass,2,14926397
+four-pass,3,14340450
+four-pass,4,14384291
+four-pass,5,14074722
+four-pass,6,14251303
+four-pass,7,14115739
+four-pass,8,13780621
+four-pass,9,14298250
+four-pass,10,13647292
+four-pass,11,14402405
+four-pass,12,13649676
+four-pass,13,15546667
+four-pass,14,14993693
+four-pass,15,14381737
+four-pass,16,14178145
+four-pass,17,14210957
+four-pass,18,13902259
+four-pass,19,14013086
+four-pass,20,13652120
+
+16T 64MiB f32 direct block 3:
+input_bytes=67108864, points=8388608, setup_seconds=0.009290
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13868496
+four-pass,2,13809545
+four-pass,3,13852015
+four-pass,4,14691105
+four-pass,5,14297800
+four-pass,6,14555903
+four-pass,7,13454541
+four-pass,8,13950619
+four-pass,9,15124177
+four-pass,10,14277100
+four-pass,11,14272863
+four-pass,12,13893553
+four-pass,13,15361672
+four-pass,14,13785741
+four-pass,15,14667913
+four-pass,16,15534606
+four-pass,17,16446562
+four-pass,18,14471665
+four-pass,19,14675727
+four-pass,20,15466458
+
+16T 64MiB f32 scalar block 3:
+input_bytes=67108864, points=8388608, setup_seconds=0.010514
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,14352241
+four-pass,2,13834262
+four-pass,3,13623998
+four-pass,4,12552672
+four-pass,5,13920253
+four-pass,6,13309249
+four-pass,7,14100651
+four-pass,8,14251202
+four-pass,9,13619900
+four-pass,10,13483084
+four-pass,11,13712303
+four-pass,12,14072778
+four-pass,13,13822610
+four-pass,14,13553927
+four-pass,15,12816486
+four-pass,16,13600203
+four-pass,17,13829112
+four-pass,18,14060886
+four-pass,19,13729135
+four-pass,20,13506358
+
+16T 64MiB f32 auto block 3:
+input_bytes=67108864, points=8388608, setup_seconds=0.009953
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,13292968
+four-pass,2,13357429
+four-pass,3,13617455
+four-pass,4,13369922
+four-pass,5,13240680
+four-pass,6,13102762
+four-pass,7,13389068
+four-pass,8,14010712
+four-pass,9,14369504
+four-pass,10,13074679
+four-pass,11,13578453
+four-pass,12,12819281
+four-pass,13,13188122
+four-pass,14,13752448
+four-pass,15,13915494
+four-pass,16,13482623
+four-pass,17,13508401
+four-pass,18,12592086
+four-pass,19,13574555
+four-pass,20,13685974
+
+16T 64MiB f32 direct block 4:
+input_bytes=67108864, points=8388608, setup_seconds=0.009285
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,14855514
+four-pass,2,14123984
+four-pass,3,13728574
+four-pass,4,14299894
+four-pass,5,13678029
+four-pass,6,14807394
+four-pass,7,13859378
+four-pass,8,14317577
+four-pass,9,13815807
+four-pass,10,14262673
+four-pass,11,14085412
+four-pass,12,14027072
+four-pass,13,13951090
+four-pass,14,14585658
+four-pass,15,13833270
+four-pass,16,14400010
+four-pass,17,15239994
+four-pass,18,14074812
+four-pass,19,13716772
+four-pass,20,14755917
+
+16T 64MiB f32 scalar block 4:
+input_bytes=67108864, points=8388608, setup_seconds=0.010289
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,13069460
+four-pass,2,14785552
+four-pass,3,12690801
+four-pass,4,13106369
+four-pass,5,13306614
+four-pass,6,12728060
+four-pass,7,13113381
+four-pass,8,12657829
+four-pass,9,13647562
+four-pass,10,13542335
+four-pass,11,12880717
+four-pass,12,13298268
+four-pass,13,13108082
+four-pass,14,13100397
+four-pass,15,12594019
+four-pass,16,12475678
+four-pass,17,13437920
+four-pass,18,13510746
+four-pass,19,13458528
+four-pass,20,13636341
+
+16T 64MiB f32 auto block 4:
+input_bytes=67108864, points=8388608, setup_seconds=0.009207
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,14089330
+four-pass,2,13352711
+four-pass,3,15517964
+four-pass,4,15366280
+four-pass,5,13558566
+four-pass,6,14063792
+four-pass,7,13547064
+four-pass,8,14095871
+four-pass,9,13532236
+four-pass,10,14217749
+four-pass,11,14969267
+four-pass,12,14314341
+four-pass,13,14057900
+four-pass,14,13537966
+four-pass,15,13901007
+four-pass,16,13683359
+four-pass,17,14467177
+four-pass,18,13522938
+four-pass,19,12969101
+four-pass,20,13445033
+
+16T 64MiB f32 simd block 4:
+input_bytes=67108864, points=8388608, setup_seconds=0.009269
+rayon_threads=16
+four_pass_matrix=512x16384, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,14114877
+four-pass,2,14616246
+four-pass,3,13496078
+four-pass,4,14019809
+four-pass,5,13558485
+four-pass,6,14166834
+four-pass,7,13863776
+four-pass,8,14480081
+four-pass,9,14496972
+four-pass,10,14141076
+four-pass,11,14913392
+four-pass,12,14273134
+four-pass,13,14432612
+four-pass,14,14025730
+four-pass,15,14048162
+four-pass,16,14074521
+four-pass,17,14262122
+four-pass,18,13887812
+four-pass,19,13937686
+four-pass,20,14133251
+
+16T 2GiB f64 scalar block 1:
+input_bytes=2147483648, points=134217728, setup_seconds=0.303389
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,458693983
+four-pass,2,459461209
+four-pass,3,456175878
+four-pass,4,457890829
+four-pass,5,456282147
+
+16T 2GiB f64 auto block 1:
+input_bytes=2147483648, points=134217728, setup_seconds=0.307407
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,460847595
+four-pass,2,457182072
+four-pass,3,456330798
+four-pass,4,456396732
+four-pass,5,455568071
+
+16T 2GiB f64 simd block 1:
+input_bytes=2147483648, points=134217728, setup_seconds=0.306378
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,465386242
+four-pass,2,468248442
+four-pass,3,470303149
+four-pass,4,467576805
+four-pass,5,465540943
+
+16T 2GiB f64 direct block 1:
+input_bytes=2147483648, points=134217728, setup_seconds=0.306690
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,479227207
+four-pass,2,476445840
+four-pass,3,475014139
+four-pass,4,474337473
+four-pass,5,473763157
+
+16T 2GiB f64 auto block 2:
+input_bytes=2147483648, points=134217728, setup_seconds=0.308664
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,457690885
+four-pass,2,457620994
+four-pass,3,459263881
+four-pass,4,458077490
+four-pass,5,456201587
+
+16T 2GiB f64 simd block 2:
+input_bytes=2147483648, points=134217728, setup_seconds=0.307860
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,467844236
+four-pass,2,466731252
+four-pass,3,469908862
+four-pass,4,467840288
+four-pass,5,473594421
+
+16T 2GiB f64 direct block 2:
+input_bytes=2147483648, points=134217728, setup_seconds=0.307491
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,476975372
+four-pass,2,483677069
+four-pass,3,476131653
+four-pass,4,474787826
+four-pass,5,477749041
+
+16T 2GiB f64 scalar block 2:
+input_bytes=2147483648, points=134217728, setup_seconds=0.309173
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,456390231
+four-pass,2,457087276
+four-pass,3,457143591
+four-pass,4,455868003
+four-pass,5,456733183
+
+16T 2GiB f64 simd block 3:
+input_bytes=2147483648, points=134217728, setup_seconds=0.310681
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,466715513
+four-pass,2,468331278
+four-pass,3,466713870
+four-pass,4,468792361
+four-pass,5,468992536
+
+16T 2GiB f64 direct block 3:
+input_bytes=2147483648, points=134217728, setup_seconds=0.308663
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,475274378
+four-pass,2,473571981
+four-pass,3,476301692
+four-pass,4,475218754
+four-pass,5,474559570
+
+16T 2GiB f64 scalar block 3:
+input_bytes=2147483648, points=134217728, setup_seconds=0.308134
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,459402061
+four-pass,2,456206609
+four-pass,3,456596869
+four-pass,4,460156022
+four-pass,5,457615235
+
+16T 2GiB f64 auto block 3:
+input_bytes=2147483648, points=134217728, setup_seconds=0.306575
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,457767501
+four-pass,2,460220173
+four-pass,3,455952583
+four-pass,4,456716293
+four-pass,5,459546181
+
+16T 2GiB f64 direct block 4:
+input_bytes=2147483648, points=134217728, setup_seconds=0.307159
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,479667043
+four-pass,2,475816254
+four-pass,3,475378003
+four-pass,4,475174191
+four-pass,5,474854202
+
+16T 2GiB f64 scalar block 4:
+input_bytes=2147483648, points=134217728, setup_seconds=0.305518
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,458952620
+four-pass,2,463949215
+four-pass,3,462058726
+four-pass,4,456165903
+four-pass,5,458404564
+
+16T 2GiB f64 auto block 4:
+input_bytes=2147483648, points=134217728, setup_seconds=0.307932
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,459186739
+four-pass,2,457592584
+four-pass,3,458772774
+four-pass,4,456151005
+four-pass,5,459130764
+
+16T 2GiB f64 simd block 4:
+input_bytes=2147483648, points=134217728, setup_seconds=0.306293
+rayon_threads=16
+four_pass_matrix=2048x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,465835337
+four-pass,2,465377220
+four-pass,3,465162587
+four-pass,4,467044361
+four-pass,5,466683606
+
+16T 2GiB f32 scalar block 1:
+input_bytes=2147483648, points=268435456, setup_seconds=0.313747
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,486205927
+four-pass,2,483765998
+four-pass,3,483065527
+four-pass,4,487476486
+four-pass,5,489793494
+
+16T 2GiB f32 auto block 1:
+input_bytes=2147483648, points=268435456, setup_seconds=0.310831
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,486164549
+four-pass,2,489823049
+four-pass,3,486318849
+four-pass,4,491699082
+four-pass,5,484439830
+
+16T 2GiB f32 simd block 1:
+input_bytes=2147483648, points=268435456, setup_seconds=0.306596
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,492188158
+four-pass,2,506569654
+four-pass,3,487263207
+four-pass,4,493841393
+four-pass,5,492356263
+
+16T 2GiB f32 direct block 1:
+input_bytes=2147483648, points=268435456, setup_seconds=0.311852
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,497709986
+four-pass,2,493285523
+four-pass,3,498600595
+four-pass,4,504931378
+four-pass,5,496374406
+
+16T 2GiB f32 auto block 2:
+input_bytes=2147483648, points=268435456, setup_seconds=0.309484
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,487442343
+four-pass,2,491230256
+four-pass,3,492399514
+four-pass,4,493624247
+four-pass,5,491539584
+
+16T 2GiB f32 simd block 2:
+input_bytes=2147483648, points=268435456, setup_seconds=0.309001
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,493159617
+four-pass,2,492232121
+four-pass,3,489165338
+four-pass,4,495859954
+four-pass,5,489826518
+
+16T 2GiB f32 direct block 2:
+input_bytes=2147483648, points=268435456, setup_seconds=0.310596
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,502772476
+four-pass,2,497635638
+four-pass,3,506825044
+four-pass,4,500264370
+four-pass,5,501649133
+
+16T 2GiB f32 scalar block 2:
+input_bytes=2147483648, points=268435456, setup_seconds=0.309883
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,491607552
+four-pass,2,497350214
+four-pass,3,496681923
+four-pass,4,485394960
+four-pass,5,482531539
+
+16T 2GiB f32 simd block 3:
+input_bytes=2147483648, points=268435456, setup_seconds=0.309292
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,487821635
+four-pass,2,484085519
+four-pass,3,487690369
+four-pass,4,486130207
+four-pass,5,485107503
+
+16T 2GiB f32 direct block 3:
+input_bytes=2147483648, points=268435456, setup_seconds=0.309028
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,496663799
+four-pass,2,501609910
+four-pass,3,495917282
+four-pass,4,494797666
+four-pass,5,496200813
+
+16T 2GiB f32 scalar block 3:
+input_bytes=2147483648, points=268435456, setup_seconds=0.310245
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,485748142
+four-pass,2,486494851
+four-pass,3,481909316
+four-pass,4,493536896
+four-pass,5,489055405
+
+16T 2GiB f32 auto block 3:
+input_bytes=2147483648, points=268435456, setup_seconds=0.311633
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,503283655
+four-pass,2,488625009
+four-pass,3,478337738
+four-pass,4,488638555
+four-pass,5,494627267
+
+16T 2GiB f32 direct block 4:
+input_bytes=2147483648, points=268435456, setup_seconds=0.310287
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-direct", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,497193953
+four-pass,2,496794936
+four-pass,3,505714086
+four-pass,4,504315107
+four-pass,5,503910408
+
+16T 2GiB f32 scalar block 4:
+input_bytes=2147483648, points=268435456, setup_seconds=0.309821
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("scalar", None)
+algorithm,iteration,nanoseconds
+four-pass,1,495261495
+four-pass,2,496555067
+four-pass,3,491535700
+four-pass,4,494118505
+four-pass,5,485082107
+
+16T 2GiB f32 auto block 4:
+input_bytes=2147483648, points=268435456, setup_seconds=0.312220
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("auto-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,493106140
+four-pass,2,485714361
+four-pass,3,487355343
+four-pass,4,494297180
+four-pass,5,492610723
+
+16T 2GiB f32 simd block 4:
+input_bytes=2147483648, points=268435456, setup_seconds=0.310667
+rayon_threads=16
+four_pass_matrix=4096x65536, transpose_backend=("simd-packed", Some(Avx512(Avx512 { _private: () })))
+algorithm,iteration,nanoseconds
+four-pass,1,491686001
+four-pass,2,485289025
+four-pass,3,501666428
+four-pass,4,492064069
+four-pass,5,491284319
