@@ -29,6 +29,7 @@ mod kernels;
 pub mod options;
 mod parallel;
 pub mod planner;
+mod twiddles;
 
 pub use algorithms::dit::{fft_f32_dit_with_planner_and_opts, fft_f64_dit_with_planner_and_opts};
 pub use algorithms::r2c::{
@@ -249,6 +250,7 @@ mod tests {
     use utilities::{assert_float_closeness, gen_random_signal_f32, gen_random_signal_f64};
 
     use super::*;
+    use crate::planner::TwiddleMode;
 
     macro_rules! non_power_of_2_planner {
         ($test_name:ident, $planner:ty) => {
@@ -278,7 +280,7 @@ mod tests {
                 // We purposely set n = 16 and pass it to the planner.
                 // n == 16 == 2^{4} is clearly a power of two, so the planner won't throw it out.
                 // However, the call to `fft_with_opts_and_plan` should panic since it tests that the
-                // size of the generated twiddle factors is half the size of the input.
+                // planner size matches the input size.
                 // In this case, we have an input of size 1024 (used for mp3), but we tell the planner the
                 // input size is 16.
                 let mut planner = <$planner>::new(n);
@@ -361,7 +363,7 @@ mod tests {
                 // and the default parallel threshold. Test each direction against
                 // an independent FFT rather than relying only on a round trip.
                 // 2^18 is the default fused-kernel cutoff; 2^19 is above it.
-                for log_n in 8..=19 {
+                for log_n in 0..=19 {
                     let n = 1 << log_n;
                     let input: Vec<_> = (0..n)
                         .map(|i| {
@@ -371,50 +373,56 @@ mod tests {
                             )
                         })
                         .collect();
-                    let planner = <$planner>::new(n);
-                    let opts = Options::guess_options(n);
-                    for direction in [Direction::Forward, Direction::Inverse] {
-                        let mut expected = input.clone();
-                        let reference = match direction {
-                            Direction::Forward => reference_planner.plan_fft_forward(n),
-                            Direction::Inverse => reference_planner.plan_fft_inverse(n),
-                        };
-                        reference.process(&mut expected);
-                        if direction == Direction::Inverse {
-                            for z in &mut expected {
-                                *z /= n as $float;
+                    for mode in [
+                        TwiddleMode::Precomputed,
+                        TwiddleMode::LowMemory,
+                        TwiddleMode::Auto,
+                    ] {
+                        let planner = <$planner>::with_twiddle_mode(n, mode);
+                        let opts = Options::guess_options(n);
+                        for direction in [Direction::Forward, Direction::Inverse] {
+                            let mut expected = input.clone();
+                            let reference = match direction {
+                                Direction::Forward => reference_planner.plan_fft_forward(n),
+                                Direction::Inverse => reference_planner.plan_fft_inverse(n),
+                            };
+                            reference.process(&mut expected);
+                            if direction == Direction::Inverse {
+                                for z in &mut expected {
+                                    *z /= n as $float;
+                                }
                             }
-                        }
-                        // Also force and disable parallel FFT compute work at selected odd
-                        // sizes and on both sides of the kernel cutoff. MAX
-                        // exercises saturating threshold multiplication.
-                        let thresholds = [opts.smallest_parallel_chunk_size, 0, usize::MAX];
-                        let configurations = if matches!(log_n, 9 | 11 | 18 | 19) {
-                            3
-                        } else {
-                            1
-                        };
-                        for threshold in thresholds.into_iter().take(configurations) {
-                            let mut opts = opts.clone();
-                            opts.smallest_parallel_chunk_size = threshold;
-                            let mut re: Vec<_> = input.iter().map(|z| z.re).collect();
-                            let mut im: Vec<_> = input.iter().map(|z| z.im).collect();
-                            $fft(&mut re, &mut im, direction, &planner, &opts);
+                            // Also force and disable parallel FFT compute work at selected odd
+                            // sizes and on both sides of the kernel cutoff. MAX
+                            // exercises saturating threshold multiplication.
+                            let thresholds = [opts.smallest_parallel_chunk_size, 0, usize::MAX];
+                            let configurations = if matches!(log_n, 9 | 11 | 18 | 19) {
+                                3
+                            } else {
+                                1
+                            };
+                            for threshold in thresholds.into_iter().take(configurations) {
+                                let mut opts = opts.clone();
+                                opts.smallest_parallel_chunk_size = threshold;
+                                let mut re: Vec<_> = input.iter().map(|z| z.re).collect();
+                                let mut im: Vec<_> = input.iter().map(|z| z.im).collect();
+                                $fft(&mut re, &mut im, direction, &planner, &opts);
 
-                            let mut error_sq = 0.0f64;
-                            let mut reference_sq = 0.0f64;
-                            for ((re, im), expected) in re.iter().zip(&im).zip(&expected) {
-                                assert!(re.is_finite() && im.is_finite());
-                                error_sq += (*re as f64 - expected.re as f64).powi(2)
-                                    + (*im as f64 - expected.im as f64).powi(2);
-                                reference_sq +=
-                                    (expected.re as f64).powi(2) + (expected.im as f64).powi(2);
+                                let mut error_sq = 0.0f64;
+                                let mut reference_sq = 0.0f64;
+                                for ((re, im), expected) in re.iter().zip(&im).zip(&expected) {
+                                    assert!(re.is_finite() && im.is_finite());
+                                    error_sq += (*re as f64 - expected.re as f64).powi(2)
+                                        + (*im as f64 - expected.im as f64).powi(2);
+                                    reference_sq +=
+                                        (expected.re as f64).powi(2) + (expected.im as f64).powi(2);
+                                }
+                                let relative_error = (error_sq / reference_sq).sqrt();
+                                assert!(
+                                    relative_error < $tolerance,
+                                    "n={n}, {mode:?}, {direction:?}, cutoff={threshold}: relative L2 error {relative_error}"
+                                );
                             }
-                            let relative_error = (error_sq / reference_sq).sqrt();
-                            assert!(
-                                relative_error < $tolerance,
-                                "n={n}, {direction:?}, cutoff={threshold}: relative L2 error {relative_error}"
-                            );
                         }
                     }
                 }
@@ -435,6 +443,81 @@ mod tests {
         PlannerDit64,
         fft_f64_dit_with_planner_and_opts,
         1e-12
+    );
+
+    macro_rules! test_large_impulse_accuracy {
+        ($name:ident, $float:ty, $planner:ty, $fft:ident, $l2_limit:expr, $max_limit:expr) => {
+            #[test]
+            fn $name() {
+                // An impulse at N-1 has an analytic spectrum: exp(+2*pi*i*k/N).
+                // It exercises every twiddle without using another FFT as the
+                // oracle. Sizes span fine/coarse/anchor boundaries, both stage
+                // parities, and parallel fused passes. Reuse the plan both ways.
+                for log_n in [9, 11, 16, 19, 20] {
+                    let n = 1 << log_n;
+                    for mode in [
+                        TwiddleMode::Precomputed,
+                        TwiddleMode::LowMemory,
+                        TwiddleMode::Auto,
+                    ] {
+                        let mut planner = <$planner>::with_twiddle_mode(n, mode);
+                        // Also exercise the baseline backend (without FMA on x86).
+                        if matches!(log_n, 11 | 16) {
+                            planner.simd_level = fearless_simd::Level::baseline();
+                        }
+                        for threshold in [usize::MAX, 0] {
+                            let mut opts = Options::default();
+                            opts.smallest_parallel_chunk_size = threshold;
+                            for direction in [Direction::Forward, Direction::Inverse] {
+                                let mut re = vec![0.0 as $float; n];
+                                let mut im = vec![0.0 as $float; n];
+                                re[n - 1] = 1.0;
+                                $fft(&mut re, &mut im, direction, &planner, &opts);
+                                let mut error_sq = 0.0;
+                                let mut max_error = 0.0_f64;
+                                for k in 0..n {
+                                    let angle = std::f64::consts::TAU * k as f64 / n as f64;
+                                    let (mut expected_im, expected_re) = angle.sin_cos();
+                                    let scale = if direction == Direction::Inverse {
+                                        expected_im = -expected_im;
+                                        n as f64
+                                    } else {
+                                        1.0
+                                    };
+                                    let error = (re[k] as f64 * scale - expected_re)
+                                        .hypot(im[k] as f64 * scale - expected_im);
+                                    assert!(error.is_finite());
+                                    error_sq += error * error;
+                                    max_error = max_error.max(error);
+                                }
+                                let relative_l2 = (error_sq / n as f64).sqrt();
+                                assert!(
+                                    relative_l2 < $l2_limit && max_error < $max_limit,
+                                    "n={n}, {mode:?}, {direction:?}, cutoff={threshold}: L2={relative_l2}, max={max_error}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    test_large_impulse_accuracy!(
+        large_impulse_accuracy_f64,
+        f64,
+        PlannerDit64,
+        fft_f64_dit_with_planner_and_opts,
+        5e-15,
+        2e-14
+    );
+    test_large_impulse_accuracy!(
+        large_impulse_accuracy_f32,
+        f32,
+        PlannerDit32,
+        fft_f32_dit_with_planner_and_opts,
+        5e-7,
+        2e-6
     );
 
     #[cfg(feature = "complex-nums")]
