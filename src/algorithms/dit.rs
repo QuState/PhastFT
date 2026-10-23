@@ -14,9 +14,12 @@
 //! DIT starts with fine-grained memory access and progressively works with
 //! larger contiguous chunks.
 //!
+//! Transforms through 512 points use fixed natural-order kernels instead,
+//! bypassing bit reversal and recursive DIT stage scheduling.
+//!
 use std::ops::Range;
 
-use fearless_simd::{dispatch, f32x16, f32x8, f64x4, f64x8, Simd};
+use fearless_simd::{dispatch, f32x16, f32x8, f64x4, f64x8, Simd, SimdBase};
 
 use crate::algorithms::bravo::{bit_rev_bravo_f32, bit_rev_bravo_f64};
 use crate::kernels::codelets::{fft_dit_codelet_16_f64, fft_dit_codelet_32_f32};
@@ -381,6 +384,9 @@ fn execute_dit_stages_f32<S: Simd>(
 /// - Produces output in natural order
 /// - Processes from small butterflies to large
 ///
+/// Sizes through 512 instead use fixed natural-order kernels without a separate
+/// bit-reversal pass. Both paths normalize inverse transforms by `1/N`.
+///
 /// # Arguments
 ///
 /// * `reals` - Real components of the signal (modified in-place)
@@ -429,6 +435,31 @@ fn fft_f64_dit_with_planner_and_opts_impl<S: Simd>(
         Direction::Forward => (reals, imags),
         Direction::Inverse => (imags, reals),
     };
+
+    if n <= crate::kernels::small::MAX_SIZE {
+        let scale = if direction == Direction::Inverse {
+            1.0 / n as f64
+        } else {
+            1.0
+        };
+        simd.vectorize(
+            #[inline(always)]
+            || {
+                if S::f64s::LEN >= 8 {
+                    crate::kernels::small::double_wide::fft(
+                        simd,
+                        reals,
+                        imags,
+                        scale,
+                        &planner.small,
+                    )
+                } else {
+                    crate::kernels::small::double::fft(simd, reals, imags, scale, &planner.small)
+                }
+            },
+        );
+        return;
+    }
 
     // DIT requires bit-reversed input
     run_maybe_in_parallel(
@@ -503,6 +534,31 @@ fn fft_f32_dit_with_planner_and_opts_impl<S: Simd>(
         Direction::Forward => (reals, imags),
         Direction::Inverse => (imags, reals),
     };
+
+    if n <= crate::kernels::small::MAX_SIZE {
+        let scale = if direction == Direction::Inverse {
+            1.0 / n as f32
+        } else {
+            1.0
+        };
+        simd.vectorize(
+            #[inline(always)]
+            || {
+                if S::f32s::LEN >= 16 {
+                    crate::kernels::small::single_wide::fft(
+                        simd,
+                        reals,
+                        imags,
+                        scale,
+                        &planner.small,
+                    )
+                } else {
+                    crate::kernels::small::single::fft(simd, reals, imags, scale, &planner.small)
+                }
+            },
+        );
+        return;
+    }
 
     // DIT requires bit-reversed input
     run_maybe_in_parallel(

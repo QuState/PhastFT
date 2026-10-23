@@ -10,3 +10,4 @@
 
 pub mod codelets;
 pub mod dit;
+pub(crate) mod small;

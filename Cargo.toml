@@ -51,6 +51,10 @@ name = "rustfft"
 harness = false
 
 [[bench]]
+name = "small"
+harness = false
+
+[[bench]]
 name = "planner"
 harness = false
 

@@ -82,6 +82,8 @@ macro_rules! impl_planner_dit_for {
             pub(crate) log_n: usize,
             /// The level of SIMD instruction support, detected at runtime on x86 and hardcoded elsewhere
             pub(crate) simd_level: fearless_simd::Level,
+            /// Packed connecting twiddles for the fixed small-size kernels.
+            pub(crate) small: crate::kernels::small::Plan<$precision>,
         }
 
         impl $struct_name {
@@ -110,15 +112,22 @@ macro_rules! impl_planner_dit_for {
                 let simd_level = fearless_simd::Level::new();
 
                 let log_n = num_points.ilog2() as usize;
+                // Small kernels use their own packed twiddles. The general DIT
+                // path has hardcoded twiddles through stage 5 (64 points).
+                let general_log_n = if num_points > crate::kernels::small::MAX_SIZE {
+                    log_n
+                } else {
+                    0
+                };
                 let stage_twiddles = if mode.uses_low_memory::<$precision>(num_points) {
                     PlanTwiddles::LowMemory(
-                        (6..log_n)
+                        (6..general_log_n)
                             .map(|stage| $twiddles::new(1 << (stage + 1)))
                             .collect(),
                     )
                 } else {
                     PlanTwiddles::Precomputed(
-                        (6..log_n)
+                        (6..general_log_n)
                             .map(|stage| StoredTwiddles::<$precision>::new(1 << (stage + 1)))
                             .collect(),
                     )
@@ -128,6 +137,7 @@ macro_rules! impl_planner_dit_for {
                     stage_twiddles,
                     log_n,
                     simd_level,
+                    small: crate::kernels::small::Plan::new(num_points),
                 }
             }
 

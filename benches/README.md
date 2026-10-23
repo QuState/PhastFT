@@ -30,6 +30,7 @@ cargo bench --all-features                 # every target
 |-----------------|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `bench`         | (none)             | PhastFT complex FFT (`fft_{32,64}_dit_with_planner_and_opts`) — forward + inverse, f32 + f64.                                                                                                             |
 | `rustfft`       | (none)             | Same sizes routed through RustFFT.                                                                                                                                                                        |
+| `small`         | (none)             | PhastFT vs. RustFFT at powers of two from 1 through 1024; both inverse transforms include normalization. |
 | `fftw_estimate` | (none)             | Same sizes through FFTW with `FFTW_ESTIMATE`.                                                                                                                                                             |
 | `fftw_measure`  | (none)             | Same sizes through FFTW with `FFTW_MEASURE`.                                                                                                                                                              |
 | `fftw_conserve` | (none)             | Same sizes through FFTW with `FFTW_MEASURE \| FFTW_CONSERVE_MEMORY` — the apples-to-apples comparison for PhastFT's low-memory design.                                                                    |
@@ -129,6 +130,85 @@ traffic. Above it, benefits vary with threading, precision, and cache behavior;
 an explicit mode remains useful for workload-specific tuning. Retune the named
 `AUTO_LOW_MEMORY_BYTES` constant in `src/planner.rs` when broader hardware
 measurements justify a change.
+
+### Small fixed kernels
+
+`small` compares both libraries in one binary at powers of two from 1 to 1024.
+It reuses plans and scratch, with the same seeded inputs and batch sizing as
+the other transform benchmarks. Unlike the separate `rustfft` target, it
+includes `1/N` scaling in RustFFT's inverse timing to match PhastFT. It uses
+Criterion's default sampling mode; pass `--sample-size` to control samples.
+On Linux, pin both comparison runs to the same available CPU (CPU 8 below).
+
+```bash
+taskset -c 8 cargo bench --bench small -- --warm-up-time 0.1 --measurement-time 0.3 --sample-size 30 --noplot
+
+# Limit fearless_simd's runtime dispatch to AVX2 on an AVX-512 machine.
+CARGO_TARGET_DIR=target/avx2 RUSTFLAGS='--cfg disable_dispatch_avx512' \
+  taskset -c 8 cargo bench --bench small -- --warm-up-time 0.1 --measurement-time 0.3 --sample-size 30 --noplot
+```
+
+The new path covers 1–512 points. The 1024-point case exercises the existing
+DIT path as a control. Kernels operate on split real/imaginary vectors, without
+converting to interleaved complex numbers or running a bit-reversal pass.
+The decompositions are 4×4, 4×8, 8×8, 2×64, 4×64, and 8×64 for sizes 16
+through 512. The planner stores connecting twiddles in contiguous rows shared
+by the AVX2 and AVX-512 kernels. Sizes 32–512 now do this extra work during
+planning; execution timings exclude it.
+
+AVX-512 uses sixteen f32 lanes in the outer stages and processes pairs of
+64-point f32 leaves in parallel. Each half of a register holds one leaf;
+transposes preserve that separation until the outer stage interleaves the
+results into frequency order. The f32 transposes use lane-local unpack/shuffle
+instructions before combining lanes. Intermediate stack buffers are aligned
+to 64 bytes to avoid split cache-line accesses. The four/eight-lane f64 paths
+also benefit from that alignment and the revised 32- and 128-point factorizations.
+
+The explicit vector loads are intentional: LLVM outlined some array-building
+iterators into baseline-ISA functions, creating temporary stack copies and
+SIMD helper calls. Fixed-size twiddle views and explicit loads keep that work
+in the caller's SIMD context. Performance changes were evaluated through the
+public API on hardware, including input, twiddle, scratch, and output memory
+traffic.
+
+Local measurements on an AMD Ryzen 9 9950X with Rust 1.99.1 / LLVM 23.1.1,
+default Cargo features, reusable plans, and execution pinned to CPU 8:
+
+| Points | AVX2 f32 speedup | AVX2 f64 speedup | AVX-512 f32 speedup | AVX-512 f64 speedup |
+|--------|-----------------|-----------------|--------------------|--------------------|
+| 16 | 1.00× | 0.99× | 1.01× | 1.00× |
+| 32 | 1.35× | 1.35× | 1.07× | 1.30× |
+| 64 | 1.21× | 1.04× | 1.11× | 1.04× |
+| 128 | 1.40× | 0.98× | 2.76× | 1.43× |
+| 256 | 1.13× | 1.04× | 1.71× | 1.12× |
+| 512 | 1.13× | 1.08× | 1.55× | 1.03× |
+
+These are forward-transform ratios against commit `475dafb`. Both versions
+used 30 samples, 0.1 s warmup, and 0.3 s measurement. The baseline uses the
+faster mean of two separate runs at each size: the old f64 kernels varied
+between processes, and choosing the faster run avoids overstating gains.
+The AVX2 build used `--cfg disable_dispatch_avx512`. These are local timings,
+not portable speed guarantees; differences of a few percent need caution.
+
+Forward execution times in nanoseconds with PhastFT's AVX-512 dispatch and
+RustFFT 6.4.1's AVX2 dispatch, measured in the same benchmark binary:
+
+| Points | PhastFT f32 | RustFFT f32 | PhastFT f64 | RustFFT f64 |
+|--------|-------------|-------------|-------------|-------------|
+| 16 | 6.6 | 4.8 | 7.6 | 6.3 |
+| 32 | 11.3 | 8.2 | 12.0 | 16.1 |
+| 64 | 16.0 | 20.1 | 20.7 | 36.4 |
+| 128 | 25.1 | 43.5 | 67.2 | 75.4 |
+| 256 | 71.2 | 97.4 | 149.7 | 175.3 |
+| 512 | 164.5 | 213.9 | 314.5 | 421.9 |
+
+The largest normalized inverse gains are also in AVX-512 f32: 128/256/512 points
+measure 26.6/72.7/167.2 ns, versus 68.3/118.3/254.3 ns before. The 1024-point
+control stays within roughly 2%. RustFFT retains its forward advantage at
+16 points for both precisions and at 32 points for f32; this tuning does not
+make PhastFT faster at every small size. Input setup and allocation remain
+outside timing; actual transforms include all memory accesses. Fresh batched
+inputs do not guarantee cold caches.
 
 ### Cross-binary overlay plots
 
