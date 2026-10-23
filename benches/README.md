@@ -210,6 +210,10 @@ make PhastFT faster at every small size. Input setup and allocation remain
 outside timing; actual transforms include all memory accesses. Fresh batched
 inputs do not guarantee cold caches.
 
+The dedicated NEON f32 8×8 transpose has a separate
+[QEMU correctness harness and llvm-mca report](neon_transpose/README.md),
+including memory traffic and the surrounding 64-point FFT kernel.
+
 ### Cross-binary overlay plots
 
 Criterion does **not** auto-aggregate across `[[bench]]` binaries — the
