@@ -109,13 +109,15 @@ don't hesitate to create an issue.
 
 ### Bit Reversal and Output Order
 
-- Input: Normal order (bit-reversed internally)
+- Input: Normal order
 - Output: Normal order
-- Bit Reversal: Always performed on input (required for correctness)
+- Powers of two through 512 use fixed kernels with register transposes and no separate bit-reversal pass. Larger transforms bit-reverse the input internally.
 
 ## Performance Notes
 
 **Reuse planners.** If you're doing multiple FFTs of the same size, create the planner once and reuse it.
+
+**Small transforms.** Sizes through 512 use fixed radix-2/4/8 decompositions on separate real and imaginary SIMD vectors. Twiddles are prepared during planning, execution uses bounded stack storage, and inverse scaling is fused into the output stores. The `f64` kernels use wider vectors on AVX-512 than on AVX2.
 
 **Threading.** If the `parallel` feature is enabled, the library uses 2 threads for bit reversal and all available threads for FFT calculation when it seems profitable.
 

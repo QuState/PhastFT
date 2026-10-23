@@ -30,6 +30,7 @@ cargo bench --all-features                 # every target
 |-----------------|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `bench`         | (none)             | PhastFT complex FFT (`fft_{32,64}_dit_with_planner_and_opts`) — forward + inverse, f32 + f64.                                                                                                             |
 | `rustfft`       | (none)             | Same sizes routed through RustFFT.                                                                                                                                                                        |
+| `small`         | (none)             | PhastFT vs. RustFFT at powers of two from 1 through 1024; both inverse transforms include normalization. |
 | `fftw_estimate` | (none)             | Same sizes through FFTW with `FFTW_ESTIMATE`.                                                                                                                                                             |
 | `fftw_measure`  | (none)             | Same sizes through FFTW with `FFTW_MEASURE`.                                                                                                                                                              |
 | `fftw_conserve` | (none)             | Same sizes through FFTW with `FFTW_MEASURE \| FFTW_CONSERVE_MEMORY` — the apples-to-apples comparison for PhastFT's low-memory design.                                                                    |
@@ -129,6 +130,50 @@ traffic. Above it, benefits vary with threading, precision, and cache behavior;
 an explicit mode remains useful for workload-specific tuning. Retune the named
 `AUTO_LOW_MEMORY_BYTES` constant in `src/planner.rs` when broader hardware
 measurements justify a change.
+
+### Small fixed kernels
+
+`small` compares both libraries in one binary at powers of two from 1 to 1024.
+It reuses plans and scratch, with the same seeded inputs and batch sizing as
+the other transform benchmarks. Unlike the separate `rustfft` target, it
+includes `1/N` scaling in RustFFT's inverse timing to match PhastFT. It uses
+Criterion's default sampling mode; pass `--sample-size` to control samples.
+
+```bash
+cargo bench --bench small -- --warm-up-time 0.1 --measurement-time 0.3 --sample-size 30
+
+# Limit fearless_simd's runtime dispatch to AVX2 on an AVX-512 machine.
+CARGO_TARGET_DIR=target/avx2 RUSTFLAGS='--cfg disable_dispatch_avx512' \
+  cargo bench --bench small -- --warm-up-time 0.1 --measurement-time 0.3 --sample-size 30
+```
+
+The new path covers 1–512 points. The 1024-point case exercises the existing
+DIT path as a control. Kernels operate on split real/imaginary vectors, without
+converting to interleaved complex numbers or running a bit-reversal pass.
+The decompositions are 4×4, 2×16, 8×8, 4×32, 4×64, and 8×64 for sizes 16
+through 512. The planner stores connecting twiddles in contiguous rows shared
+by the AVX2 and AVX-512 kernels. Sizes 32–512 now do this extra work during
+planning; execution timings exclude it.
+
+Local forward-transform measurements on an AMD Ryzen 9 9950X, relative to
+commit `51d97e3`, with default Cargo features and reusable plans:
+
+| Points | AVX2 f32 | AVX2 f64 | AVX-512 f32 | AVX-512 f64 |
+|--------|----------|----------|-------------|-------------|
+| 16     | 7.98×    | 5.02×    | 5.86×       | 3.48×       |
+| 32     | 4.55×    | 3.69×    | 3.73×       | 3.64×       |
+| 64     | 2.15×    | 1.48×    | 2.61×       | 3.04×       |
+| 128    | 1.19×    | 1.25×    | 1.19×       | 1.33×       |
+| 256    | 1.23×    | 1.10×    | 1.28×       | 1.46×       |
+| 512    | 1.16×    | 1.03×    | 1.26×       | 1.71×       |
+
+These are ratios of Criterion mean execution times, not planning times or
+portable guarantees. The AVX2 comparison used 30 samples with 0.1 s warmup
+and 0.3 s measurement; the initial AVX-512 baseline used 20 samples with
+0.05 s warmup and 0.1 s measurement, and the final run used 30/0.1/0.3.
+The 512-point AVX2 f64 forward improvement is small. On AVX-512, the 64-point
+forward times were 17.4 ns (f32) and 21.5 ns (f64), versus RustFFT's 17.3 ns
+and 34.8 ns in the same harness. RustFFT remains faster at several other sizes.
 
 ### Cross-binary overlay plots
 
