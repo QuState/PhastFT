@@ -159,37 +159,6 @@ fearless_simd::kernel!(
     }
 );
 
-#[cfg(target_arch = "aarch64")]
-use fearless_simd::Neon;
-
-// A NEON f32x8 consists of two 128-bit registers. Transpose the four 4×4
-// quadrants separately, then join their columns by register renaming. Two
-// stages of 32-bit ZIP operations replace three full-vector interleave stages.
-// Compute the left quadrants together to limit live intermediates when inlined
-// into the FFT: quadrant order affects register allocation and stack spills.
-#[cfg(target_arch = "aarch64")]
-fearless_simd::kernel!(
-    #[inline(always)]
-    fn transpose8_neon(simd: Neon, v: [f32x8<Neon>; 8]) -> [f32x8<Neon>; 8] {
-        let _ = simd;
-        let v = v.map(|row| row.split());
-        let tl = transpose4([v[0].0, v[1].0, v[2].0, v[3].0]);
-        let bl = transpose4([v[4].0, v[5].0, v[6].0, v[7].0]);
-        let tr = transpose4([v[0].1, v[1].1, v[2].1, v[3].1]);
-        let br = transpose4([v[4].1, v[5].1, v[6].1, v[7].1]);
-        [
-            tl[0].combine(bl[0]),
-            tl[1].combine(bl[1]),
-            tl[2].combine(bl[2]),
-            tl[3].combine(bl[3]),
-            tr[0].combine(br[0]),
-            tr[1].combine(br[1]),
-            tr[2].combine(br[2]),
-            tr[3].combine(br[3]),
-        ]
-    }
-);
-
 // The token and vector conversions disappear when inlined into a concrete
 // SIMD context. Retain the generic interleave implementation for other ISAs.
 macro_rules! native_transpose8 {
@@ -198,12 +167,6 @@ macro_rules! native_transpose8 {
         if let Some(avx) = $simd.level().as_avx2() {
             let input = $v.map(|x| f32x8::simd_from(avx, <[f32; 8]>::from(x)));
             return transpose8_avx2(avx, input)
-                .map(|x| f32x8::simd_from($simd, <[f32; 8]>::from(x)));
-        }
-        #[cfg(target_arch = "aarch64")]
-        if let Some(neon) = $simd.level().as_neon() {
-            let input = $v.map(|x| f32x8::simd_from(neon, <[f32; 8]>::from(x)));
-            return transpose8_neon(neon, input)
                 .map(|x| f32x8::simd_from($simd, <[f32; 8]>::from(x)));
         }
     };
@@ -969,23 +932,6 @@ mod tests {
                         assert_eq!(lanes[half * 8 + row], (row * 16 + half * 8 + col) as f32);
                     }
                 }
-            }
-        }
-    }
-
-    #[test]
-    #[cfg(target_arch = "aarch64")]
-    fn neon_transpose_lane_order() {
-        use super::*;
-        let neon = Level::new().as_neon().unwrap();
-        let input = std::array::from_fn(|row| {
-            f32x8::simd_from(neon, std::array::from_fn(|col| (row * 8 + col) as f32))
-        });
-        let output = transpose8_neon(neon, input);
-        for (col, vector) in output.into_iter().enumerate() {
-            let lanes: [f32; 8] = vector.into();
-            for (row, value) in lanes.into_iter().enumerate() {
-                assert_eq!(value, (row * 8 + col) as f32);
             }
         }
     }
