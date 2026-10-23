@@ -543,7 +543,19 @@ fn fft_f32_dit_with_planner_and_opts_impl<S: Simd>(
         };
         simd.vectorize(
             #[inline(always)]
-            || crate::kernels::small::single::fft(simd, reals, imags, scale, &planner.small),
+            || {
+                if S::f32s::LEN >= 16 {
+                    crate::kernels::small::single_wide::fft(
+                        simd,
+                        reals,
+                        imags,
+                        scale,
+                        &planner.small,
+                    )
+                } else {
+                    crate::kernels::small::single::fft(simd, reals, imags, scale, &planner.small)
+                }
+            },
         );
         return;
     }
